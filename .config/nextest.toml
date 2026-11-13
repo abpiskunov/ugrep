@@ -1,0 +1,8 @@
+# Written by Foundation to .config/nextest.toml. The unit gate runs
+# `cargo nextest run -p <crate> --profile ci` and reads its JUnit report.
+[profile.ci]
+fail-fast = false
+failure-output = "immediate-final"
+
+[profile.ci.junit]
+path = "junit.xml"

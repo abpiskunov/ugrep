@@ -1,0 +1,35 @@
+{
+  "schema": "cpp2rust-environment/1",
+  "note": "Preflight result. Written by Foundation from plain commands. Later tasks re-check and report in their task result.",
+  "checked": {"date": "2026-11-13", "task": "Foundation", "context": "background-task", "os": "Windows NT 10.0.26300", "arch": "x64", "shell": "PowerShell 7"},
+  "rust": {
+    "rustup": {"command": "rustup --version", "found": true, "version": "1.29.3"},
+    "cargo": {"command": "cargo --version", "found": true, "version": "1.99.1"},
+    "rustc": {"command": "rustc --version", "found": true, "version": "1.99.1 (x86_64-pc-windows-msvc)"},
+    "components": {"command": "rustup component list --installed", "have": ["clippy", "rustfmt", "llvm-tools"], "need": ["clippy", "rustfmt", "llvm-tools"]},
+    "pinned_channel": "1.99.1"
+  },
+  "cpp": {
+    "compiler": {"command": "cl (via vcvars/MSBuild)", "found": true, "version": "MSVC 14.44.35207 (VS 2022 BuildTools, toolset v143)"},
+    "build_system": {"command": "powershell -NoProfile -File migration/harness/build-cpp.ps1", "found": true, "version": "MSBuild 17 (BuildTools 2022)"}
+  },
+  "git": {"command": "git --version", "found": true, "version": "2.56.1"},
+  "later": {
+    "cargo-nextest": {"command": "cargo nextest --version", "found": false, "needed_from": "first Port"},
+    "llvm-cov": {"command": "llvm-cov --version", "found": true, "needed_from": "Behavior"}
+  },
+  "network": {"registry": null, "proxy": null, "rustup_dist_server": null, "cargo_source_replacement": null},
+  "tools_crate": {"path": "migration/tools/cpp2rust-tools", "build": "cargo build --release --locked: ok", "tests": "cargo test: 10 passed"},
+  "baseline_build": {
+    "command": "powershell -NoProfile -File migration/harness/build-cpp.ps1   (msbuild msvc\\ugrep.sln /p:Configuration=Base-Release /p:Platform=x64)",
+    "outputs": ["msvc/bin/Base-Release-x64/ugrep.exe", "msvc/bin/Base-Release-x64/ugrep-indexer.exe"],
+    "version": ["ugrep 7.8.5 WIN64 +avx2", "ugrep-indexer 7.8.5 WIN64"],
+    "notes": ["Base configs link no third-party decompression libraries (zlib/bzip2/... not linked): archive decompression is not exercised by this baseline.", "Base-Release uses /MT; the Rust variant is built with +crt-static."]
+  },
+  "known_limitations": [
+    "tests/verify.sh is Linux oriented, aborts on the first failure and fails under Git Bash at `-Zio '' lorem.utf8.txt`; it has no test ids. It is not used as a gate. The recorded surface corpus (migration/corpus/<component>/surface) is the baseline witness.",
+    "CI: .github/workflows/migration-gate.yml is added but has not run on a runner; local gate results are claims until CI agrees."
+  ],
+  "missing": ["cargo-nextest (needed from the first Port; not installed by Foundation)"],
+  "result": "ready"
+}

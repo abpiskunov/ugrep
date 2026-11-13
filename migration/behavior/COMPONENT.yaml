@@ -1,0 +1,45 @@
+# Behavior catalog of one component. An index of what the C++ does and why a quirk is kept.
+# It has no authority by itself: the recorded cases and traces are the truth. Checked by
+# `cpp2rust-tools catalog-lint`: an entry without resolving evidence must stay `hypothesis`.
+schema: cpp-rust-behavior/1
+component: core_parse
+stop: {quiet_rounds: 2}                      # saturation: this many rounds in a row added nothing
+
+observation:                                 # per seam function: what is compared
+  core_parse.parse_header:
+    channels: [return, "out:hdr", errc, "global:g_last_error", stderr, "log:debug"]
+    compared: [return, "out:hdr", errc, "global:g_last_error", stderr]
+    excluded: [{channel: "log:debug", reason: "debug log is not contractual (DQ-0004)"}]
+
+behaviors:
+  - id: B-core_parse-001
+    statement: "Empty input returns E_EMPTY and writes nothing"
+    kind: error                              # normal | edge-case | error | ordering | resource
+    status: intended                         # hypothesis | observed | intended | bug-preserve | bug-fix | dont-care
+    evidence: ["case:empty", "test:Parse.Empty"]   # case:<id> | test:<id> | prop:<name>
+    origin: existing-test                    # existing-test | user-corpus | capture | llm-hypothesis | fault | env | divergence
+  - id: B-core_parse-014
+    statement: "Header length over 4 GiB is truncated to 32 bits, no error"
+    kind: edge-case
+    status: bug-preserve
+    suspicious: true                         # shown to the user in the wave's triage question
+    why: "silent truncation; siblings return E_RANGE"
+    evidence: ["case:hdr-len-4g"]
+    origin: llm-hypothesis
+    decision: DQ-0071                        # required once the user classified it
+  - id: B-core_parse-020
+    statement: "Retries the read once on EINTR"
+    kind: error
+    status: hypothesis                       # read from the code; no passing check yet
+    origin: llm-hypothesis
+
+openQuestions: []                            # asked in the wave's triage batch
+
+uncovered:                                   # every uncovered C++ region needs a reason
+  - {region: "parse.cc:301-318", reason: unreachable, note: "guarded by an assert that NDEBUG removes"}
+
+discovery:
+  rounds:                                    # appended by each discovery round
+    - {round: 1, source: existing-tests, new_cases: 42, new_coverage: 61.0, new_behaviors: 9}
+    - {round: 2, source: llm-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0}
+    - {round: 3, source: fault-schedules, new_cases: 0, new_coverage: 0, new_behaviors: 0}

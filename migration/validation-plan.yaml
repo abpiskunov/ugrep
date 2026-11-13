@@ -1,0 +1,207 @@
+# Validation plan. Accepted by the user in Specifying (Question v5); changed only by a `Plan amendment:` task
+# whose pull request the code owner approves. Every threshold of the migration is in this file.
+# Commands run through `cmd /d /s /c` on Windows. In `run`, {name} is a placeholder and a literal brace is
+# written {{ or }}. {tools} is the cpp2rust-tools binary (migration/tools/cpp2rust-tools, built by cargo).
+schema: cpp-rust-plan/1
+accepted: {question: "Question v5", date: "2026-11-13"}
+
+product:
+  kinds: [cli]
+  build: msbuild
+  platforms: [windows-msvc-x64]
+
+third_party:
+  - {lib: pcre2, action: keep, note: "called through the bridge"}
+  - {lib: zlib, action: keep, note: "called through the bridge"}
+  - {lib: bzip2, action: keep, note: "called through the bridge"}
+  - {lib: lz4, action: keep, note: "called through the bridge"}
+  - {lib: xz-lzma, action: keep, note: "called through the bridge"}
+  - {lib: zstd, action: keep, note: "called through the bridge"}
+  - {lib: reflex, action: keep, note: "RE-flex in lib/ and include/reflex stays C++ (D2, Question v2)"}
+  - {lib: boost-regex, action: keep, note: "optional, untouched"}
+
+# reflex is retained C++ and is not a component. Levels come from migration/depgraph.json (source-root, no
+# compile database). src_core and src_tui are one include cycle through ugrep.hpp; their Prepare seam cuts it.
+components:
+  src_leaves:
+    level: 0
+    cpp_sources: "src/glob.cpp src/zopen.c"
+    cpp_headers: "src/glob.hpp src/zopen.h src/zstream.hpp src/flag.hpp"
+    rust_crate: rust/src_leaves
+    harness_crate: rust/src_leaves-harness
+    switch_option: CPP_RUST_IMPL_SRC_LEAVES
+    surface: cli
+    product_bin_cpp: msvc/bin/Base-Release-x64/ugrep.exe
+    product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep.exe
+    link_map: msvc/bin/Base-Release-x64-rust/ugrep.map
+    rust_archive: "rust_umbrella\\.lib"
+  src_core:
+    level: 2
+    cpp_sources: "src/ugrep.cpp src/output.cpp src/stats.cpp src/cnf.cpp"
+    cpp_headers: "src/ugrep.hpp src/output.hpp src/stats.hpp src/cnf.hpp src/mmap.hpp"
+    rust_crate: rust/src_core
+    harness_crate: rust/src_core-harness
+    switch_option: CPP_RUST_IMPL_SRC_CORE
+    surface: cli
+    product_bin_cpp: msvc/bin/Base-Release-x64/ugrep.exe
+    product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep.exe
+    link_map: msvc/bin/Base-Release-x64-rust/ugrep.map
+    rust_archive: "rust_umbrella\\.lib"
+  src_tui:
+    level: 2
+    cpp_sources: "src/query.cpp src/screen.cpp src/vkey.cpp"
+    cpp_headers: "src/query.hpp src/screen.hpp src/vkey.hpp"
+    rust_crate: rust/src_tui
+    harness_crate: rust/src_tui-harness
+    switch_option: CPP_RUST_IMPL_SRC_TUI
+    surface: cli
+    product_bin_cpp: msvc/bin/Base-Release-x64/ugrep.exe
+    product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep.exe
+    link_map: msvc/bin/Base-Release-x64-rust/ugrep.map
+    rust_archive: "rust_umbrella\\.lib"
+  src_indexer:
+    level: 3
+    cpp_sources: "src/ugrep-indexer.cpp"
+    cpp_headers: "src/zthread.hpp"
+    rust_crate: rust/src_indexer
+    harness_crate: rust/src_indexer-harness
+    switch_option: CPP_RUST_IMPL_SRC_INDEXER
+    surface: cli
+    product_bin_cpp: msvc/bin/Base-Release-x64/ugrep-indexer.exe
+    product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep-indexer.exe
+    link_map: msvc/bin/Base-Release-x64-rust/ugrep-indexer.map
+    rust_archive: "rust_umbrella\\.lib"
+
+compare:
+  env_matrix: migration/env-matrix.json       # Windows x64 MSVC only (D4)
+  repeats: 3
+  differences: []
+
+policy:
+  protected: ["migration/validation-plan.yaml", "migration/masks/*", "migration/harness/*", "rust/*-harness/*",
+              "migration/tools/*", "migration/env-matrix.json", ".github/workflows/migration-gate.yml",
+              "rust-toolchain.toml"]
+  frozen: ["migration/corpus/*"]
+  implementation: ["rust/*/src/*"]
+  unsafe_allowed: ["rust/*/src/ffi.rs", "rust/*/src/ffi/*"]
+  approved_rebaselines: []
+
+gates:
+  # Regression check for any change to the C++ itself: the baseline builds and the recorded surface is unchanged.
+  # The repository has no test-ids: tests/verify.sh aborts on the first failure and is not a usable judge here
+  # (see migration/environment.json), so the surface corpus is the baseline witness.
+  baseline:
+    scope: component
+    checks:
+      - name: build-cpp
+        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1"
+      - name: version-runs
+        run: "powershell -NoProfile -Command \"& '{product_bin_cpp}' --version; exit $LASTEXITCODE\""
+      - name: surface-unchanged
+        run: >-
+          {tools} run-cases --bin {product_bin_cpp} --impl cpp
+          --cases migration/corpus/{component}/cases.jsonl --env-matrix migration/env-matrix.json --out {out}/surface.cpp.jsonl
+          && {tools} trace-diff diff --a migration/corpus/{component}/surface/cases.trace.jsonl
+          --b {out}/surface.cpp.jsonl --masks migration/masks/{component}.json --out {out}/surface.json
+        expect:
+          - {json: "{out}/surface.json", field: divergent_cases, op: "==", value: 0}
+          - {json: "{out}/surface.json", field: cases, op: ">=", value: 20}
+
+  behavior-proposed:
+    scope: component
+    checks:
+      - name: build-cpp
+        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1"
+      - name: catalog
+        run: >-
+          {tools} catalog-lint --catalog migration/behavior/{component}.yaml
+          --plan migration/validation-plan.yaml --out {out}/catalog.json
+        expect:
+          - {json: "{out}/catalog.json", field: error_count, op: "==", value: 0}
+          - {json: "{out}/catalog.json", field: unreasoned_uncovered, op: "==", value: 0}
+
+  behavior-ready:
+    scope: component
+    checks:
+      - name: build-cpp
+        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1"
+      - name: record-surface-twice
+        run: >-
+          {tools} run-cases --bin {product_bin_cpp} --impl cpp --repeat 3
+          --cases migration/corpus/{component}/cases.jsonl --env-matrix migration/env-matrix.json --out {out}/surface.cpp.jsonl
+          && {tools} trace-diff diff --a migration/corpus/{component}/surface/cases.trace.jsonl
+          --b {out}/surface.cpp.jsonl --masks migration/masks/{component}.json --out {out}/surface-stable.json
+        expect:
+          - {json: "{out}/surface-stable.json", field: divergent_cases, op: "==", value: 0}
+          - {json: "{out}/surface-stable.json", field: cases, op: ">=", value: 20}
+      - name: record-seam-twice
+        run: >-
+          bash migration/harness/{component}/capture.sh {out}/seam.cpp.jsonl
+          && {tools} trace-diff diff --a migration/corpus/{component}/seam/all.trace.jsonl
+          --b {out}/seam.cpp.jsonl --masks migration/masks/{component}.json --out {out}/seam-stable.json
+        expect:
+          - {json: "{out}/seam-stable.json", field: divergent_cases, op: "==", value: 0}
+      - name: coverage
+        run: "bash migration/harness/{component}/coverage.sh {out}/coverage.json"
+        expect:
+          - {json: "{out}/coverage.json", field: data.0.totals.functions.percent, op: ">=", value: 100}
+          - {json: "{out}/coverage.json", field: data.0.totals.lines.percent, op: ">=", value: 85}
+      - name: catalog
+        run: >-
+          {tools} catalog-lint --catalog migration/behavior/{component}.yaml
+          --plan migration/validation-plan.yaml --out {out}/catalog.json
+        expect:
+          - {json: "{out}/catalog.json", field: error_count, op: "==", value: 0}
+          - {json: "{out}/catalog.json", field: saturated, op: "==", value: true}
+          - {json: "{out}/catalog.json", field: open_questions, op: "==", value: 0}
+          - {json: "{out}/catalog.json", field: unreasoned_uncovered, op: "==", value: 0}
+
+  unit:
+    scope: unit
+    checks:
+      - name: build-lint
+        run: "cargo clippy -p {rust_crate_name} --locked --manifest-path rust/Cargo.toml -- -D warnings"
+      - name: seam-replay
+        run: >-
+          cargo run --profile harness -p {harness_crate_name} --locked --manifest-path rust/Cargo.toml -- migration/corpus/{component}/seam/all.trace.jsonl
+          {out}/seam.rust.jsonl {functions}
+          && {tools} trace-diff diff --a migration/corpus/{component}/seam/all.trace.jsonl
+          --b {out}/seam.rust.jsonl --fns {functions} --masks migration/masks/{component}.json --out {out}/seam.json
+        expect:
+          - {json: "{out}/seam.json", field: divergent_cases, op: "==", value: 0}
+          - {json: "{out}/seam.json", field: cases, op: ">=", value: 1}
+      - name: rust-tests
+        run: "cargo nextest run -p {rust_crate_name} --locked --manifest-path rust/Cargo.toml --profile ci"
+        expect: [{junit: "rust/target/nextest/ci/junit.xml", max_failures: 0}]
+      - name: cpp-build                      # the product still builds with the default switch
+        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1"
+      - name: policy
+        run: >-
+          {tools} policy-scan --base origin/main --plan migration/validation-plan.yaml
+          --forbid-todo {rust_files} --out {out}/policy.json
+
+  switch:
+    scope: component
+    checks:
+      - name: build-rust-variant
+        run: >-
+          powershell -NoProfile -File migration/harness/build-cpp.ps1 -Extra "/p:{switch_option}=rust"
+      - name: linked
+        run: >-
+          {tools} linked-check --map {link_map} --forbid-sources "{cpp_sources}"
+          --forbid "cpp2rust[0-9_]?tap|tap@cpp2rust|cpp2rust_shadow" --require "{rust_archive}" --out {out}/linked.json
+      - name: surface
+        run: >-
+          {tools} run-cases --bin {product_bin_rust} --impl rust
+          --cases migration/corpus/{component}/cases.jsonl --env-matrix migration/env-matrix.json --out {out}/surface.rust.jsonl
+          && {tools} trace-diff diff --a migration/corpus/{component}/surface/cases.trace.jsonl
+          --b {out}/surface.rust.jsonl --masks migration/masks/{component}.json --out {out}/surface.json
+        expect:
+          - {json: "{out}/surface.json", field: divergent_cases, op: "==", value: 0}
+          - {json: "{out}/surface.json", field: cases, op: ">=", value: 20}
+      - name: policy
+        run: >-
+          {tools} policy-scan --base origin/main --plan migration/validation-plan.yaml
+          --forbid-todo {rust_crate}/src --out {out}/policy.json
+      # Sanitizers on Windows (/fsanitize=address with the Rust side) are opt-in; the first Port decides. After
+      # Cleanup deleted the C++ and the tap: add `--no-tap {rust_crate}/src src` to the policy check.

@@ -1,0 +1,41 @@
+{"id":"version","args":["--version"]}
+{"id":"help-short","args":["--help"]}
+{"id":"no-pattern","args":[]}
+{"id":"bad-option","args":["--no-such-option","x"]}
+{"id":"missing-file","args":["foo","nofile.txt"]}
+{"id":"match-basic","args":["Hello","a.txt"],"files":{"a.txt":"Hello World\nfoo bar\nHello again\n\nlast line"}}
+{"id":"nomatch-exit1","args":["zzz","a.txt"],"files":{"a.txt":"Hello World\nfoo bar\n"}}
+{"id":"line-numbers","args":["-n","foo","a.txt"],"files":{"a.txt":"foo\nbar\nfoo bar\n"}}
+{"id":"count","args":["-c","o","a.txt"],"files":{"a.txt":"foo\nbar\nboo\n"}}
+{"id":"only-matching","args":["-o","-b","o+","a.txt"],"files":{"a.txt":"foo boo\nbar\nzoooo\n"}}
+{"id":"invert","args":["-v","foo","a.txt"],"files":{"a.txt":"foo\nbar\nbaz\n"}}
+{"id":"ignore-case","args":["-i","HELLO","a.txt"],"files":{"a.txt":"hello\nHeLLo\nbye\n"}}
+{"id":"word-match","args":["-w","cat","a.txt"],"files":{"a.txt":"cat\ncatalog\nthe cat sat\nbobcat\n"}}
+{"id":"fixed-strings","args":["-F","a.b","a.txt"],"files":{"a.txt":"a.b\naxb\n"}}
+{"id":"context","args":["-C1","-n","mid","a.txt"],"files":{"a.txt":"1\n2\nmid\n4\n5\n"}}
+{"id":"files-with-matches","args":["-l","--sort=name","x","a.txt","b.txt","c.txt"],"files":{"a.txt":"x\n","b.txt":"y\n","c.txt":"xx\n"}}
+{"id":"files-without-match","args":["-L","--sort=name","x","a.txt","b.txt"],"files":{"a.txt":"x\n","b.txt":"y\n"}}
+{"id":"multi-file-with-filename","args":["-H","--sort=name","foo","a.txt","b.txt"],"files":{"a.txt":"foo\n","b.txt":"foo foo\n"}}
+{"id":"recursive-sorted","args":["-r","--sort=name","foo","d"],"files":{"d/a.txt":"foo\n","d/sub/b.txt":"foo\nbar\n","d/c.log":"foo\n"}}
+{"id":"stdin","args":["foo"],"stdin":"foo\nbar\nfoo2\n"}
+{"id":"stdin-dash","args":["-n","bar","-"],"stdin":"foo\nbar\n"}
+{"id":"quiet-match","args":["-q","foo","a.txt"],"files":{"a.txt":"foo\n"}}
+{"id":"quiet-nomatch","args":["-q","qux","a.txt"],"files":{"a.txt":"foo\n"}}
+{"id":"no-messages","args":["-s","foo","nofile.txt"]}
+{"id":"output-json","args":["--json","foo","a.txt"],"files":{"a.txt":"foo\nbar foo\n"}}
+{"id":"output-csv","args":["--csv","-n","foo","a.txt"],"files":{"a.txt":"foo\nbar foo\n"}}
+{"id":"output-xml","args":["--xml","foo","a.txt"],"files":{"a.txt":"foo\nbar foo\n"}}
+{"id":"output-format","args":["--format=%f:%n:%k:%m:%O%~","foo","a.txt"],"files":{"a.txt":"foo\nxx foo\n"}}
+{"id":"output-color","args":["--color=always","-n","foo","a.txt"],"files":{"a.txt":"foo\nxx foo\n"}}
+{"id":"hex-dump","args":["--hexdump","foo","a.bin"],"files":{"a.bin":{"hex":"666f6f00626172ff"}}}
+{"id":"binary-file","args":["foo","a.bin"],"files":{"a.bin":{"hex":"666f6f00626172ff"}}}
+{"id":"text-binary","args":["-a","foo","a.bin"],"files":{"a.bin":{"hex":"666f6f00626172ff"}}}
+{"id":"boolean-query","args":["-%","foo bar -baz","a.txt"],"files":{"a.txt":"foo bar\nfoo bar baz\nfoo\n"}}
+{"id":"and-or","args":["-e","foo","--and","bar","a.txt"],"files":{"a.txt":"foo bar\nfoo\nbar\n"}}
+{"id":"fuzzy","args":["-Z1","hello","a.txt"],"files":{"a.txt":"helo\nhxllo\nhelp\n"}}
+{"id":"unicode-utf8","args":["-n","caf\u00e9","a.txt"],"files":{"a.txt":"caf\u00e9\ncafe\n"}}
+{"id":"max-count","args":["-m1","foo","a.txt"],"files":{"a.txt":"foo\nfoo\nfoo\n"}}
+{"id":"empty-pattern","args":["-c","","a.txt"],"files":{"a.txt":"a\nb\n"}}
+{"id":"config-file","args":["--config=ug.conf","foo","a.txt"],"files":{"ug.conf":"n\n","a.txt":"foo\n"}}
+{"id":"bad-regex","args":["(foo","a.txt"],"files":{"a.txt":"foo\n"}}
+{"id":"split-lines","args":["-z","foo","a.txt"],"files":{"a.txt":{"hex":"666f6f00626172"}}}

@@ -1,0 +1,71 @@
+# Independent check: re-runs the gates that a pull request claims, on the pull request's commit.
+# Make this workflow a REQUIRED status check and protect it, rust-toolchain.toml,
+# migration/tools/ and migration/validation-plan.yaml with CODEOWNERS. Without that, a local
+# pass is only a claim.
+name: migration-gate
+on:
+  pull_request:
+    paths: ["migration/**", "rust/**", "src/**", "rust-toolchain.toml"]
+permissions:
+  contents: read
+env:
+  TOOLS: migration/tools/cpp2rust-tools
+  CARGO_TERM_COLOR: never
+jobs:
+  gate:
+    runs-on: windows-latest         # ugrep's primary build is MSBuild/MSVC x64
+    defaults: {run: {shell: bash}}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Rust toolchain pinned in rust-toolchain.toml
+        # Behind a proxy or with a registry mirror, set RUSTUP_DIST_SERVER / RUSTUP_UPDATE_ROOT and
+        # the cargo source replacement for this runner (see the scenario's prerequisites reference).
+        run: |
+          channel=$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' rust-toolchain.toml)
+          test -n "$channel" || { echo "rust-toolchain.toml has no channel"; exit 1; }
+          rustup toolchain install "$channel" --profile minimal --component clippy,rustfmt,llvm-tools
+          cargo --version
+          cargo install --locked cargo-nextest
+      - name: Build the judge tools from the base branch
+        # The tools that judge a change are built from the target branch, so a change cannot
+        # weaken them. The first pull request (Foundation) has none on the base branch yet.
+        run: |
+          base="origin/${{ github.base_ref }}"
+          src="$base"
+          if ! git cat-file -e "$base:$TOOLS/Cargo.toml" 2>/dev/null; then
+            src=HEAD
+            echo "::warning::first install: the tools come from this pull request; code owner review required"
+          fi
+          mkdir -p "$RUNNER_TEMP/judge"
+          git archive "$src" "$TOOLS" migration/validation-plan.yaml | tar -x -C "$RUNNER_TEMP/judge"
+          cargo build -q --release --locked --manifest-path "$RUNNER_TEMP/judge/$TOOLS/Cargo.toml"
+          echo "JUDGE=$RUNNER_TEMP/judge/$TOOLS/target/release/cpp2rust-tools.exe" >> "$GITHUB_ENV"
+      - name: Policy scan (on the change as committed, with the base branch's tools and plan)
+        run: |
+          "$JUDGE" policy-scan --base "origin/${{ github.base_ref }}" \
+            --plan "$RUNNER_TEMP/judge/migration/validation-plan.yaml"
+      - name: Use the judge files from the base branch
+        # Tools, plan, masks, harness and toolchain pin come from the target branch, so a change
+        # cannot weaken its own judge. A judge-only pull request (plan amendment, new corpus,
+        # harness, a newer tools crate) is detected by the policy scan and reviewed by the code
+        # owner instead.
+        run: |
+          base="origin/${{ github.base_ref }}"
+          if git diff --quiet "$base"...HEAD -- rust/ src/; then
+            echo "judge-only change: gates run with the proposed judge; code owner review required"
+          else
+            for p in migration/tools migration/validation-plan.yaml migration/masks migration/harness migration/env-matrix.json rust-toolchain.toml; do
+              git checkout "$base" -- "$p" 2>/dev/null || true
+            done
+          fi
+      - name: Build the C++ baseline (msvc/ugrep.sln, Base-Release|x64)
+        run: powershell -NoProfile -File migration/harness/build-cpp.ps1
+      - name: Gates due for this change
+        run: cargo run -q --release --locked --manifest-path "$TOOLS/Cargo.toml" -- gate-check --changed "origin/${{ github.base_ref }}"
+      - name: Upload gate reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: migration-gate, path: migration/out/gates}
+

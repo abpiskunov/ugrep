@@ -1,0 +1,8 @@
+# Written to the repository root by Foundation. Every worker, every developer and CI then build
+# with the same compiler. `channel` is the exact stable version recorded in
+# migration/environment.json (1.85 or newer: the tools crate uses edition 2024); never "stable".
+# A judge file: listed in the plan's policy.protected and under CODEOWNERS.
+[toolchain]
+channel = "1.99.1"
+components = ["clippy", "rustfmt", "llvm-tools"]
+profile = "minimal"

@@ -1,0 +1,20 @@
+[package]
+name = "cpp2rust-tools"
+version = "0.6.0"
+edition = "2024"
+rust-version = "1.85"
+description = "C++ to Rust migration tools: port order, case runner, trace diff, catalog lint, gates, linker-map check, policy scan"
+
+# Its own workspace root: the crate is copied to migration/tools/ of a repository that may have
+# a Cargo workspace of its own, and must never become a member of it.
+[workspace]
+
+[dependencies]
+serde_json = "1"                                          # traces, reports, masks
+regex = "1"                                               # user patterns (masks, linker maps), policy rules
+yaml-rust2 = { version = "0.13", default-features = false }  # plan, catalog, unit records (YAML 1.2)
+roxmltree = "0.21"                                        # JUnit XML
+flate2 = "1"                                              # .jsonl.gz traces (pure-Rust backend)
+
+[profile.release]
+debug = false

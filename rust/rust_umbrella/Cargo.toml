@@ -1,0 +1,15 @@
+[package]
+name = "rust_umbrella"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["staticlib"]
+
+[features]
+# Seam tap build variant: records calls on both sides in one trace schema.
+tap = []
+
+[dependencies]

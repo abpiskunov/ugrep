@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -16,6 +16,8 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "zlib", "zlib.vcxproj", "{04F5C86A-D161-4915-A586-5F68977CDCDF}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "zstd", "zstd.vcxproj", "{06353AD3-CFFD-4E77-A076-677905AAA85E}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ugrep-indexer", "ugrep-indexer.vcxproj", "{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -201,6 +203,30 @@ Global
 		{06353AD3-CFFD-4E77-A076-677905AAA85E}.Pcre-Release|x64.Build.0 = Release|x64
 		{06353AD3-CFFD-4E77-A076-677905AAA85E}.Pcre-Release|x86.ActiveCfg = Release|Win32
 		{06353AD3-CFFD-4E77-A076-677905AAA85E}.Pcre-Release|x86.Build.0 = Release|Win32
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Boost-Debug|x64.ActiveCfg = Base-Debug|x64
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Boost-Debug|x64.Build.0 = Base-Debug|x64
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Boost-Debug|x86.ActiveCfg = Base-Debug|Win32
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Boost-Debug|x86.Build.0 = Base-Debug|Win32
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Boost-Release|x64.ActiveCfg = Base-Release|x64
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Boost-Release|x64.Build.0 = Base-Release|x64
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Boost-Release|x86.ActiveCfg = Base-Release|Win32
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Boost-Release|x86.Build.0 = Base-Release|Win32
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Base-Debug|x64.ActiveCfg = Base-Debug|x64
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Base-Debug|x64.Build.0 = Base-Debug|x64
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Base-Debug|x86.ActiveCfg = Base-Debug|Win32
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Base-Debug|x86.Build.0 = Base-Debug|Win32
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Base-Release|x64.ActiveCfg = Base-Release|x64
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Base-Release|x64.Build.0 = Base-Release|x64
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Base-Release|x86.ActiveCfg = Base-Release|Win32
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Base-Release|x86.Build.0 = Base-Release|Win32
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Pcre-Debug|x64.ActiveCfg = Base-Debug|x64
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Pcre-Debug|x64.Build.0 = Base-Debug|x64
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Pcre-Debug|x86.ActiveCfg = Base-Debug|Win32
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Pcre-Debug|x86.Build.0 = Base-Debug|Win32
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Pcre-Release|x64.ActiveCfg = Base-Release|x64
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Pcre-Release|x64.Build.0 = Base-Release|x64
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Pcre-Release|x86.ActiveCfg = Base-Release|Win32
+		{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}.Pcre-Release|x86.Build.0 = Base-Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -208,4 +234,6 @@ Global
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {691478ED-B073-4126-81BF-D7B0FA56CCD2}
 	EndGlobalSection
-EndGlobal
+EndProject("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ugrep-indexer", "ugrep-indexer.vcxproj", "{7B1D5E52-3C0A-4F6E-9A57-2D8E4C1B6F30}"
+EndProject
+Global

@@ -1,0 +1,475 @@
+{
+ "components": {
+  "cnf": {
+   "cycle_with": [
+    "mmap",
+    "output",
+    "query",
+    "screen",
+    "stats",
+    "ugrep",
+    "vkey"
+   ],
+   "depends_on": [
+    "flag",
+    "ugrep"
+   ],
+   "files": [
+    "src/cnf.cpp",
+    "src/cnf.hpp"
+   ],
+   "level": 2,
+   "loc": 829
+  },
+  "flag": {
+   "cycle_with": [],
+   "depends_on": [],
+   "files": [
+    "src/flag.hpp"
+   ],
+   "level": 0,
+   "loc": 213
+  },
+  "glob": {
+   "cycle_with": [],
+   "depends_on": [],
+   "files": [
+    "src/glob.cpp",
+    "src/glob.hpp"
+   ],
+   "level": 0,
+   "loc": 233
+  },
+  "lzma": {
+   "cycle_with": [],
+   "depends_on": [
+    "lzma/C"
+   ],
+   "files": [
+    "lzma/7zls.c"
+   ],
+   "level": 1,
+   "loc": 107
+  },
+  "lzma/C": {
+   "cycle_with": [],
+   "depends_on": [],
+   "files": [
+    "lzma/C/7z.h",
+    "lzma/C/7zAlloc.c",
+    "lzma/C/7zAlloc.h",
+    "lzma/C/7zArcIn.c",
+    "lzma/C/7zBuf.c",
+    "lzma/C/7zBuf.h",
+    "lzma/C/7zBuf2.c",
+    "lzma/C/7zCrc.c",
+    "lzma/C/7zCrc.h",
+    "lzma/C/7zCrcOpt.c",
+    "lzma/C/7zDec.c",
+    "lzma/C/7zFile.c",
+    "lzma/C/7zFile.h",
+    "lzma/C/7zStream.c",
+    "lzma/C/7zTypes.h",
+    "lzma/C/7zWindows.h",
+    "lzma/C/Bcj2.c",
+    "lzma/C/Bcj2.h",
+    "lzma/C/Bra.c",
+    "lzma/C/Bra.h",
+    "lzma/C/Bra86.c",
+    "lzma/C/BraIA64.c",
+    "lzma/C/Compiler.h",
+    "lzma/C/CpuArch.c",
+    "lzma/C/CpuArch.h",
+    "lzma/C/Delta.c",
+    "lzma/C/Delta.h",
+    "lzma/C/Lzma2Dec.c",
+    "lzma/C/Lzma2Dec.h",
+    "lzma/C/LzmaDec.c",
+    "lzma/C/LzmaDec.h",
+    "lzma/C/Ppmd.h",
+    "lzma/C/Ppmd7.c",
+    "lzma/C/Ppmd7.h",
+    "lzma/C/Ppmd7Dec.c",
+    "lzma/C/Precomp.h",
+    "lzma/C/RotateDefs.h",
+    "lzma/C/viizip.c",
+    "lzma/C/viizip.h"
+   ],
+   "level": 0,
+   "loc": 10844
+  },
+  "mmap": {
+   "cycle_with": [
+    "cnf",
+    "output",
+    "query",
+    "screen",
+    "stats",
+    "ugrep",
+    "vkey"
+   ],
+   "depends_on": [
+    "ugrep"
+   ],
+   "files": [
+    "src/mmap.hpp"
+   ],
+   "level": 2,
+   "loc": 110
+  },
+  "msvc/include_common": {
+   "cycle_with": [],
+   "depends_on": [],
+   "files": [
+    "msvc/include_common/empty.c"
+   ],
+   "level": 0,
+   "loc": 0
+  },
+  "msvc/include_pcre2": {
+   "cycle_with": [],
+   "depends_on": [],
+   "files": [
+    "msvc/include_pcre2/pcre2_chartables.c"
+   ],
+   "level": 0,
+   "loc": 1
+  },
+  "msvc/include_ugrep": {
+   "cycle_with": [],
+   "depends_on": [
+    "reflex"
+   ],
+   "files": [
+    "msvc/include_ugrep/matcher_avx2.cpp",
+    "msvc/include_ugrep/matcher_avx512bw.cpp"
+   ],
+   "level": 1,
+   "loc": 14
+  },
+  "output": {
+   "cycle_with": [
+    "cnf",
+    "mmap",
+    "query",
+    "screen",
+    "stats",
+    "ugrep",
+    "vkey"
+   ],
+   "depends_on": [
+    "ugrep"
+   ],
+   "files": [
+    "src/output.cpp",
+    "src/output.hpp"
+   ],
+   "level": 2,
+   "loc": 2848
+  },
+  "query": {
+   "cycle_with": [
+    "cnf",
+    "mmap",
+    "output",
+    "screen",
+    "stats",
+    "ugrep",
+    "vkey"
+   ],
+   "depends_on": [
+    "screen",
+    "stats",
+    "ugrep",
+    "vkey"
+   ],
+   "files": [
+    "src/query.cpp",
+    "src/query.hpp"
+   ],
+   "level": 2,
+   "loc": 3976
+  },
+  "reflex": {
+   "cycle_with": [],
+   "depends_on": [],
+   "files": [
+    "lib/block_scripts.cpp",
+    "lib/composer.cpp",
+    "lib/convert.cpp",
+    "lib/debug.cpp",
+    "lib/error.cpp",
+    "lib/input.cpp",
+    "lib/language_scripts.cpp",
+    "lib/letter_case.cpp",
+    "lib/letter_scripts.cpp",
+    "lib/matcher.cpp",
+    "lib/matcher_avx2.cpp",
+    "lib/matcher_avx512bw.cpp",
+    "lib/pattern.cpp",
+    "lib/posix.cpp",
+    "lib/simd.cpp",
+    "lib/simd_avx2.cpp",
+    "lib/simd_avx512bw.cpp",
+    "lib/unicode.cpp",
+    "lib/utf8.cpp"
+   ],
+   "level": 0,
+   "loc": 33057
+  },
+  "screen": {
+   "cycle_with": [
+    "cnf",
+    "mmap",
+    "output",
+    "query",
+    "stats",
+    "ugrep",
+    "vkey"
+   ],
+   "depends_on": [
+    "vkey"
+   ],
+   "files": [
+    "src/screen.cpp",
+    "src/screen.hpp"
+   ],
+   "level": 2,
+   "loc": 927
+  },
+  "stats": {
+   "cycle_with": [
+    "cnf",
+    "mmap",
+    "output",
+    "query",
+    "screen",
+    "ugrep",
+    "vkey"
+   ],
+   "depends_on": [
+    "ugrep"
+   ],
+   "files": [
+    "src/stats.cpp",
+    "src/stats.hpp"
+   ],
+   "level": 2,
+   "loc": 379
+  },
+  "ugrep": {
+   "cycle_with": [
+    "cnf",
+    "mmap",
+    "output",
+    "query",
+    "screen",
+    "stats",
+    "vkey"
+   ],
+   "depends_on": [
+    "cnf",
+    "flag",
+    "glob",
+    "mmap",
+    "output",
+    "query",
+    "stats",
+    "zstream"
+   ],
+   "files": [
+    "src/ugrep.cpp",
+    "src/ugrep.hpp"
+   ],
+   "level": 2,
+   "loc": 12295
+  },
+  "ugrep_indexer": {
+   "cycle_with": [],
+   "depends_on": [
+    "glob",
+    "zstream",
+    "zthread"
+   ],
+   "files": [
+    "src/ugrep-indexer.cpp"
+   ],
+   "level": 3,
+   "loc": 1641
+  },
+  "vkey": {
+   "cycle_with": [
+    "cnf",
+    "mmap",
+    "output",
+    "query",
+    "screen",
+    "stats",
+    "ugrep"
+   ],
+   "depends_on": [
+    "ugrep"
+   ],
+   "files": [
+    "src/vkey.cpp",
+    "src/vkey.hpp"
+   ],
+   "level": 2,
+   "loc": 1122
+  },
+  "zopen": {
+   "cycle_with": [],
+   "depends_on": [],
+   "files": [
+    "src/zopen.c",
+    "src/zopen.h"
+   ],
+   "level": 0,
+   "loc": 783
+  },
+  "zstream": {
+   "cycle_with": [],
+   "depends_on": [
+    "zopen"
+   ],
+   "files": [
+    "src/zstream.hpp"
+   ],
+   "level": 1,
+   "loc": 2295
+  },
+  "zthread": {
+   "cycle_with": [],
+   "depends_on": [
+    "zstream"
+   ],
+   "files": [
+    "src/zthread.hpp"
+   ],
+   "level": 2,
+   "loc": 772
+  }
+ },
+ "cycles": [
+  [
+   "cnf",
+   "mmap",
+   "output",
+   "query",
+   "screen",
+   "stats",
+   "ugrep",
+   "vkey"
+  ]
+ ],
+ "edge_evidence": {
+  "cnf -> flag": [
+   "include src/cnf.hpp -> src/flag.hpp"
+  ],
+  "cnf -> ugrep": [
+   "include src/cnf.cpp -> src/ugrep.hpp"
+  ],
+  "lzma -> lzma/C": [
+   "include lzma/7zls.c -> lzma/C/viizip.h"
+  ],
+  "mmap -> ugrep": [
+   "include src/mmap.hpp -> src/ugrep.hpp"
+  ],
+  "msvc/include_ugrep -> reflex": [
+   "include msvc/include_ugrep/matcher_avx2.cpp -> lib/matcher.cpp",
+   "include msvc/include_ugrep/matcher_avx512bw.cpp -> lib/matcher.cpp"
+  ],
+  "output -> ugrep": [
+   "include src/output.hpp -> src/ugrep.hpp"
+  ],
+  "query -> screen": [
+   "include src/query.hpp -> src/screen.hpp"
+  ],
+  "query -> stats": [
+   "include src/query.cpp -> src/stats.hpp"
+  ],
+  "query -> ugrep": [
+   "include src/query.cpp -> src/ugrep.hpp",
+   "include src/query.hpp -> src/ugrep.hpp"
+  ],
+  "query -> vkey": [
+   "include src/query.hpp -> src/vkey.hpp"
+  ],
+  "screen -> vkey": [
+   "include src/screen.hpp -> src/vkey.hpp"
+  ],
+  "stats -> ugrep": [
+   "include src/stats.hpp -> src/ugrep.hpp"
+  ],
+  "ugrep -> cnf": [
+   "include src/ugrep.hpp -> src/cnf.hpp"
+  ],
+  "ugrep -> flag": [
+   "include src/ugrep.hpp -> src/flag.hpp"
+  ],
+  "ugrep -> glob": [
+   "include src/ugrep.cpp -> src/glob.hpp"
+  ],
+  "ugrep -> mmap": [
+   "include src/ugrep.cpp -> src/mmap.hpp"
+  ],
+  "ugrep -> output": [
+   "include src/ugrep.cpp -> src/output.hpp"
+  ],
+  "ugrep -> query": [
+   "include src/ugrep.cpp -> src/query.hpp"
+  ],
+  "ugrep -> stats": [
+   "include src/ugrep.cpp -> src/stats.hpp"
+  ],
+  "ugrep -> zstream": [
+   "include src/ugrep.cpp -> src/zstream.hpp"
+  ],
+  "ugrep_indexer -> glob": [
+   "include src/ugrep-indexer.cpp -> src/glob.hpp"
+  ],
+  "ugrep_indexer -> zstream": [
+   "include src/ugrep-indexer.cpp -> src/zstream.hpp"
+  ],
+  "ugrep_indexer -> zthread": [
+   "include src/ugrep-indexer.cpp -> src/zthread.hpp"
+  ],
+  "vkey -> ugrep": [
+   "include src/vkey.hpp -> src/ugrep.hpp"
+  ],
+  "zstream -> zopen": [
+   "include src/zstream.hpp -> src/zopen.h"
+  ],
+  "zthread -> zstream": [
+   "include src/zthread.hpp -> src/zstream.hpp"
+  ]
+ },
+ "edges_from": [
+  "include"
+ ],
+ "port_order": [
+  "flag",
+  "glob",
+  "lzma/C",
+  "reflex",
+  "zopen",
+  "msvc/include_common",
+  "msvc/include_pcre2",
+  "zstream",
+  "lzma",
+  "msvc/include_ugrep",
+  "ugrep",
+  "stats",
+  "vkey",
+  "cnf",
+  "mmap",
+  "output",
+  "query",
+  "screen",
+  "zthread",
+  "ugrep_indexer"
+ ],
+ "root": "C:\\DevAgentE2E\\ugrep\\sb\\w7j6keksy8bj\\abpiskunov-ugrep",
+ "schema": "cpp-rust-depgraph/1",
+ "translation_units": 54
+}

@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = ["rust_umbrella"]
+
+# Component crates (rust/src_leaves, rust/src_core, ...) and their harness crates are added by the
+# Prepare seam task of each component; rust_umbrella re-exports them as one staticlib.
+
+[workspace.package]
+edition = "2021"
+version = "7.8.5"
+license = "BSD-3-Clause"
+
+[profile.release]
+panic = "abort"
+opt-level = 3
+debug = 1
+
+[profile.dev]
+panic = "abort"
+
+# The seam harnesses replay recorded traces and may unwind; they run in their own profile.
+[profile.harness]
+inherits = "dev"
+panic = "unwind"

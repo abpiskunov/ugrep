@@ -1,0 +1,12 @@
+# One port unit = one task = one pull request. Only the unit's own task edits this file.
+schema: cpp-rust-unit/1
+unit: core_parse.header                      # file name without .yaml
+component: core_parse
+functions: [core_parse.parse_header, core_parse.header_len]   # seam function ids
+cpp_files: [src/parse/header.cc]
+rust_files: rust/core_parse/src/header.rs    # space-separated when several; passed to policy_scan
+rust_crate_name: core_parse
+harness_crate_name: core_parse-harness
+depends_on: []                               # units that must be merged first
+status: planned                              # planned | ported | switched | cleaned (a claim; CI checks it)
+notes: []                                    # rule gaps, signature change requests, follow-ups

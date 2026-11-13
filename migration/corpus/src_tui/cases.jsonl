@@ -1,0 +1,24 @@
+{"id":"tui-no-tty","args":["-Q","foo","a.txt"],"files":{"a.txt":"foo\n"}}
+{"id":"tui-no-tty-stdin","args":["-Q"],"stdin":"foo\n"}
+{"id":"tui-no-tty-long","args":["--query","foo"],"files":{"a.txt":"foo\n"}}
+{"id":"tui-no-tty-help-key","args":["-Q","--no-confirm","foo"],"stdin":""}
+{"id":"tui-no-tty-bool","args":["-Q","-%","foo bar"],"stdin":""}
+{"id":"tui-no-tty-recursive","args":["-Qr","foo","d"],"files":{"d/a.txt":"foo\n"}}
+{"id":"tui-bad-option","args":["-Q","--no-such-option"]}
+{"id":"tui-delay-option","args":["-Q","--query=5"],"stdin":""}
+{"id":"tui-colors","args":["--color=always","-Q","foo"],"stdin":""}
+{"id":"tui-split","args":["-Q","--split","foo"],"stdin":""}
+{"id":"tui-tag-help","args":["--help","-Q"]}
+{"id":"tui-help-where","args":["--help","where"]}
+{"id":"tui-help-format","args":["--help","format"]}
+{"id":"tui-help-regex","args":["--help","regex"]}
+{"id":"tui-help-colors","args":["--help","colors"]}
+{"id":"tui-help-globs","args":["--help","globs"]}
+{"id":"tui-help-bad-topic","args":["--help","zzznotatopic"]}
+{"id":"tui-man-synopsis","args":["--help","--version"]}
+{"id":"tui-color-grammar-ok","args":["--colors=ms=1;31:ln=32","-n","foo","a.txt"],"files":{"a.txt":"foo\n"},"env":{"GREP_COLORS":"mt=1;32"}}
+{"id":"tui-color-always-colors","args":["--color=always","--colors=ms=1;31:ln=32:fn=35","-nH","foo","a.txt"],"files":{"a.txt":"xx foo\n"}}
+{"id":"tui-colors-env","args":["--color=always","-n","foo","a.txt"],"files":{"a.txt":"foo\n"},"env":{"GREP_COLORS":"ms=4;33:ln=36"}}
+{"id":"tui-pretty","args":["--pretty","--color=always","foo","a.txt"],"files":{"a.txt":"foo\nbar\n"}}
+{"id":"tui-heading","args":["-J1","--heading","-nH","foo","a.txt","b.txt"],"files":{"a.txt":"foo\n","b.txt":"foo\n"}}
+{"id":"tui-tabs","args":["-T","-n","foo","a.txt"],"files":{"a.txt":"foo\n"}}
