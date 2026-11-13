@@ -1,0 +1,24 @@
+{
+  "schema": "cpp2rust-environment/1",
+  "checked": {"date": "2026-11-13", "task": "Foundation (tsk_01M7B22JTNXD589FBMRVBXMPWW)", "context": "background-task", "os": "Windows (x64)", "arch": "x86_64", "shell": "PowerShell; bash 5.3.15 (cygwin) available"},
+  "rust": {
+    "rustup": {"command": "rustup --version", "found": true, "version": "1.29.3"},
+    "cargo": {"command": "cargo --version", "found": true, "version": "1.99.1"},
+    "rustc": {"command": "rustc --version", "found": true, "version": "1.99.1"},
+    "components": {"command": "rustup component list --installed", "have": ["cargo", "clippy", "llvm-tools", "rust-docs", "rust-std", "rustc", "rustfmt"], "need": ["clippy", "rustfmt", "llvm-tools"]},
+    "pinned_channel": "1.99.1"
+  },
+  "cpp": {
+    "compiler": {"command": "MSBuild (v143 toolset, VS 2022 BuildTools)", "found": true, "version": "MSVC v143"},
+    "build_system": {"command": "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\MSBuild\\Current\\Bin\\amd64\\MSBuild.exe", "found": true, "version": "17.x; not on PATH by default"}
+  },
+  "git": {"command": "git --version", "found": true, "version": "2.56.1"},
+  "later": {
+    "cargo-nextest": {"command": "cargo nextest --version", "found": false, "needed_from": "first Port"},
+    "llvm-cov": {"command": "llvm-cov --version", "found": false, "needed_from": "Behavior (the rustup llvm-tools component has it under the toolchain bin; not on PATH)"}
+  },
+  "network": {"registry": "crates.io (not exercised: tools crate built from the local lockfile)", "proxy": null, "rustup_dist_server": null, "cargo_source_replacement": null},
+  "tools_crate": {"path": "migration/tools/cpp2rust-tools", "build": "cargo build --release --locked: ok", "tests": "not run in Foundation"},
+  "missing": ["cargo-nextest (needed from first Port)", "llvm-cov on PATH (needed from Behavior)", "cxxbridge (needed from Prepare seam)", "third-party C sources (zlib, bzip2, lz4, zstd, pcre2, xz) are not in the checkout: only the Base configurations build"],
+  "result": "ready for Foundation; later tasks must request the missing items listed"
+}

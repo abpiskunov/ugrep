@@ -1,0 +1,13 @@
+
+  lz4.vcxproj -> C:\DevAgentE2E\ugrep\sb\ah26zv356gnw\abpiskunov-ugrep\msvc\bin\None-x64\lz4.lib
+  zlib.vcxproj -> C:\DevAgentE2E\ugrep\sb\ah26zv356gnw\abpiskunov-ugrep\msvc\bin\None-x64\zlib.lib
+  xz.vcxproj -> C:\DevAgentE2E\ugrep\sb\ah26zv356gnw\abpiskunov-ugrep\msvc\bin\None-x64\xz.lib
+  pcre2.vcxproj -> C:\DevAgentE2E\ugrep\sb\ah26zv356gnw\abpiskunov-ugrep\msvc\bin\None-x64\pcre2.lib
+  bzip2.vcxproj -> C:\DevAgentE2E\ugrep\sb\ah26zv356gnw\abpiskunov-ugrep\msvc\bin\None-x64\bzip2.lib
+  zstd.vcxproj -> C:\DevAgentE2E\ugrep\sb\ah26zv356gnw\abpiskunov-ugrep\msvc\bin\None-x64\zstd.lib
+  composer.cpp
+  Generating code
+  Previous IPDB not found, fall back to full compilation.
+  All 6043 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finished generating code
+  ugrep.vcxproj -> C:\DevAgentE2E\ugrep\sb\ah26zv356gnw\abpiskunov-ugrep\msvc\bin\Base-Release-x64\ugrep.exe

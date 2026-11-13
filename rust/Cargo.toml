@@ -1,0 +1,18 @@
+[workspace]
+resolver = "3"
+members = []
+
+[workspace.package]
+edition = "2024"
+
+# overflow-checks stay on in every profile a gate uses; panic=abort for product builds (decision D4).
+[profile.dev]
+overflow-checks = true
+
+[profile.release]
+overflow-checks = true
+panic = "abort"
+
+[profile.harness]
+inherits = "dev"
+panic = "unwind"

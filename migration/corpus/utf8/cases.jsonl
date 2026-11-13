@@ -1,0 +1,8 @@
+{"id":"match-text","args":["--sort","-n","Hello","in/a.txt"],"files":{"in/a.txt":"Hello World\nbye\nHello again\n"}}
+{"id":"no-match","args":["zzz","in/a.txt"],"files":{"in/a.txt":"Hello World\n"}}
+{"id":"bad-option","args":["--no-such-option"]}
+{"id":"missing-file","args":["x","in/missing.txt"]}
+{"id":"utf8-ignore-case","args":["-i","caf\u00e9","in/u.txt"],"files":{"in/u.txt":"CAF\u00c9 au lait\ncaf\u00e9\n"}}
+{"id":"stdin-count","args":["-c","a"],"stdin":"a\nb\naa\n"}
+{"id":"json-output","args":["--json","-n","Hello","in/a.txt"],"files":{"in/a.txt":"Hello\n"}}
+{"id":"invalid-utf8","args":["-a","x","in/b.bin"],"files":{"in/b.bin":{"hex":"78ff79"}}}

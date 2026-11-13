@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Rust glue targets. Only the ugrep.exe project links the umbrella (RustLinkUmbrella=true, set by the first component
+     that switches). With no Rust component the targets do nothing. -->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemDefinitionGroup Condition="'$(Cpp2RustTap)'=='true'">
+    <ClCompile>
+      <PreprocessorDefinitions>CPP2RUST_TAP;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <Target Name="CargoBuild" BeforeTargets="ClCompile"
+          Condition="'$(CppRustAnyRust)'=='true' and '$(MSBuildProjectName)'=='ugrep'">
+    <Exec Command="cargo build --locked --manifest-path &quot;$(MSBuildThisFileDirectory)..\rust\Cargo.toml&quot; -p rust_umbrella --target $(RustTarget) --profile $(RustProfile) --target-dir &quot;$(CargoTargetDir)&quot;"
+          EnvironmentVariables="CFLAGS=-MD;CXXFLAGS=-MD" />
+    <Error Condition="!Exists('$(RustUmbrellaLib)')" Text="cargo did not produce $(RustUmbrellaLib)" />
+  </Target>
+
+  <ItemDefinitionGroup Condition="'$(CppRustAnyRust)'=='true' and '$(MSBuildProjectName)'=='ugrep'">
+    <Link>
+      <AdditionalDependencies>$(RustUmbrellaLib);kernel32.lib;ntdll.lib;userenv.lib;ws2_32.lib;dbghelp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <GenerateMapFile>true</GenerateMapFile>
+    </Link>
+  </ItemDefinitionGroup>
+</Project>

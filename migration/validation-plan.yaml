@@ -1,0 +1,197 @@
+# Validation plan. Accepted by the user in Specifying; changed only by a `Plan amendment:` task
+# whose pull request the code owner approves. Every threshold of the migration is in this file.
+# In `run`, {name} is a placeholder and a literal brace is written {{ or }}. {tools} is the
+# cpp2rust-tools binary that runs the gate (migration/tools/cpp2rust-tools, built by cargo).
+# Thresholds are the template defaults (decision DQ-0006); none was changed.
+schema: cpp-rust-plan/1
+accepted: {question: art_01M7B1Z66B0CXMNJ8KS9WXR9SR, date: "2026-11-13"}   # Q1-Q6 batch in Specifying
+
+product:
+  kinds: [cli]
+  build: msbuild
+  platforms: [windows-x64-msvc-v143]
+  # Baseline build (decision Q1: v143 override; msvc/*.vcxproj hard-code v142). Output: msvc\bin\Base-Release-x64\ugrep.exe
+  build_command: 'msbuild msvc/ugrep.sln /m /p:Configuration=Base-Release /p:Platform=x64 /p:PlatformToolset=v143'
+
+third_party:
+  - {lib: zlib, action: keep, note: "called through the bridge; sources not vendored in this checkout"}
+  - {lib: bzip2, action: keep, note: "kept in C"}
+  - {lib: xz/lzma, action: keep, note: "lzma/ in tree, kept in C"}
+  - {lib: lz4, action: keep, note: "kept in C"}
+  - {lib: zstd, action: keep, note: "kept in C"}
+  - {lib: pcre2, action: keep, note: "kept in C"}
+  - {lib: unicode-tables, action: keep, note: "generated lib/*_scripts.cpp, letter_case.cpp, block_scripts.cpp retained"}
+
+# Components from the Foundation depgraph (migration/depgraph.json). Levels are leaves first; the
+# lib/ edges are not resolved by the source-root fallback (angle includes), the order inside lib is
+# in migration/README.md. product_bin_rust/link_map are the `switch` build output (OutDir override).
+components:
+  utf8:
+    level: 0
+    cpp_sources: "lib/utf8.cpp"
+    cpp_headers: "include/reflex/utf8.h"
+    rust_crate: rust/utf8
+    harness_crate: rust/utf8-harness
+    switch_option: CppRustImpl_UTF8
+    surface: cli
+    product_bin_cpp: msvc/bin/Base-Release-x64/ugrep.exe
+    product_bin_rust: build/rust/ugrep.exe
+    link_map: build/rust/ugrep.map
+    rust_archive: "rust_umbrella\\.lib"
+  unicode:
+    level: 0
+    cpp_sources: "lib/unicode.cpp"
+    cpp_headers: "include/reflex/unicode.h"
+    rust_crate: rust/unicode
+    harness_crate: rust/unicode-harness
+    switch_option: CppRustImpl_UNICODE
+    surface: cli
+    product_bin_cpp: msvc/bin/Base-Release-x64/ugrep.exe
+    product_bin_rust: build/rust/ugrep.exe
+    link_map: build/rust/ugrep.map
+    rust_archive: "rust_umbrella\\.lib"
+  glob:
+    level: 0
+    cpp_sources: "src/glob.cpp"
+    cpp_headers: "src/glob.hpp"
+    rust_crate: rust/glob
+    harness_crate: rust/glob-harness
+    switch_option: CppRustImpl_GLOB
+    surface: cli
+    product_bin_cpp: msvc/bin/Base-Release-x64/ugrep.exe
+    product_bin_rust: build/rust/ugrep.exe
+    link_map: build/rust/ugrep.map
+    rust_archive: "rust_umbrella\\.lib"
+
+compare:
+  env_matrix: migration/env-matrix.json
+  repeats: 3
+  differences: []
+
+policy:
+  protected: ["migration/validation-plan.yaml", "migration/masks/*", "migration/harness/*", "rust/*-harness/*",
+              "migration/tools/*", "migration/env-matrix.json", ".github/workflows/migration-gate.yml",
+              "rust-toolchain.toml"]
+  frozen: ["migration/corpus/*"]
+  implementation: ["rust/*/src/*"]
+  unsafe_allowed: ["rust/*/src/ffi.rs", "rust/*/src/ffi/*"]
+  approved_rebaselines: []
+gates:
+  # Regression check for any change to the C++ itself (Foundation, Prepare seam): nothing moved.
+  baseline:
+    scope: component
+    checks:
+      - name: cpp-suite
+        run: "msbuild msvc/ugrep.sln /m /nologo /v:m /p:Configuration=Base-Release /p:Platform=x64 /p:PlatformToolset=v143"
+      - name: surface-unchanged
+        run: >-
+          {tools} run-cases --bin {product_bin_cpp} --impl cpp
+          --cases migration/corpus/{component}/cases.jsonl --env-matrix migration/env-matrix.json --out {out}/surface.cpp.jsonl
+          && {tools} trace-diff diff --a migration/corpus/{component}/surface/cases.trace.jsonl
+          --b {out}/surface.cpp.jsonl --masks migration/masks/{component}.json --out {out}/surface.json
+        expect: [{json: "{out}/surface.json", field: divergent_cases, op: "==", value: 0}]
+
+  # Behavior capture task, before the user's triage: the recordings exist and the catalog is
+  # consistent. Suspicious entries may still wait for classification and noise masks may still
+  # be proposals (migration/masks/{component}.proposed.json); behavior-ready judges them later.
+  behavior-proposed:
+    scope: component
+    checks:
+      - name: cpp-suite
+        run: "msbuild msvc/ugrep.sln /m /nologo /v:m /p:Configuration=Base-Release /p:Platform=x64 /p:PlatformToolset=v143"
+      - name: catalog
+        run: >-
+          {tools} catalog-lint --catalog migration/behavior/{component}.yaml
+          --plan migration/validation-plan.yaml --out {out}/catalog.json
+        expect:
+          - {json: "{out}/catalog.json", field: error_count, op: "==", value: 0}
+          - {json: "{out}/catalog.json", field: unreasoned_uncovered, op: "==", value: 0}
+  # Gate 1, per component, C++ only: is the behavior of the C++ known well enough to port against?
+  behavior-ready:
+    scope: component
+    checks:
+      - name: cpp-suite
+        run: "msbuild msvc/ugrep.sln /m /nologo /v:m /p:Configuration=Base-Release /p:Platform=x64 /p:PlatformToolset=v143"
+      - name: record-surface-twice          # the C++ against itself: what varies is noise, not behavior
+        run: >-
+          {tools} run-cases --bin {product_bin_cpp} --impl cpp --repeat 3
+          --cases migration/corpus/{component}/cases.jsonl --env-matrix migration/env-matrix.json --out {out}/surface.cpp.jsonl
+          && {tools} trace-diff diff --a migration/corpus/{component}/surface/cases.trace.jsonl
+          --b {out}/surface.cpp.jsonl --masks migration/masks/{component}.json --out {out}/surface-stable.json
+        expect:
+          - {json: "{out}/surface-stable.json", field: divergent_cases, op: "==", value: 0}
+          - {json: "{out}/surface-stable.json", field: cases, op: ">=", value: 20}
+      - name: record-seam-twice
+        run: >-
+          bash migration/harness/{component}/capture.sh {out}/seam.cpp.jsonl
+          && {tools} trace-diff diff --a migration/corpus/{component}/seam/all.trace.jsonl
+          --b {out}/seam.cpp.jsonl --masks migration/masks/{component}.json --out {out}/seam-stable.json
+        expect:
+          - {json: "{out}/seam-stable.json", field: divergent_cases, op: "==", value: 0}
+      - name: coverage
+        run: "bash migration/harness/{component}/coverage.sh {out}/coverage.json"   # llvm-cov export -summary-only
+        expect:
+          - {json: "{out}/coverage.json", field: data.0.totals.functions.percent, op: ">=", value: 100}
+          - {json: "{out}/coverage.json", field: data.0.totals.lines.percent, op: ">=", value: 85}
+      - name: catalog
+        run: >-
+          {tools} catalog-lint --catalog migration/behavior/{component}.yaml
+          --plan migration/validation-plan.yaml --out {out}/catalog.json
+        expect:
+          - {json: "{out}/catalog.json", field: error_count, op: "==", value: 0}
+          - {json: "{out}/catalog.json", field: saturated, op: "==", value: true}
+          - {json: "{out}/catalog.json", field: open_questions, op: "==", value: 0}
+          - {json: "{out}/catalog.json", field: unreasoned_uncovered, op: "==", value: 0}
+
+  # Gate 2, per unit: the ported functions behave like the C++ at the seam.
+  unit:
+    scope: unit
+    checks:
+      - name: build-lint
+        run: "cargo clippy -p {rust_crate_name} --locked -- -D warnings"
+      - name: seam-replay                    # Rust replays the recorded C++ traces, faults included
+        run: >-
+          cargo run --profile harness -p {harness_crate_name} --locked -- migration/corpus/{component}/seam/all.trace.jsonl
+          {out}/seam.rust.jsonl {functions}
+          && {tools} trace-diff diff --a migration/corpus/{component}/seam/all.trace.jsonl
+          --b {out}/seam.rust.jsonl --fns {functions} --masks migration/masks/{component}.json --out {out}/seam.json
+        expect:
+          - {json: "{out}/seam.json", field: divergent_cases, op: "==", value: 0}
+          - {json: "{out}/seam.json", field: cases, op: ">=", value: 1}
+      - name: rust-tests
+        run: "cargo nextest run -p {rust_crate_name} --locked --profile ci"
+        expect: [{junit: "target/nextest/ci/junit.xml", max_failures: 0}]
+      - name: cpp-suite                      # the product still builds and passes with the default switch
+        run: "msbuild msvc/ugrep.sln /m /nologo /v:m /p:Configuration=Base-Release /p:Platform=x64 /p:PlatformToolset=v143"
+      - name: policy
+        run: >-
+          {tools} policy-scan --base origin/master --plan migration/validation-plan.yaml
+          --forbid-todo {rust_files} --out {out}/policy.json
+
+  # Gate 3, per component: the product with the Rust implementation behaves like the C++ product.
+  switch:
+    scope: component
+    checks:
+      - name: build-rust-variant
+        run: "msbuild msvc/ugrep.sln /m /nologo /v:m /p:Configuration=Base-Release /p:Platform=x64 /p:PlatformToolset=v143 /p:{switch_option}=rust /p:OutDir=build/rust/ /p:Cpp2RustTap=false"
+      - name: linked
+        run: >-
+          {tools} linked-check --map {link_map} --forbid-sources "{cpp_sources}"
+          --forbid "cpp2rust[0-9_]?tap|tap@cpp2rust|cpp2rust_shadow" --require "{rust_archive}" --out {out}/linked.json
+      - name: surface                        # env matrix, files left behind, exit category
+        run: >-
+          {tools} run-cases --bin {product_bin_rust} --impl rust
+          --cases migration/corpus/{component}/cases.jsonl --env-matrix migration/env-matrix.json --out {out}/surface.rust.jsonl
+          && {tools} trace-diff diff --a migration/corpus/{component}/surface/cases.trace.jsonl
+          --b {out}/surface.rust.jsonl --masks migration/masks/{component}.json --out {out}/surface.json
+        expect:
+          - {json: "{out}/surface.json", field: divergent_cases, op: "==", value: 0}
+          - {json: "{out}/surface.json", field: cases, op: ">=", value: 20}
+      - name: sanitizer                      # ASan on the mixed build; hard on Linux
+        run: "bash migration/harness/{component}/asan.sh"
+      - name: policy
+        run: >-
+          {tools} policy-scan --base origin/master --plan migration/validation-plan.yaml
+          --forbid-todo {rust_crate}/src --out {out}/policy.json
+      # After Cleanup deleted the C++ and the tap: add `--no-tap {rust_crate}/src src` to the policy
+      # check and drop the checks that need the C++ build. The recorded traces stay as goldens.

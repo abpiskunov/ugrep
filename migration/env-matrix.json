@@ -1,0 +1,5 @@
+[
+  {"LC_ALL": "C", "TZ": "UTC"},
+  {"LC_ALL": "de_DE.UTF-8", "TZ": "Europe/Berlin"},
+  {"LC_ALL": "tr_TR.UTF-8", "TZ": "America/New_York"}
+]

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Build glue for the C++ to Rust migration (migration/README.md). No C++ source is changed.
+     ugrep.vcxproj (7.8.5) predates the lib/ layout: it still compiles the old include_ugrep
+     matcher_avx* wrappers, lacks lib/simd.cpp, lib/letter_case.cpp and lib/matcher_avx*.cpp, and gives
+     lib/simd_avx*.cpp no /arch flag. This target repairs the item list for the ugrep project only, so
+     the baseline command builds without editing the project file.
+     Rust glue is added through rust.targets (every component defaults to cpp). -->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Target Name="UgrepSourceListRepair" BeforeTargets="ClCompile" Condition="'$(MSBuildProjectName)' == 'ugrep'">
+    <ItemGroup>
+      <ClCompile Remove="include_ugrep\matcher_avx2.cpp;include_ugrep\matcher_avx512bw.cpp" />
+      <ClCompile Include="..\lib\simd.cpp;..\lib\letter_case.cpp;..\lib\composer.cpp" />
+      <ClCompile Include="..\lib\matcher_avx2.cpp">
+        <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      </ClCompile>
+      <ClCompile Include="..\lib\matcher_avx512bw.cpp">
+        <EnableEnhancedInstructionSet>AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
+      </ClCompile>
+      <ClCompile Condition="'%(Filename)' == 'simd_avx2'">
+        <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      </ClCompile>
+      <ClCompile Condition="'%(Filename)' == 'simd_avx512bw'">
+        <EnableEnhancedInstructionSet>AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
+      </ClCompile>
+    </ItemGroup>
+  </Target>
+  <Import Project="$(MSBuildThisFileDirectory)rust.targets" Condition="Exists('$(MSBuildThisFileDirectory)rust.targets')" />
+</Project>

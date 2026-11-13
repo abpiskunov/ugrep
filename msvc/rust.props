@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Evaluation-time Rust glue (migration/README.md; skill cpp-rust-build-integration, references/msbuild.md).
+     Imported by msvc\Directory.Build.props. Inert while every component is `cpp`. -->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <RustTarget Condition="'$(Platform)'=='x64'">x86_64-pc-windows-msvc</RustTarget>
+    <RustTarget Condition="'$(Platform)'=='Win32'">i686-pc-windows-msvc</RustTarget>
+    <RustProfile Condition="$(Configuration.EndsWith('Release'))">release</RustProfile>
+    <RustProfile Condition="'$(RustProfile)'==''">dev</RustProfile>
+    <RustProfileDir Condition="'$(RustProfile)'=='dev'">debug</RustProfileDir>
+    <RustProfileDir Condition="'$(RustProfile)'!='dev'">$(RustProfile)</RustProfileDir>
+    <CargoTargetDir>$(MSBuildThisFileDirectory)bin\cargo\</CargoTargetDir>
+    <RustUmbrellaLib>$(CargoTargetDir)$(RustTarget)\$(RustProfileDir)\rust_umbrella.lib</RustUmbrellaLib>
+    <!-- Per-component switch: cpp | rust. Exactly one implementation per component per binary.
+         One line per component is added by that component's Prepare seam task. Default stays cpp until its Switch over. -->
+    <CppRustAnyRust>false</CppRustAnyRust>
+    <!-- Tap build variant: msbuild /p:Cpp2RustTap=true adds CPP2RUST_TAP to the C++ compile (seam capture only; never shipped). -->
+    <Cpp2RustTap Condition="'$(Cpp2RustTap)'==''">false</Cpp2RustTap>
+  </PropertyGroup>
+</Project>
