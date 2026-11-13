@@ -11,8 +11,8 @@ cpp2rust-tools gate-check - run a gate's checks from the accepted plan and compa
 plan's thresholds. The same command is run by the agent, by Validating and by CI on the commit.
 
   gate-check --gate unit --target core_parse.header [--plan migration/validation-plan.yaml]
-             [--out migration/out] [--dry-run]
-  gate-check --changed origin/main     # every gate whose unit record, catalog or corpus changed
+             [--out migration/out] [--base REF] [--dry-run]
+  gate-check --changed origin/master   # every gate whose unit record, catalog or corpus changed
 
 A gate in the plan:
   gates:
@@ -25,9 +25,11 @@ A gate in the plan:
           expect:
             - {junit: \"target/nextest/ci/junit.xml\", max_failures: 0, min_tests: 1}
             - {json: \"{out}/seam.json\", field: divergent_cases, op: \"==\", value: 0}
-Placeholders: {out} {target} {unit} {component} {migration} {tools} and every scalar field of the
-unit record (migration/units/<unit>.yaml) and of the plan's components.<component> entry.
+Placeholders: {out} {target} {unit} {component} {migration} {tools} {base} and every scalar field
+of the unit record (migration/units/<unit>.yaml) and of the plan's components.<component> entry.
 {tools} is this program (so a check runs `{tools} trace-diff ...` without another build).
+{base} is the ref the change is judged against: --base, else the --changed base, else
+CPP2RUST_BASE, else the remote's default branch (origin/HEAD, then origin/main, origin/master).
 Write a literal brace in `run` as {{ or }}. Commands run in `sh -c` (Windows: `cmd /d /s /c`).
 Result: <out>/gates/<gate>/<target>/report.json and one log per check. A check never passes by
 being skipped: a missing command, a missing result file or an empty test run fails.
@@ -53,6 +55,12 @@ pub fn format(template: &str, fmt: &Fmt) -> R<String> {
                 let name: String = it.by_ref().take_while(|c| *c != '}').collect();
                 match fmt.get(&name) {
                     Some(v) => out.push_str(v),
+                    None if name == "base" => {
+                        return Err(bad_input(
+                            "gate-check: {base} has no value: no origin/HEAD, origin/main or origin/master; \
+                             pass --base REF or set CPP2RUST_BASE",
+                        ));
+                    }
                     None => return Err(bad_input(format!("gate-check: unknown placeholder {{{name}}}"))),
                 }
             }
@@ -259,7 +267,26 @@ pub struct Ctx {
     pub mig: PathBuf,
     pub cwd: PathBuf,
     pub tools: String,
+    pub base: Option<String>,
     pub dry: bool,
+}
+
+/// The ref `{base}` names: `explicit` (`--base`, or the `--changed` base), else `CPP2RUST_BASE`,
+/// else the remote's default branch. Plans must not hard-code `origin/main`: a repository's
+/// default branch may be `master`, and a sandbox clone has `origin/<default>` but no `origin/HEAD`.
+pub fn resolve_base(explicit: Option<&str>, cwd: &Path) -> Option<String> {
+    let env = std::env::var("CPP2RUST_BASE").ok();
+    if let Some(b) = explicit.or(env.as_deref()).filter(|b| !b.is_empty()) {
+        return Some(b.to_string());
+    }
+    let head = git_quiet(&["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"], cwd);
+    if !head.is_empty() {
+        return Some(head);
+    }
+    ["origin/main", "origin/master"]
+        .into_iter()
+        .find(|r| !git_quiet(&["rev-parse", "--verify", "--quiet", &format!("{r}^{{commit}}")], cwd).is_empty())
+        .map(str::to_string)
 }
 
 fn blocked_code(rc: i64) -> bool {
@@ -297,6 +324,9 @@ pub fn run_gate(plan: &Value, gate: &str, target: &str, ctx: &Ctx) -> R<Value> {
     fmt.insert("out".into(), s(&out));
     fmt.insert("migration".into(), s(&ctx.mig));
     fmt.insert("tools".into(), ctx.tools.clone());
+    if let Some(base) = &ctx.base {
+        fmt.insert("base".into(), base.clone());
+    }
     let checks = arr(g.get("checks"));
     if checks.is_empty() {
         return Err(bad_input(format!("gate-check: gate '{gate}' has no checks")));
@@ -460,6 +490,7 @@ pub fn main(argv: &[String]) -> R<i32> {
         ("--target", Kind::Value),
         ("--changed", Kind::Value),
         ("--out", Kind::Value),
+        ("--base", Kind::Value),
         ("--dry-run", Kind::Flag),
     ];
     let a = Args::parse(argv, &spec)?;
@@ -474,6 +505,7 @@ pub fn main(argv: &[String]) -> R<i32> {
         mig: mig.clone(),
         cwd: PathBuf::from("."),
         tools,
+        base: resolve_base(a.get("--base").or(a.get("--changed")), Path::new(".")),
         dry: a.flag("--dry-run"),
     };
     let todo = if let Some(base) = a.get("--changed") {
@@ -530,6 +562,38 @@ mod tests {
         f.insert("out".into(), "o".into());
         assert_eq!(format("{out}/x {{y}}", &f).unwrap(), "o/x {y}");
         assert_eq!(format("{nope}", &f).unwrap_err().0, 2);
+        assert!(format("--base {base}", &f).unwrap_err().1.contains("--base REF"));
+    }
+
+    /// A sandbox clone of a `master` repository has `origin/master` and no `origin/HEAD`.
+    #[test]
+    fn base_follows_the_remote_default_branch() {
+        let d = TempDir::new("gbase");
+        let git = |args: &[&str]| {
+            let ok = std::process::Command::new("git").args(args).current_dir(d.path()).output().unwrap();
+            assert!(ok.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&ok.stderr));
+        };
+        git(&["init", "-q"]);
+        git(&[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "c",
+        ]);
+        assert_eq!(resolve_base(Some("origin/rel"), d.path()).as_deref(), Some("origin/rel"));
+        if std::env::var_os("CPP2RUST_BASE").is_none() {
+            assert_eq!(resolve_base(None, d.path()), None);
+            git(&["update-ref", "refs/remotes/origin/master", "HEAD"]);
+            assert_eq!(resolve_base(None, d.path()).as_deref(), Some("origin/master"));
+            git(&["update-ref", "refs/remotes/origin/trunk", "HEAD"]);
+            git(&["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk"]);
+            assert_eq!(resolve_base(None, d.path()).as_deref(), Some("origin/trunk"));
+        }
     }
 
     #[test]

@@ -112,6 +112,8 @@ gates:
     checks:
       - name: build-cpp
         run: "powershell -NoProfile -File migration/harness/build-cpp.ps1"
+      - name: harness-builds                  # the replay harness the unit gate's seam-replay runs
+        run: "cargo build --profile harness --locked --manifest-path {harness_crate}/Cargo.toml"
       - name: catalog
         run: >-
           {tools} catalog-lint --catalog migration/behavior/{component}.yaml
@@ -177,7 +179,7 @@ gates:
         run: "powershell -NoProfile -File migration/harness/build-cpp.ps1"
       - name: policy
         run: >-
-          {tools} policy-scan --base origin/main --plan migration/validation-plan.yaml
+          {tools} policy-scan --base {base} --plan migration/validation-plan.yaml
           --forbid-todo {rust_files} --out {out}/policy.json
 
   switch:
@@ -201,7 +203,7 @@ gates:
           - {json: "{out}/surface.json", field: cases, op: ">=", value: 20}
       - name: policy
         run: >-
-          {tools} policy-scan --base origin/main --plan migration/validation-plan.yaml
+          {tools} policy-scan --base {base} --plan migration/validation-plan.yaml
           --forbid-todo {rust_crate}/src --out {out}/policy.json
       # Sanitizers on Windows (/fsanitize=address with the Rust side) are opt-in; the first Port decides. After
       # Cleanup deleted the C++ and the tap: add `--no-tap {rust_crate}/src src` to the policy check.
