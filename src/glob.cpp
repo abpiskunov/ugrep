@@ -92,6 +92,17 @@
 #include <cstring>
 #include <cctype>
 
+#ifdef CPP2RUST_TAP
+#include "../migration/harness/src_leaves/cpp2rust_tap.hpp"
+#else
+#define TAP_CALL(fn, ...) ((void)0)
+#define TAP_RET(v) ((void)0)
+#endif
+
+#ifdef CPP_RUST_IMPL_SRC_LEAVES
+#include "glob_rust.hpp"
+#endif
+
 #ifdef OS_WIN // compiling for a windows OS, but not Cygwin or MinGW
 #define PATHSEP '\\'
 #else
@@ -246,8 +257,8 @@ static bool match(const char *text, const char *glob, bool icase, bool lead, boo
   return (*glob == '\0' && !path) || (*glob == '/' && lead);
 }
  
-// pathname or basename glob matching, returns true or false, perform case-insensitive match if icase is true
-bool glob_match(const char *pathname, const char *basename, const char *glob, bool icase, bool lead, bool path)
+// the C++ implementation behind the glob_match facade below
+static bool glob_match_cpp(const char *pathname, const char *basename, const char *glob, bool icase, bool lead, bool path)
 {
   // if pathname starts with ./ then skip this
   while (pathname[0] == '.' && pathname[1] == PATHSEP)
@@ -274,6 +285,20 @@ bool glob_match(const char *pathname, const char *basename, const char *glob, bo
 
   // match basename, unless matching an empty path to the basename which always matches
   return path || match(basename, glob, icase, false, false);
+}
+
+// pathname or basename glob matching, returns true or false, perform case-insensitive match if icase is true
+// seam facade: CPP_RUST_IMPL_SRC_LEAVES selects the Rust implementation at build time
+bool glob_match(const char *pathname, const char *basename, const char *glob, bool icase, bool lead, bool path)
+{
+  TAP_CALL("src_leaves.glob_match", pathname, basename, glob, icase, lead, path);
+#ifdef CPP_RUST_IMPL_SRC_LEAVES
+  bool result = rust_glob_match(pathname, basename, glob, icase, lead, path);
+#else
+  bool result = glob_match_cpp(pathname, basename, glob, icase, lead, path);
+#endif
+  TAP_RET(result);
+  return result;
 }
 
 // return wide character of UTF-8 multi-byte sequence, return ASCII lower case if icase is true
