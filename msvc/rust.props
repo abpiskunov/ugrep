@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Shared by msvc/ugrep.vcxproj and msvc/ugrep-indexer.vcxproj. Per-component build switch:
+  CPP_RUST_IMPL_<COMPONENT> = cpp (default) | rust, chosen at build time, e.g.
+    msbuild msvc\ugrep.sln /p:Configuration=Base-Release /p:Platform=x64 /p:CPP_RUST_IMPL_SRC_LEAVES=rust
+  With every switch at cpp this file changes nothing: no cargo, no extra defines, no extra libs.
+  Tap variant: /p:CppRustTap=true defines CPP2RUST_TAP and builds the Rust umbrella with feature `tap`.
+-->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Label="CppRustSwitch">
+    <CPP_RUST_IMPL_SRC_LEAVES Condition="'$(CPP_RUST_IMPL_SRC_LEAVES)'==''">cpp</CPP_RUST_IMPL_SRC_LEAVES>
+    <CPP_RUST_IMPL_SRC_CORE Condition="'$(CPP_RUST_IMPL_SRC_CORE)'==''">cpp</CPP_RUST_IMPL_SRC_CORE>
+    <CPP_RUST_IMPL_SRC_TUI Condition="'$(CPP_RUST_IMPL_SRC_TUI)'==''">cpp</CPP_RUST_IMPL_SRC_TUI>
+    <CPP_RUST_IMPL_SRC_INDEXER Condition="'$(CPP_RUST_IMPL_SRC_INDEXER)'==''">cpp</CPP_RUST_IMPL_SRC_INDEXER>
+    <CppRustTap Condition="'$(CppRustTap)'==''">false</CppRustTap>
+    <RustRoot>$(MSBuildThisFileDirectory)..\rust\</RustRoot>
+    <RustTargetDir>$(MSBuildThisFileDirectory)..\build\cargo</RustTargetDir>
+    <RustUmbrellaLib>$(RustTargetDir)\release\rust_umbrella.lib</RustUmbrellaLib>
+    <RustLinkUmbrella>false</RustLinkUmbrella>
+    <RustLinkUmbrella Condition="'$(CPP_RUST_IMPL_SRC_LEAVES)'=='rust' Or '$(CPP_RUST_IMPL_SRC_CORE)'=='rust' Or '$(CPP_RUST_IMPL_SRC_TUI)'=='rust' Or '$(CPP_RUST_IMPL_SRC_INDEXER)'=='rust'">true</RustLinkUmbrella>
+  </PropertyGroup>
+</Project>

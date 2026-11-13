@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- See rust.props. Imported at the end of a project, after its own property groups. -->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- The Rust variant builds into its own directories so it never overwrites the C++ baseline. -->
+  <PropertyGroup Condition="'$(RustLinkUmbrella)'=='true'">
+    <OutDir>$(OutDir.TrimEnd('\'))-rust\</OutDir>
+    <IntDir>$(IntDir.TrimEnd('\'))-rust\</IntDir>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup Condition="'$(RustLinkUmbrella)'=='true'">
+    <ClCompile>
+      <PreprocessorDefinitions Condition="'$(CPP_RUST_IMPL_SRC_LEAVES)'=='rust'">CPP_RUST_IMPL_SRC_LEAVES=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(CPP_RUST_IMPL_SRC_CORE)'=='rust'">CPP_RUST_IMPL_SRC_CORE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(CPP_RUST_IMPL_SRC_TUI)'=='rust'">CPP_RUST_IMPL_SRC_TUI=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(CPP_RUST_IMPL_SRC_INDEXER)'=='rust'">CPP_RUST_IMPL_SRC_INDEXER=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <GenerateMapFile>true</GenerateMapFile>
+      <MapFileName>$(OutDir)$(TargetName).map</MapFileName>
+      <AdditionalDependencies>$(RustUmbrellaLib);ntdll.lib;userenv.lib;bcrypt.lib;ws2_32.lib;advapi32.lib;kernel32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(CppRustTap)'=='true'">
+    <ClCompile>
+      <PreprocessorDefinitions>CPP2RUST_TAP=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <PropertyGroup>
+    <RustCargoFeatures Condition="'$(CppRustTap)'=='true'">--features tap</RustCargoFeatures>
+  </PropertyGroup>
+
+  <!-- /MT in the Base configurations: the Rust side must use the static CRT too. -->
+  <Target Name="CargoBuildUmbrella" BeforeTargets="Link" Condition="'$(RustLinkUmbrella)'=='true'">
+    <Exec Command="cargo build --release --locked -p rust_umbrella $(RustCargoFeatures) --manifest-path &quot;$(RustRoot)Cargo.toml&quot; --target-dir &quot;$(RustTargetDir)&quot;"
+          EnvironmentVariables="RUSTFLAGS=-C target-feature=+crt-static" />
+  </Target>
+</Project>

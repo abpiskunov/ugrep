@@ -55,3 +55,9 @@ msvc/*.vcxproj.user
 .DS_Store/
 *.dSYM/
 *.swp
+
+# Migration
+migration/out/
+migration/tools/cpp2rust-tools/target/
+/build/cargo/
+/rust/target/

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Base-Debug|Win32">
@@ -61,82 +61,83 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Base-Debug|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Base-Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Base-Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Base-Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Boost-Debug|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Boost-Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Boost-Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Boost-Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Pcre-Debug|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Pcre-Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Pcre-Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Pcre-Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <Import Project="rust.props" />
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
   <ImportGroup Label="Shared">
@@ -525,17 +526,18 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\lib\block_scripts.cpp" />
+    <ClCompile Include="..\lib\composer.cpp" />
     <ClCompile Include="..\lib\convert.cpp" />
     <ClCompile Include="..\lib\debug.cpp" />
     <ClCompile Include="..\lib\error.cpp" />
     <ClCompile Include="..\lib\input.cpp" />
     <ClCompile Include="..\lib\language_scripts.cpp" />
+    <ClCompile Include="..\lib\letter_case.cpp" />
     <ClCompile Include="..\lib\letter_scripts.cpp" />
     <ClCompile Include="..\lib\matcher.cpp" />
     <ClCompile Include="..\lib\pattern.cpp" />
     <ClCompile Include="..\lib\posix.cpp" />
-    <ClCompile Include="..\lib\simd_avx2.cpp" />
-    <ClCompile Include="..\lib\simd_avx512bw.cpp" />
+    <ClCompile Include="..\lib\simd.cpp" />
     <ClCompile Include="..\lib\unicode.cpp" />
     <ClCompile Include="..\lib\utf8.cpp" />
     <ClCompile Include="..\src\cnf.cpp" />
@@ -547,33 +549,17 @@
     <ClCompile Include="..\src\ugrep.cpp" />
     <ClCompile Include="..\src\vkey.cpp" />
     <ClCompile Include="..\src\zopen.c" />
-    <ClCompile Include="include_ugrep\matcher_avx2.cpp">
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Base-Release|Win32'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Pcre-Release|Win32'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Base-Debug|Win32'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Boost-Release|Win32'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Pcre-Debug|Win32'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Boost-Debug|Win32'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Base-Release|x64'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Pcre-Release|x64'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Base-Debug|x64'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Boost-Release|x64'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Pcre-Debug|x64'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Boost-Debug|x64'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+    <ClCompile Include="..\lib\matcher_avx2.cpp">
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
-    <ClCompile Include="include_ugrep\matcher_avx512bw.cpp">
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Base-Release|Win32'">AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Pcre-Release|Win32'">AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Base-Debug|Win32'">AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Boost-Release|Win32'">AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Pcre-Debug|Win32'">AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Boost-Debug|Win32'">AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Base-Release|x64'">AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Pcre-Release|x64'">AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Base-Debug|x64'">AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Boost-Release|x64'">AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Pcre-Debug|x64'">AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
-      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Boost-Debug|x64'">AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
+    <ClCompile Include="..\lib\matcher_avx512bw.cpp">
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
+    </ClCompile>
+    <ClCompile Include="..\lib\simd_avx2.cpp">
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+    </ClCompile>
+    <ClCompile Include="..\lib\simd_avx512bw.cpp">
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -599,6 +585,7 @@
   <ItemGroup>
     <Xml Include="include_ugrep\manifest.xml" />
   </ItemGroup>
+  <Import Project="rust.targets" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
