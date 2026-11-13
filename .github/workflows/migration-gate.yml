@@ -39,7 +39,7 @@ jobs:
             echo "::warning::first install: the tools come from this pull request; code owner review required"
           fi
           mkdir -p "$RUNNER_TEMP/judge"
-          git archive "$src" "$TOOLS" migration/validation-plan.yaml | tar -x -C "$RUNNER_TEMP/judge"
+          git archive "$src" "$TOOLS" migration/validation-plan.yaml | (cd "$RUNNER_TEMP/judge" && tar -x)
           cargo build -q --release --locked --manifest-path "$RUNNER_TEMP/judge/$TOOLS/Cargo.toml"
           echo "JUDGE=$RUNNER_TEMP/judge/$TOOLS/target/release/cpp2rust-tools.exe" >> "$GITHUB_ENV"
       - name: Policy scan (on the change as committed, with the base branch's tools and plan)
