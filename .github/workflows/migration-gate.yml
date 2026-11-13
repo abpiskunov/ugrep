@@ -62,6 +62,14 @@ jobs:
           fi
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
+      - name: Make "msbuild" resolvable from Git Bash
+        # Git Bash does not find MSBuild.exe under the lowercase name the plan's commands use.
+        run: |
+          msb=$(command -v MSBuild.exe) || { echo "MSBuild.exe not on PATH"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/shim"
+          printf '#!/bin/sh\nexec "%s" "$@"\n' "$msb" > "$RUNNER_TEMP/shim/msbuild"
+          chmod +x "$RUNNER_TEMP/shim/msbuild"
+          echo "$(cygpath -w "$RUNNER_TEMP/shim")" >> "$GITHUB_PATH"
       - name: Build the C++ baseline (Base-Release x64, v143)
         run: msbuild msvc/ugrep.sln -m -nologo -v:m -p:Configuration=Base-Release -p:Platform=x64 -p:PlatformToolset=v143
       - name: Gates due for this change
