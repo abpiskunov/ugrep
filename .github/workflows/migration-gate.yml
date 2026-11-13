@@ -38,14 +38,14 @@ jobs:
             src=HEAD
             echo "::warning::first install: the tools come from this pull request; code owner review required"
           fi
-          mkdir -p "$RUNNER_TEMP/judge"
-          git archive "$src" "$TOOLS" migration/validation-plan.yaml | tar -x -C "$RUNNER_TEMP/judge"
-          cargo build -q --release --locked --manifest-path "$RUNNER_TEMP/judge/$TOOLS/Cargo.toml"
-          echo "JUDGE=$RUNNER_TEMP/judge/$TOOLS/target/release/cpp2rust-tools.exe" >> "$GITHUB_ENV"
+          J="$(cygpath -m "$RUNNER_TEMP")/judge"; mkdir -p "$J"
+          git archive "$src" "$TOOLS" migration/validation-plan.yaml | tar -x -C "$J"
+          cargo build -q --release --locked --manifest-path "$J/$TOOLS/Cargo.toml"
+          echo "JUDGE=$J/$TOOLS/target/release/cpp2rust-tools.exe" >> "$GITHUB_ENV"; echo "JUDGE_DIR=$J" >> "$GITHUB_ENV"
       - name: Policy scan (on the change as committed, with the base branch's tools and plan)
         run: |
           "$JUDGE" policy-scan --base "origin/${{ github.base_ref }}" \
-            --plan "$RUNNER_TEMP/judge/migration/validation-plan.yaml"
+            --plan "$JUDGE_DIR/migration/validation-plan.yaml"
       - name: Use the judge files from the base branch
         # Tools, plan, masks, harness and toolchain pin come from the target branch, so a change
         # cannot weaken its own judge. A judge-only pull request (plan amendment, new corpus,
