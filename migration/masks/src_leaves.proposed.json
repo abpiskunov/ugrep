@@ -1,0 +1,1 @@
+{"schema":"cpp2rust-masks/1","masks":[],"rewrites":[],"note":"no noise found: the seam trace and 3 repeats of the surface cases are identical on the C++ (run against itself); nothing to mask"}

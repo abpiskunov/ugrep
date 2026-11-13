@@ -1,0 +1,189 @@
+# Behavior catalog of component src_leaves, seam function src_leaves.glob_match (src/glob.cpp).
+# Every entry was observed by running the C++ (Base-Release|x64, MSVC); the cases are in
+# migration/corpus/src_leaves/seam/cases.jsonl (seam, ids gm-*) and cases.jsonl (surface, ids glob-*).
+# On Windows PATHSEP is '\\': a pathname separated by '/' never contains a separator, a glob '/' matches '\\'.
+# The "-win" cases repeat a case with the pathname written with '\\' (what ugrep passes on Windows).
+schema: cpp-rust-behavior/1
+component: src_leaves
+stop: {quiet_rounds: 2}
+
+observation:
+  src_leaves.glob_match:
+    channels: [return, stderr]
+    compared: [return, stderr]
+    excluded: []
+
+behaviors:
+  - id: B-src_leaves-001
+    statement: "Glob without '/' is matched against the basename only; the pathname is ignored"
+    kind: normal
+    status: observed
+    evidence: ["case:gm-basename-star-ext", "case:gm-basename-star-ext-no", "case:gm-basename-star-backtrack"]
+    origin: capture
+  - id: B-src_leaves-002
+    statement: "With path=true a glob without '/' always matches (true), whatever the basename"
+    kind: edge-case
+    status: observed
+    evidence: ["case:gm-path-flag-basename"]
+    origin: capture
+  - id: B-src_leaves-003
+    statement: "'*' matches any run of characters except the separator; trailing '*' after the text ends match empty; '*' alone matches an empty name"
+    kind: normal
+    status: observed
+    evidence: ["case:gm-basename-trailing-stars", "case:gm-empty-name-star", "case:gm-star-not-over-slash-win", "case:gm-star-in-dir-component-win"]
+    origin: capture
+  - id: B-src_leaves-004
+    statement: "'?' matches exactly one UTF-8 character (1 to 4 bytes) except the separator"
+    kind: normal
+    status: observed
+    evidence: ["case:gm-basename-question", "case:gm-basename-question-two", "case:gm-basename-question-utf8", "case:gm-basename-question-utf8-3byte", "case:gm-basename-question-utf8-4byte"]
+    origin: capture
+  - id: B-src_leaves-005
+    statement: "Bracket classes: sets, ranges, '^' and '!' negation, '-' literal first or last, a reversed range matches nothing"
+    kind: normal
+    status: observed
+    evidence: ["case:gm-bracket-set", "case:gm-bracket-range", "case:gm-bracket-neg-caret", "case:gm-bracket-neg-bang", "case:gm-bracket-neg-range", "case:gm-bracket-dash-first", "case:gm-bracket-dash-last", "case:gm-bracket-reversed-range"]
+    origin: capture
+  - id: B-src_leaves-006
+    statement: "A bracket class never matches the separator, even when it lists it"
+    kind: edge-case
+    status: observed
+    evidence: ["case:gm-bracket-slash-text-win"]
+    origin: capture
+  - id: B-src_leaves-007
+    statement: "Bracket classes and ranges work on UTF-8 code points (2, 3 and 4 byte)"
+    kind: normal
+    status: observed
+    evidence: ["case:gm-bracket-utf8-set", "case:gm-bracket-utf8-range", "case:gm-bracket-utf8-range-no", "case:gm-bracket-utf8-3byte-range", "case:gm-bracket-utf8-4byte-set"]
+    origin: capture
+  - id: B-src_leaves-008
+    statement: "icase folds ASCII letters in literals and in classes (both the text letter and the class letter), not letters outside ASCII"
+    kind: normal
+    status: observed
+    evidence: ["case:gm-literal-icase", "case:gm-literal-case-sensitive", "case:gm-bracket-range-icase", "case:gm-bracket-range-icase-upperclass", "case:gm-bracket-set-icase", "case:gm-literal-icase-utf8-not-folded", "case:gm-bracket-utf8-icase-ascii-fold-in-text"]
+    origin: capture
+  - id: B-src_leaves-009
+    statement: "'\\' escapes the next glob character (literal match); a trailing '\\' matches nothing"
+    kind: edge-case
+    status: observed
+    evidence: ["case:gm-escape-star", "case:gm-escape-star-no", "case:gm-escape-bracket", "case:gm-escape-backslash", "case:gm-escape-trailing"]
+    origin: capture
+  - id: B-src_leaves-010
+    statement: "Leading './' and '/' of pathname and of glob are stripped before a glob containing '/' is matched against the pathname"
+    kind: normal
+    status: observed
+    evidence: ["case:gm-pathname-dot-slash-prefix-win", "case:gm-pathname-dot-slash-repeated-win", "case:gm-pathname-leading-slash-win", "case:gm-pathname-leading-slashes-win", "case:gm-glob-dot-slash-prefix-win", "case:gm-glob-leading-slash-win"]
+    origin: capture
+  - id: B-src_leaves-011
+    statement: "Glob './' (empty after stripping) matches only an empty pathname; with path=true also a pathname without a separator"
+    kind: edge-case
+    status: observed
+    evidence: ["case:gm-dot-slash-glob-empty-path", "case:gm-dot-slash-glob-nonempty-path", "case:gm-path-flag-dot-slash-glob", "case:gm-path-flag-dot-slash-glob-nested-win", "case:gm-win-pathname-only-dot-slashes"]
+    origin: capture
+  - id: B-src_leaves-012
+    statement: "'**/' matches zero or more directories; trailing '**' matches everything below; '**' alone and '/**' match"
+    kind: normal
+    status: observed
+    evidence: ["case:gm-doublestar-leading-win", "case:gm-doublestar-leading-zero-dirs", "case:gm-doublestar-middle-win", "case:gm-doublestar-middle-zero-win", "case:gm-doublestar-trailing-win", "case:gm-doublestar-alone-basename", "case:gm-doublestar-multiple-win", "case:gm-doublestar-multiple-backtrack-win"]
+    origin: capture
+  - id: B-src_leaves-013
+    statement: "'**' followed by a character other than '/' (e.g. 'd/**a.txt') never matches"
+    kind: edge-case
+    status: hypothesis    # suspicious: awaiting Triage (proposed bug-preserve)
+    suspicious: true
+    why: "gitignore-style '**a' is not a wildcard here: always false, even for d/xa.txt; surface include silently selects nothing"
+    evidence: ["case:gm-doublestar-not-followed-by-slash-win", "case:glob-include-doublestar-nonslash"]
+    origin: llm-hypothesis
+  - id: B-src_leaves-014
+    statement: "path=true: a glob with '/' matches a pathname up to but not including the basename (the last component), a deeper pathname does not match"
+    kind: edge-case
+    status: observed
+    evidence: ["case:gm-path-flag-slash-glob-win", "case:gm-path-flag-slash-glob-longer-win", "case:gm-path-flag-star-dir-win", "case:gm-path-flag-star-dir-deep-win", "case:gm-path-flag-icase-win", "case:gm-path-flag-no-match-win"]
+    origin: capture
+  - id: B-src_leaves-015
+    statement: "lead=true lets a glob ending in '/' match a pathname that has more components after it (the directory prefix); lead only applies to globs containing '/'"
+    kind: edge-case
+    status: observed
+    evidence: ["case:gm-lead-flag-trailing-slash-glob-star-win", "case:gm-lead-flag-trailing-slash-glob-win", "case:gm-lead-flag-off-trailing-slash-glob-win", "case:gm-lead-flag-basename-glob-ignored", "case:gm-all-flags-win"]
+    origin: capture
+  - id: B-src_leaves-016
+    statement: "Empty glob matches only an empty basename"
+    kind: edge-case
+    status: observed
+    evidence: ["case:gm-empty-glob-basename", "case:gm-empty-glob-empty-name"]
+    origin: capture
+  - id: B-src_leaves-017
+    statement: "Pathnames written with '/' never match a glob containing '/' on Windows (PATHSEP is '\\\\'); the same names written with '\\\\' do"
+    kind: edge-case
+    status: observed
+    evidence: ["case:gm-pathglob-literal", "case:gm-pathglob-literal-win", "case:gm-doublestar-middle", "case:gm-doublestar-middle-win"]
+    origin: capture
+    note: "platform-only; the Rust port must use '\\\\' on windows-msvc, as the Port task is built only for that platform (D4)"
+  - id: B-src_leaves-018
+    statement: "A glob containing '\\\\' but no '/' is a basename glob; '\\\\' is an escape, not a separator, on Windows"
+    kind: edge-case
+    status: observed
+    evidence: ["case:gm-win-glob-backslash-not-separator"]
+    origin: capture
+  - id: B-src_leaves-019
+    statement: "'?' on an invalid or truncated UTF-8 sequence consumes one or more bytes inconsistently: the result is true for a lone 0x80, a truncated lead byte or C0 80, but false for C1 81, E0 80 80 and E2 82 41"
+    kind: error
+    status: hypothesis    # suspicious: awaiting Triage (proposed bug-preserve)
+    suspicious: true
+    why: "invalid UTF-8 is decoded to U+FFFD after consuming a varying number of bytes, so whether '?' matches depends on how the bad bytes happen to split"
+    evidence: ["case:gm-invalid-utf8-lone-continuation-in-text", "case:gm-invalid-utf8-truncated-2byte", "case:gm-invalid-utf8-overlong-c0", "case:gm-invalid-utf8-overlong-c1", "case:gm-invalid-utf8-overlong-3byte", "case:gm-invalid-utf8-bad-3byte-cont", "case:gm-invalid-utf8-f0-overlong", "case:gm-invalid-utf8-f4-too-large", "case:gm-invalid-utf8-f5", "case:gm-invalid-utf8-truncated-4byte"]
+    origin: llm-hypothesis
+  - id: B-src_leaves-020
+    statement: "An unterminated class ('[a') is accepted: it matches like the closed class would for the characters it lists; '[^' with nothing after matches any character"
+    kind: error
+    status: hypothesis    # suspicious: awaiting Triage (proposed bug-preserve)
+    suspicious: true
+    why: "malformed pattern is not rejected; '[^' matches everything, '[' alone matches nothing; ugrep reports no error for such --include"
+    evidence: ["case:gm-bracket-unterminated", "case:gm-bracket-unterminated-no", "case:gm-bracket-lone", "case:gm-bracket-neg-lone", "case:glob-bad-pattern", "case:glob-include-bracket-unterminated-lenient"]
+    origin: llm-hypothesis
+  - id: B-src_leaves-021
+    statement: "']' directly after '[' closes the class: '[]]' and '[]' never match a ']' or any character"
+    kind: edge-case
+    status: hypothesis    # suspicious: awaiting Triage (proposed bug-preserve)
+    suspicious: true
+    why: "POSIX treats a leading ']' as a literal member of the class; here '[]]' matches nothing"
+    evidence: ["case:gm-bracket-rbracket-first", "case:gm-bracket-empty"]
+    origin: llm-hypothesis
+  - id: B-src_leaves-022
+    statement: "ugrep --include/--exclude/-g/--include-dir/--exclude-dir/--ignore-files select files by these rules: extension, path glob, '**', bracket classes, UTF-8 names, negation '^' in -g, '!' in .gitignore, directory-only and anchored gitignore entries, --glob-ignore-case"
+    kind: normal
+    status: observed
+    evidence: ["case:glob-include-glob-icase", "case:glob-include-case-sensitive", "case:glob-include-path-glob", "case:glob-include-leading-slash", "case:glob-exclude-dir-slash-lead", "case:glob-exclude-dir-path", "case:glob-exclude-dir-doublestar", "case:glob-include-doublestar-trailing", "case:glob-include-doublestar-middle", "case:glob-include-utf8-name", "case:glob-include-utf8-bracket", "case:glob-include-bracket-neg", "case:glob-include-bracket-range-icase", "case:glob-include-bracket-literal-name", "case:glob-g-negate-first", "case:glob-gitignore-negation", "case:glob-gitignore-dir-only", "case:glob-gitignore-anchored", "case:glob-include-from", "case:glob-exclude-and-include", "case:glob-include-ext", "case:glob-exclude-ext"]
+    origin: capture
+  - id: B-src_leaves-023
+    statement: "--include-dir=s* together with --exclude-dir=s2 selects no file at all, and '-g s/,*.txt' selects none (exit 1)"
+    kind: edge-case
+    status: hypothesis    # suspicious: awaiting Triage (proposed bug-preserve)
+    suspicious: true
+    why: "combinations a user would expect to select d/s1/a.txt and d/s/b.txt select nothing; may be an ugrep interaction rule, not a glob_match matter"
+    evidence: ["case:glob-include-dir-then-exclude", "case:glob-g-dir-and-ext"]
+    origin: llm-hypothesis
+  - id: B-src_leaves-024
+    statement: "Literal glob characters '!', '^', ',' and space (outside a class or at the start of -g/--exclude handling) match themselves"
+    kind: normal
+    status: observed
+    evidence: ["case:gm-negation-char-literal", "case:gm-caret-char-literal", "case:gm-comma-literal", "case:gm-space-in-name"]
+    origin: capture
+  - id: B-src_leaves-025
+    statement: "glob_match does not throw, allocate or read past the NUL of its arguments on any admitted case; it keeps no state between calls"
+    kind: resource
+    status: hypothesis
+    origin: llm-hypothesis
+    note: "needs a sanitizer run: the ASan runtime (clang_rt.asan_*.lib) is not installed on this worker"
+
+openQuestions: []
+
+uncovered:
+  - {region: "src/zopen.c", reason: deferred, note: "zopen is a later seam of src_leaves (SEAM.md 'Not in this seam yet')"}
+  - {region: "src/zstream.hpp", reason: deferred, note: "later seam of src_leaves"}
+  - {region: "src/flag.hpp", reason: deferred, note: "later seam of src_leaves"}
+
+discovery:
+  rounds:
+    - {round: 1, source: seam-driver+surface-proposed, new_cases: 206, new_coverage: 0, new_behaviors: 24}
+    - {round: 2, source: llm-proposed, new_cases: 2, new_coverage: 0, new_behaviors: 2}
