@@ -35,7 +35,7 @@ the glob has no `/`; a NULL `basename` would crash in C++ and in `strlen` of the
 ## Tap
 
 C++: `TAP_CALL` / `TAP_RET` in the facade, compiled with `/p:CppRustTap=true` (`CPP2RUST_TAP`, C++17).
-Header: `migration/harness/src_leaves/cpp2rust_tap.hpp`. No outgoing calls, so no `TAP_OUT`, no state.
+Header: `rust/src_leaves/cpp2rust_tap.hpp`. No outgoing calls, so no `TAP_OUT`, no state.
 Rust-side tap and replay (`rust/src_leaves-harness`) belong to the Behavior task.
 
 ## Not in this seam yet

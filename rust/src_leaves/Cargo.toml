@@ -10,7 +10,7 @@ build = "build.rs"
 path = "src/lib.rs"
 
 [features]
-# Seam tap build variant (see migration/harness/src_leaves).
+# Seam tap build variant (see rust/src_leaves/cpp2rust_tap.hpp).
 tap = []
 
 [dependencies]

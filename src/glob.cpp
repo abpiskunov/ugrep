@@ -93,7 +93,7 @@
 #include <cctype>
 
 #ifdef CPP2RUST_TAP
-#include "../migration/harness/src_leaves/cpp2rust_tap.hpp"
+#include "../rust/src_leaves/cpp2rust_tap.hpp"
 #else
 #define TAP_CALL(fn, ...) ((void)0)
 #define TAP_RET(v) ((void)0)
