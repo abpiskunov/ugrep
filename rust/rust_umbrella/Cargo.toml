@@ -11,6 +11,8 @@ crate-type = ["staticlib"]
 
 [features]
 # Seam tap build variant: records calls on both sides in one trace schema.
-tap = []
+tap = ["src_leaves/tap"]
 
 [dependencies]
+src_leaves = { path = "../src_leaves" }
+
