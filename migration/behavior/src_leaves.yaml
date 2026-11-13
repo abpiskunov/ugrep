@@ -89,7 +89,7 @@ behaviors:
   - id: B-src_leaves-013
     statement: "'**' followed by a character other than '/' (e.g. 'd/**a.txt') never matches"
     kind: edge-case
-    status: bug-preserve    # proposed default until Triage decides (no decision yet)
+    status: hypothesis    # suspicious: awaiting Triage (proposed bug-preserve)
     suspicious: true
     why: "gitignore-style '**a' is not a wildcard here: always false, even for d/xa.txt; surface include silently selects nothing"
     evidence: ["case:gm-doublestar-not-followed-by-slash-win", "case:glob-include-doublestar-nonslash"]
@@ -128,7 +128,7 @@ behaviors:
   - id: B-src_leaves-019
     statement: "'?' on an invalid or truncated UTF-8 sequence consumes one or more bytes inconsistently: the result is true for a lone 0x80, a truncated lead byte or C0 80, but false for C1 81, E0 80 80 and E2 82 41"
     kind: error
-    status: bug-preserve    # proposed default until Triage decides (no decision yet)
+    status: hypothesis    # suspicious: awaiting Triage (proposed bug-preserve)
     suspicious: true
     why: "invalid UTF-8 is decoded to U+FFFD after consuming a varying number of bytes, so whether '?' matches depends on how the bad bytes happen to split"
     evidence: ["case:gm-invalid-utf8-lone-continuation-in-text", "case:gm-invalid-utf8-truncated-2byte", "case:gm-invalid-utf8-overlong-c0", "case:gm-invalid-utf8-overlong-c1", "case:gm-invalid-utf8-overlong-3byte", "case:gm-invalid-utf8-bad-3byte-cont", "case:gm-invalid-utf8-f0-overlong", "case:gm-invalid-utf8-f4-too-large", "case:gm-invalid-utf8-f5", "case:gm-invalid-utf8-truncated-4byte"]
@@ -136,7 +136,7 @@ behaviors:
   - id: B-src_leaves-020
     statement: "An unterminated class ('[a') is accepted: it matches like the closed class would for the characters it lists; '[^' with nothing after matches any character"
     kind: error
-    status: bug-preserve    # proposed default until Triage decides (no decision yet)
+    status: hypothesis    # suspicious: awaiting Triage (proposed bug-preserve)
     suspicious: true
     why: "malformed pattern is not rejected; '[^' matches everything, '[' alone matches nothing; ugrep reports no error for such --include"
     evidence: ["case:gm-bracket-unterminated", "case:gm-bracket-unterminated-no", "case:gm-bracket-lone", "case:gm-bracket-neg-lone", "case:glob-bad-pattern", "case:glob-include-bracket-unterminated-lenient"]
@@ -144,7 +144,7 @@ behaviors:
   - id: B-src_leaves-021
     statement: "']' directly after '[' closes the class: '[]]' and '[]' never match a ']' or any character"
     kind: edge-case
-    status: bug-preserve    # proposed default until Triage decides (no decision yet)
+    status: hypothesis    # suspicious: awaiting Triage (proposed bug-preserve)
     suspicious: true
     why: "POSIX treats a leading ']' as a literal member of the class; here '[]]' matches nothing"
     evidence: ["case:gm-bracket-rbracket-first", "case:gm-bracket-empty"]
@@ -158,7 +158,7 @@ behaviors:
   - id: B-src_leaves-023
     statement: "--include-dir=s* together with --exclude-dir=s2 selects no file at all, and '-g s/,*.txt' selects none (exit 1)"
     kind: edge-case
-    status: bug-preserve    # proposed default until Triage decides (no decision yet)
+    status: hypothesis    # suspicious: awaiting Triage (proposed bug-preserve)
     suspicious: true
     why: "combinations a user would expect to select d/s1/a.txt and d/s/b.txt select nothing; may be an ugrep interaction rule, not a glob_match matter"
     evidence: ["case:glob-include-dir-then-exclude", "case:glob-g-dir-and-ext"]
