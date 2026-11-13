@@ -22,8 +22,9 @@ Findings (each one fails the scan):
   test_disabled        added #[ignore], DISABLED_ test name or GTEST_SKIP
   test_deleted         deleted file that looks like a test
   unsafe_outside_ffi   added `unsafe` outside the plan's policy.unsafe_allowed globs
-  frozen_modified      a file under policy.frozen (corpus, recorded traces, goldens) was modified or
-                       deleted (adding is fine) and is not listed in policy.approved_rebaselines
+  frozen_modified      a file under policy.frozen (corpus, recorded traces, goldens) was changed other
+                       than by appending lines, or deleted (adding is fine), and is not listed in
+                       policy.approved_rebaselines
   judge_and_judged     one change touches both policy.protected (plan, masks, harness, tap, tools,
                        CI workflow, frozen files) and policy.implementation (ported code)
   todo_remaining       (--forbid-todo) todo!() or unimplemented!() still present
@@ -106,6 +107,23 @@ fn change(base: &str, cwd: &Path) -> R<Change> {
     Ok((status, added))
 }
 
+/// Whether a modified frozen file only gained lines at its end: its content at the
+/// merge-base is an unchanged prefix of the work tree's (line endings normalized). Recorded
+/// expectations are append-only, so this is the one modification that is not a rebaseline.
+fn appended_only(base: &str, path: &str, cwd: &Path) -> R<bool> {
+    let mb = git(&["merge-base", base, "HEAD"], cwd)?.trim().to_string();
+    let old = git(&["show", &format!("{mb}:{path}")], cwd)?.replace("\r\n", "\n");
+    let Ok(now) = read_text(cwd.join(path)) else {
+        return Ok(false);
+    };
+    let now = now.replace("\r\n", "\n");
+    let Some(rest) = now.strip_prefix(old.as_str()) else {
+        return Ok(false);
+    };
+    // A last line without its newline may only be completed, not extended.
+    Ok(old.is_empty() || old.ends_with('\n') || rest.is_empty() || rest.starts_with('\n'))
+}
+
 fn walk(paths: &[String], cwd: &Path) -> Vec<String> {
     let mut out = Vec::new();
     for p in paths {
@@ -152,7 +170,8 @@ pub fn scan(base: &str, policy: &Value, cwd: &Path, forbid_todo: &[String], no_t
         if *st == 'D' && TEST_FILE.is_match(path) {
             add("test_deleted", path, "");
         }
-        if (*st == 'M' || *st == 'D') && match_any_case(path, &globs("frozen")) && !match_any_case(path, &globs("approved_rebaselines")) {
+        let frozen = match_any_case(path, &globs("frozen")) && !match_any_case(path, &globs("approved_rebaselines"));
+        if frozen && (*st == 'D' || (*st == 'M' && !appended_only(base, path, cwd)?)) {
             add(
                 "frozen_modified",
                 path,
@@ -265,6 +284,7 @@ mod tests {
         t.write("rust/core/src/lib.rs", "pub fn f() -> i32 { todo!() }\n");
         t.write("rust/core/src/ffi.rs", "// bridge\n");
         t.write("migration/corpus/core/seam/a.trace.jsonl", "{}\n");
+        t.write("migration/corpus/core/seam/c.trace.jsonl", "{\"case\": 1}\n");
         t.write("tests/parse_test.cc", "TEST(P, A) {}\n");
         t.write("migration/validation-plan.yaml", "x: 1\n");
         sh(d, &["git", "add", "-A"]);
@@ -283,6 +303,7 @@ mod tests {
         t.write("rust/core/src/lib.rs", "#[allow(clippy::all)]\npub fn f() -> i32 { unsafe { X } }\nstatic mut X: i32 = 0;\npub fn h() { unimplemented!() }\n#[cfg(feature = \"cpp2rust-tap\")] mod tap;\n");
         t.write("migration/corpus/core/seam/a.trace.jsonl", "{\"edited\": true}\n");
         t.write("migration/corpus/core/seam/b.trace.jsonl", "{}\n"); // adding is fine
+        t.write("migration/corpus/core/seam/c.trace.jsonl", "{\"case\": 1}\r\n{\"case\": 2}\n"); // appending is fine
         sh(d, &["git", "rm", "-q", "tests/parse_test.cc"]);
         t.write("tests/other_test.cc", "TEST(P, DISABLED_B) {}\n");
         let r = scan("base", &pol, d, &todo, &todo).unwrap();
