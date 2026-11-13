@@ -180,6 +180,7 @@ fn gate_check_pass_fail_blocked_and_missing_results() {
         mig: d.path().join("migration"),
         cwd: d.path().to_path_buf(),
         tools: BIN.to_string(),
+        base: None,
         dry,
     };
     let plan = gate_plan();
@@ -213,6 +214,7 @@ fn gate_check_timeout_ends_the_whole_command() {
         mig: d.path().join("migration"),
         cwd: d.path().to_path_buf(),
         tools: BIN.to_string(),
+        base: None,
         dry: false,
     };
     let r = run_gate(&plan, "slow", "core", &ctx).unwrap();
