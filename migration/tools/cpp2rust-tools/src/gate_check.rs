@@ -382,12 +382,13 @@ pub fn run_gate(plan: &Value, gate: &str, target: &str, ctx: &Ctx) -> R<Value> {
 /// Gates due for a change: unit record -> unit or switch; catalog, corpus or masks ->
 /// the behavior gate of the component's stage; C++ sources or headers -> baseline.
 ///
-/// The behavior gate follows where the component is, read from its catalog, because each
-/// stage changes the same files and only the last can pass `behavior-ready`:
+/// The behavior gate follows the component's stage, read from what the change touches,
+/// because every stage changes the catalog or corpus and only the last can pass
+/// `behavior-ready`:
 /// - no catalog yet (Foundation recording the cases that exist today): no behavior gate;
-/// - proposed masks waiting, or a suspicious behavior not yet classified (a Behavior task):
-///   `behavior-proposed`;
-/// - otherwise (Behavior approvals, or later corpus additions): `behavior-ready`.
+/// - the approvals record changed, `decisions.md` or the approved masks `masks/<c>.json`
+///   (Behavior approvals): `behavior-ready`;
+/// - otherwise (a Behavior task: catalog, corpus, harness, proposed masks): `behavior-proposed`.
 pub fn changed_targets(base: &str, plan: &Value, mig: &Path, cwd: &Path) -> R<Vec<(String, String)>> {
     let names: Vec<String> = git_quiet(&["diff", "--name-only", &format!("{base}...HEAD")], cwd)
         .lines()
@@ -414,7 +415,7 @@ pub fn changed_targets(base: &str, plan: &Value, mig: &Path, cwd: &Path) -> R<Ve
                 let first = rest.split('/').next().unwrap_or("");
                 let comp = first.rsplit_once('.').map_or(first, |(a, _)| a);
                 if comps.get(comp).is_some() {
-                    if let Some(gate) = behavior_gate(&norm(mig), comp)? {
+                    if let Some(gate) = behavior_gate(&norm(mig), comp, &names, &rel) {
                         todo.push((gate.into(), comp.into()));
                     }
                 }
@@ -438,30 +439,18 @@ pub fn changed_targets(base: &str, plan: &Value, mig: &Path, cwd: &Path) -> R<Ve
 }
 
 /// The behavior gate a change to `comp`'s catalog, corpus or masks is held to (see
-/// [`changed_targets`]), or `None` before the component has a catalog.
-fn behavior_gate(mig: &Path, comp: &str) -> R<Option<&'static str>> {
-    let catalog = mig.join("behavior").join(format!("{comp}.yaml"));
-    if !catalog.exists() {
-        return Ok(None);
+/// [`changed_targets`]), or `None` before the component has a catalog. `changed` are the
+/// changed paths, relative to the repository; `rel` is the migration folder among them.
+fn behavior_gate(mig: &Path, comp: &str, changed: &[String], rel: &str) -> Option<&'static str> {
+    if !mig.join("behavior").join(format!("{comp}.yaml")).exists() {
+        return None;
     }
-    let proposed = mig.join("masks").join(format!("{comp}.proposed.json"));
-    if proposed.exists() {
-        let doc = load_json_file(&proposed.to_string_lossy())?;
-        let waiting = ["masks", "rewrites"]
-            .iter()
-            .any(|k| get(&doc, k).and_then(Value::as_array).is_some_and(|a| !a.is_empty()));
-        if waiting {
-            return Ok(Some("behavior-proposed"));
-        }
-    }
-    let cat = load_yaml_file(&catalog.to_string_lossy())?;
-    let untriaged = get(&cat, "behaviors").and_then(Value::as_array).is_some_and(|bs| {
-        bs.iter().any(|b| {
-            get(b, "suspicious").and_then(Value::as_bool) == Some(true)
-                && matches!(get(b, "status").and_then(Value::as_str), Some("hypothesis" | "observed") | None)
-        })
-    });
-    Ok(Some(if untriaged { "behavior-proposed" } else { "behavior-ready" }))
+    let approvals = [format!("{rel}/decisions.md"), format!("{rel}/masks/{comp}.json")];
+    Some(if changed.iter().any(|n| approvals.contains(n)) {
+        "behavior-ready"
+    } else {
+        "behavior-proposed"
+    })
 }
 
 pub fn main(argv: &[String]) -> R<i32> {
@@ -516,30 +505,25 @@ mod tests {
     fn behavior_gate_follows_the_component_stage() {
         let d = TempDir::new("bgate");
         let mig = d.path();
+        let changed = |paths: &[&str]| paths.iter().map(|p| p.to_string()).collect::<Vec<_>>();
         // Foundation: starter cases recorded, no catalog yet.
         d.write("corpus/utf8/cases.jsonl", "{}\n");
-        assert_eq!(behavior_gate(mig, "utf8").unwrap(), None);
-
-        // Behavior: catalog with an untriaged suspicious behavior.
-        d.write(
-            "behavior/utf8.yaml",
-            "behaviors:\n  - {id: B-1, status: observed, suspicious: true}\n  - {id: B-2, status: intended}\n",
+        assert_eq!(
+            behavior_gate(mig, "utf8", &changed(&["migration/corpus/utf8/cases.jsonl"]), "migration"),
+            None
         );
-        assert_eq!(behavior_gate(mig, "utf8").unwrap(), Some("behavior-proposed"));
 
-        // Triaged, but masks still waiting for approval.
-        d.write(
-            "behavior/utf8.yaml",
-            "behaviors:\n  - {id: B-1, status: bug-preserve, suspicious: true}\n",
-        );
-        d.write("masks/utf8.proposed.json", r#"{"masks": [{"fn": "f"}], "rewrites": []}"#);
-        assert_eq!(behavior_gate(mig, "utf8").unwrap(), Some("behavior-proposed"));
+        // Behavior: catalog, corpus and proposed masks.
+        d.write("behavior/utf8.yaml", "behaviors: []\n");
+        let behavior = changed(&["migration/behavior/utf8.yaml", "migration/masks/utf8.proposed.json"]);
+        assert_eq!(behavior_gate(mig, "utf8", &behavior, "migration"), Some("behavior-proposed"));
 
-        // Behavior approvals: proposals moved out, every suspicious behavior classified.
-        d.write("masks/utf8.proposed.json", r#"{"masks": [], "rewrites": []}"#);
-        assert_eq!(behavior_gate(mig, "utf8").unwrap(), Some("behavior-ready"));
+        // Behavior approvals: the decisions record or the approved masks changed.
+        let approvals = changed(&["migration/behavior/utf8.yaml", "migration/decisions.md"]);
+        assert_eq!(behavior_gate(mig, "utf8", &approvals, "migration"), Some("behavior-ready"));
+        let masks = changed(&["migration/masks/utf8.json"]);
+        assert_eq!(behavior_gate(mig, "utf8", &masks, "migration"), Some("behavior-ready"));
     }
-
     #[test]
     fn placeholders_and_braces() {
         let mut f = Fmt::new();
