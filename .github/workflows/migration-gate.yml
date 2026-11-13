@@ -73,7 +73,15 @@ jobs:
       - name: Build the C++ baseline (Base-Release x64, v143)
         run: msbuild msvc/ugrep.sln -m -nologo -v:m -p:Configuration=Base-Release -p:Platform=x64 -p:PlatformToolset=v143
       - name: Gates due for this change
-        run: cargo run -q --release --locked --manifest-path "$TOOLS/Cargo.toml" -- gate-check --changed "origin/${{ github.base_ref }}"
+        # Foundation (no tools on the base branch yet) records the baseline corpus only; the
+        # behavior-ready gate is due from the first Behavior task, so run the baseline gate.
+        run: |
+          base="origin/${{ github.base_ref }}"
+          if git cat-file -e "$base:$TOOLS/Cargo.toml" 2>/dev/null; then
+            cargo run -q --release --locked --manifest-path "$TOOLS/Cargo.toml" -- gate-check --changed "$base"
+          else
+            cargo run -q --release --locked --manifest-path "$TOOLS/Cargo.toml" -- gate-check --gate baseline --target utf8
+          fi
       - name: Upload gate reports
         if: always()
         uses: actions/upload-artifact@v4
