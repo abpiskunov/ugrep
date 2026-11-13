@@ -6,6 +6,7 @@ license.workspace = true
 publish = false
 
 [lib]
+path = "umbrella.rs"
 crate-type = ["staticlib"]
 
 [features]
