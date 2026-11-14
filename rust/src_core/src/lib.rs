@@ -127,11 +127,11 @@ mod ffi {
         /// Seam function `src_core.cnf_split`.
         fn cnf_split(terms: Vec<CnfTerm>, flags: &CnfFlags) -> Vec<CnfTerm>;
         /// Seam function `src_core.cnf_adjoin`.
-        fn cnf_adjoin(terms: &Vec<CnfTerm>, flags: &CnfFlags) -> Vec<u8>;
+        fn cnf_adjoin(terms: Vec<CnfTerm>, flags: &CnfFlags) -> Vec<u8>;
         /// Seam function `src_core.cnf_first`.
-        fn cnf_first(terms: &Vec<CnfTerm>) -> Vec<u8>;
+        fn cnf_first(terms: Vec<CnfTerm>) -> Vec<u8>;
         /// Seam function `src_core.cnf_report`: the text for the `FILE*` the C++ facade writes.
-        fn cnf_report(terms: &Vec<CnfTerm>, flags: &CnfFlags) -> Vec<u8>;
+        fn cnf_report(terms: Vec<CnfTerm>, flags: &CnfFlags) -> Vec<u8>;
         /// Seam function `src_core.cnf_quote`.
         fn cnf_quote(pattern: &[u8]) -> Vec<u8>;
         /// Seam function `src_core.cnf_anchor`.
@@ -264,20 +264,16 @@ fn cnf_split(terms: Vec<ffi::CnfTerm>, flags: &ffi::CnfFlags) -> Vec<ffi::CnfTer
     terms_out(sig::cnf::split(terms_in(&terms), &flags_in(flags)))
 }
 
-// cxx passes `&Vec<T>` for a borrowed `Vec`, so the parameter type cannot be a slice here
-#[allow(clippy::ptr_arg)]
-fn cnf_adjoin(terms: &Vec<ffi::CnfTerm>, flags: &ffi::CnfFlags) -> Vec<u8> {
-    sig::cnf::adjoin(&terms_in(terms), &flags_in(flags))
+fn cnf_adjoin(terms: Vec<ffi::CnfTerm>, flags: &ffi::CnfFlags) -> Vec<u8> {
+    sig::cnf::adjoin(&terms_in(&terms), &flags_in(flags))
 }
 
-#[allow(clippy::ptr_arg)]
-fn cnf_first(terms: &Vec<ffi::CnfTerm>) -> Vec<u8> {
-    sig::cnf::first(&terms_in(terms))
+fn cnf_first(terms: Vec<ffi::CnfTerm>) -> Vec<u8> {
+    sig::cnf::first(&terms_in(&terms))
 }
 
-#[allow(clippy::ptr_arg)]
-fn cnf_report(terms: &Vec<ffi::CnfTerm>, flags: &ffi::CnfFlags) -> Vec<u8> {
-    sig::cnf::report(&terms_in(terms), &flags_in(flags))
+fn cnf_report(terms: Vec<ffi::CnfTerm>, flags: &ffi::CnfFlags) -> Vec<u8> {
+    sig::cnf::report(&terms_in(&terms), &flags_in(flags))
 }
 
 fn cnf_quote(pattern: &[u8]) -> Vec<u8> {
