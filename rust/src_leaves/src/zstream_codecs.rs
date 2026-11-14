@@ -1362,11 +1362,13 @@ impl Lz4 {
                 break;
             }
 
+            // wrap the ring buffer for every block: an uncompressed block of up to the max block size must also fit
+            // (the legacy code writes past the buffer; here it fails safely)
+            if self.loc >= LZ4_RING_BUFFER_SIZE - LZ4_MAX_BLOCK_SIZE {
+                self.loc = 0;
+            }
             if compressed {
                 // decompress zbuf[] block into buf[]
-                if self.loc >= LZ4_RING_BUFFER_SIZE - LZ4_MAX_BLOCK_SIZE {
-                    self.loc = 0;
-                }
                 let ret = self.strm.decompress_continue(
                     &self.zbuf[self.zloc..self.zloc + size],
                     &mut self.buf[self.loc..],
@@ -1555,4 +1557,32 @@ impl Decoder {
 /// `zopen::z_open(file, "r", 0, 1)` for a compress (Z) file.
 pub fn open_compress(file: FilePtr) -> Option<Decoder> {
     zopen::z_open(file, b"r", 0, 1).map(Decoder::Compress)
+}
+
+#[cfg(all(test, not(ugrep_no_codecs)))]
+mod tests {
+    use super::*;
+
+    // Review fix (D-zstream-lz4-ring): an uncompressed block after earlier blocks left `loc` past the wrap point must not
+    // write past the ring buffer (the legacy code does); it wraps like a compressed block.
+    #[test]
+    fn lz4_uncompressed_block_wraps_ring_buffer() {
+        let mut d = Lz4::new().unwrap();
+        d.loc = 100_000;
+        d.len = 100_000;
+        d.zflg = 0x40;
+        let size = LZ4_MAX_BLOCK_SIZE;
+        d.zbuf[..4].copy_from_slice(&(size as u32 | 0x8000_0000).to_le_bytes());
+        d.zbuf[4..4 + size].fill(0xAB);
+        d.zlen = 4 + size;
+        d.zloc = 0;
+        let mut diag = Diagnostics { queue: VecDeque::new() };
+        let mut out = vec![0u8; 4096];
+        let step = d.next(core::ptr::null_mut(), &mut diag, &mut out);
+        assert_eq!(step.num, 4096);
+        assert!(!step.done);
+        assert!(diag.queue.is_empty());
+        assert!(out.iter().all(|&b| b == 0xAB));
+        assert_eq!(d.len, size);
+    }
 }
