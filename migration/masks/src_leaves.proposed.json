@@ -1,1 +1,1 @@
-{"schema":"cpp2rust-masks/1","masks":[],"rewrites":[],"note":"no noise found: the seam trace and 3 repeats of the surface cases are identical on the C++ (run against itself); nothing to mask"}
+{"schema":"cpp2rust-masks/1","masks":[],"rewrites":[],"note":"no noise found: the seam trace (glob_match and z_open/z_read/z_write/z_close, 289 cases) and 3 repeats of the surface cases are identical on the C++ (run against itself); nothing to mask"}
