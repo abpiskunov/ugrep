@@ -108,6 +108,13 @@ impl Tap {
         self.emit("call", func, &format!("\"args\":[{}]", a));
     }
     pub fn state(&mut self, func: &str, v: &dyn ToNeutral) { self.emit("state", func, &format!("\"state\":{}", v.to_neutral())) }
+    /// A state event of `func` recorded after its `ret` (the C++ driver's observations of errno and the FILE).
+    pub fn state_after(&mut self, func: &str, v: &dyn ToNeutral) {
+        self.current_in = func.to_string();
+        self.state(func, v);
+        self.current_in.clear();
+    }
+    pub fn case(&self) -> &str { &self.case }
     pub fn ret(&mut self, func: &str, v: &dyn ToNeutral) { self.emit("ret", func, &format!("\"ret\":{}", v.to_neutral())); self.current_in.clear() }
     pub fn err(&mut self, func: &str, v: &dyn ToNeutral) { self.emit("ret", func, &format!("\"err\":{}", v.to_neutral())); self.current_in.clear() }
     pub fn out_call(&mut self, callee: &str, args: &[&dyn ToNeutral]) {

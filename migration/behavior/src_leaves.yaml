@@ -12,7 +12,22 @@ observation:
     channels: [return, stderr]
     compared: [return, stderr]
     excluded: []
-
+  src_leaves.z_open:
+    channels: [return, state]
+    compared: [return, state]
+    excluded: []
+  src_leaves.z_read:
+    channels: [return, state]
+    compared: [return, state]
+    excluded: []
+  src_leaves.z_write:
+    channels: [return, state]
+    compared: [return, state]
+    excluded: []
+  src_leaves.z_close:
+    channels: [return, state]
+    compared: [return, state]
+    excluded: []
 behaviors:
   - id: B-src_leaves-001
     statement: "Glob without '/' is matched against the basename only; the pathname is ignored"
@@ -180,11 +195,121 @@ behaviors:
     status: hypothesis
     origin: llm-hypothesis
     note: "needs a sanitizer run: the ASan runtime (clang_rt.asan_*.lib) is not installed on this worker"
+  - id: B-src_leaves-026
+    statement: "z_open accepts only mode exactly 'r' or 'w' with bits 0..16; any other mode (x, empty, rb, ww, w+, uppercase R) or bits <0 or >16 returns NULL with errno EINVAL (22)"
+    kind: error
+    status: observed
+    evidence: ["case:zo-open-bad-mode-x", "case:zo-open-bad-mode-empty", "case:zo-open-bad-mode-rb", "case:zo-open-bad-mode-ww", "case:zo-open-bad-mode-wplus", "case:zo-open-bits-negative", "case:zo-open-bits-17", "case:zo-open-bits-17-read", "case:zo-open-uppercase-mode"]
+    origin: capture
+  - id: B-src_leaves-027
+    statement: "z_open with a valid mode and bits 0 (default) or 16 returns a handle; the FILE position is unchanged by open"
+    kind: normal
+    status: observed
+    evidence: ["case:zo-open-bits-16", "case:zo-w-open-close-only", "case:zo-w-bits-0-default"]
+    origin: capture
+  - id: B-src_leaves-028
+    statement: "Writing: z_write returns the number of bytes given (all of them) for every chunking, zero-length writes included; output goes to the FILE as an LZW .Z stream (magic 1f 9d, flags byte with maxbits|0x80, 9-bit codes growing to maxbits, CLEAR when the table is full and the ratio drops)"
+    kind: normal
+    status: observed
+    evidence: ["case:zo-w-zero-length", "case:zo-w-one-byte", "case:zo-w-two-bytes", "case:zo-w-text-small", "case:zo-w-text-chunks", "case:zo-w-zero-run", "case:zo-w-ramp", "case:zo-w-bits-12-rand", "case:zo-w-bits-12-text-clear", "case:zo-w-bits-13-rand", "case:zo-w-bits-16-rand-full", "case:zo-w-bits-14-mixed", "case:zo-w-after-zero-write"]
+    origin: capture
+  - id: B-src_leaves-029
+    statement: "plain=1 on write omits the 3-byte magic header"
+    kind: edge-case
+    status: observed
+    evidence: ["case:zo-w-plain-no-magic"]
+    origin: capture
+  - id: B-src_leaves-030
+    statement: "z_close after writes does not flush: the final code and the pending output buffer are never written, so the file lacks the tail of the compressed stream (zs_mode is never set by z_open, calloc leaves it 0, so the 'w' branch of z_close is dead)"
+    kind: error
+    status: hypothesis
+    suspicious: true
+    why: "data written then closed cannot be read back whole: the stream loses its tail (e.g. 300 bytes written read back as 279); a zopen writer is not used by ugrep, so the effect is latent"
+    evidence: ["case:zo-w-text-small", "case:zo-w-text-chunks", "case:zo-w-bits-12-rand", "case:zo-w-bits-16-rand-full", "case:zo-r-stream-text-small-all", "case:zo-r-stream-bits-12-rand-all", "case:zo-r-stream-bits-16-rand-full-all", "case:zo-r-stream-zero-run-all", "case:zo-r-stream-text-chunks-all"]
+    origin: capture
+  - id: B-src_leaves-031
+    statement: "z_close with no write emits nothing to the FILE (not even the header) and returns 0; the FILE position afterwards is recorded"
+    kind: edge-case
+    status: hypothesis
+    suspicious: true
+    why: "an empty stream written through zopen is a zero-byte file, which z_read then rejects (-1)"
+    evidence: ["case:zo-w-open-close-only", "case:zo-w-zero-length"]
+    origin: capture
+  - id: B-src_leaves-032
+    statement: "z_write on a FILE opened read-only returns -1 with errno EBADF (9); bytes are not written"
+    kind: error
+    status: observed
+    evidence: ["case:zo-w-read-only-file", "case:zo-w-read-only-file-plain"]
+    origin: capture
+  - id: B-src_leaves-033
+    statement: "z_write on a handle opened with mode 'r' (writable FILE) succeeds like a write handle: mode is not checked"
+    kind: edge-case
+    status: hypothesis
+    suspicious: true
+    why: "read-mode handle accepts writes; mode 'r' vs 'w' is not enforced"
+    evidence: ["case:zo-w-on-read-handle"]
+    origin: capture
+  - id: B-src_leaves-034
+    statement: "Writing bits 1, 9 or 11 is accepted and produces a stream whose header maxbits is below 12, which z_read rejects (-1, errno EINVAL)"
+    kind: edge-case
+    status: hypothesis
+    suspicious: true
+    why: "writer accepts a bits value that the reader cannot decode"
+    evidence: ["case:zo-w-bits-1", "case:zo-w-bits-9", "case:zo-w-bits-11-below-min", "case:zo-r-stream-bits-1", "case:zo-r-stream-bits-9", "case:zo-r-stream-bits-11-below-min"]
+    origin: capture
+  - id: B-src_leaves-035
+    statement: "Reading valid streams (all maxbits 12..16, default bits, CLEAR codes, KwKwK sequences) returns the decompressed bytes in order for any read size, ending with 0 at EOF; repeated reads after EOF keep returning 0"
+    kind: normal
+    status: observed
+    evidence: ["case:zo-r-craft-ab", "case:zo-r-craft-kwkwk", "case:zo-r-craft-kwkwk-chain", "case:zo-r-craft-clear-then-literal", "case:zo-r-craft-clear-first", "case:zo-r-craft-no-block-ab", "case:zo-r-craft-plain-ab", "case:zo-r-stream-bits-0-default-tiny-reads", "case:zo-r-stream-bits-12-rand-tiny-reads", "case:zo-r-stream-bits-13-rand-tiny-reads", "case:zo-r-stream-bits-14-mixed-tiny-reads", "case:zo-r-stream-ramp-tiny-reads", "case:zo-r-stream-text-small-eof-repeat", "case:zo-r-stream-text-small-one-byte", "case:zo-r-stream-zero-run-small-reads", "case:zo-r-stream-plain-all", "case:zo-r-stream-one-byte-all", "case:zo-r-stream-two-bytes-all"]
+    origin: capture
+  - id: B-src_leaves-036
+    statement: "Bad header: empty file, a 1-byte file, wrong magic, or maxbits <12 or >16 returns -1 with errno EINVAL (22) on the first read"
+    kind: error
+    status: observed
+    evidence: ["case:zo-r-empty-file", "case:zo-r-one-byte-file", "case:zo-r-magic-only", "case:zo-r-bad-magic", "case:zo-r-bad-magic-first-byte", "case:zo-r-maxbits-11", "case:zo-r-maxbits-17", "case:zo-r-maxbits-0", "case:zo-r-stream-plain-read-as-magic", "case:zo-r-plain-with-magic-present"]
+    origin: capture
+  - id: B-src_leaves-037
+    statement: "A valid header with no data returns 0 (EOF) for every maxbits 12..16; plain=1 on an empty file returns -1 and with a header only returns 0"
+    kind: edge-case
+    status: observed
+    evidence: ["case:zo-r-header-only-bits-12", "case:zo-r-header-only-bits-13", "case:zo-r-header-only-bits-14", "case:zo-r-header-only-bits-15", "case:zo-r-header-only-bits-16", "case:zo-r-header-only-no-block", "case:zo-r-plain-empty", "case:zo-r-plain-header-only"]
+    origin: capture
+  - id: B-src_leaves-038
+    statement: "A code greater than the next free entry, or a bad code right after CLEAR, returns -1 with errno EINVAL; corruption in the middle of a stream returns the bytes decoded before it, then -1"
+    kind: error
+    status: observed
+    evidence: ["case:zo-r-craft-code-beyond-free", "case:zo-r-craft-code-just-beyond-free", "case:zo-r-craft-clear-then-code", "case:zo-r-craft-clear-then-free-ent", "case:zo-r-stream-text-small-corrupt-mid"]
+    origin: capture
+  - id: B-src_leaves-039
+    statement: "A stream cut at any point (inside the header block, in the middle of a code group) ends cleanly: bytes up to the last whole code are returned, then 0, with no error"
+    kind: edge-case
+    status: hypothesis
+    suspicious: true
+    why: "truncated input is reported as a clean EOF, not an error, so a damaged archive reads as shorter data"
+    evidence: ["case:zo-r-stream-text-small-cut-3", "case:zo-r-stream-text-small-cut-4", "case:zo-r-stream-text-small-cut-5", "case:zo-r-stream-text-small-cut-6", "case:zo-r-stream-text-small-cut-10", "case:zo-r-stream-text-small-cut-40", "case:zo-r-stream-text-small-cut-100", "case:zo-r-stream-text-small-cut-173", "case:zo-r-craft-trailing-partial", "case:zo-r-craft-one-code-one-byte", "case:zo-r-craft-clear-no-block"]
+    origin: capture
+  - id: B-src_leaves-040
+    statement: "z_read with a zero-length buffer returns 0"
+    kind: edge-case
+    status: observed
+    evidence: ["case:zo-r-len-zero"]
+    origin: capture
+  - id: B-src_leaves-041
+    statement: "z_read after z_write on the same handle, z_write after z_read on a read handle, and a second z_read after an empty or header-only stream's EOF crash the C++ (segmentation fault: the decoder state is used uninitialised or a NULL stack pointer is dereferenced); the three cases are deterministic but cannot be recorded"
+    kind: error
+    status: hypothesis
+    suspicious: true
+    why: "undefined behaviour on handle misuse; a crashing process cannot be recorded; Triage decides what the Rust must do (preserve a crash is not possible; likely return -1/0)"
+    origin: llm-hypothesis
+    note: "cases dropped from the corpus: w-then-read-on-write-handle, r-read-on-ro-file-write-op, second read after empty stream"
 
 openQuestions: []
 
 uncovered:
-  - {region: "src/zopen.c", reason: deferred, note: "zopen is a later seam of src_leaves (SEAM.md 'Not in this seam yet')"}
+  - {region: "src/zopen.c output(): fwrite failure mid-stream and on the final flush", reason: excluded, note: "needs a failing FILE; not reachable with a scratch file"}
+  - {region: "src/zopen.c z_open: calloc returns NULL", reason: excluded, note: "allocation failure"}
+  - {region: "src/zopen.c z_close: zmode == 'w' branch", reason: unreachable, note: "zs_mode is never set, see B-src_leaves-030"}
   - {region: "src/zstream.hpp", reason: deferred, note: "later seam of src_leaves"}
   - {region: "src/flag.hpp", reason: deferred, note: "later seam of src_leaves"}
 
@@ -194,3 +319,6 @@ discovery:
     - {round: 2, source: llm-proposed, new_cases: 2, new_coverage: 0, new_behaviors: 2}
     - {round: 3, source: llm-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "20 probes run on the C++ (glob mixes, escapes, flags, empty names, UTF-8, backtracking); all agree with entries 001-024; none admitted"}
     - {round: 4, source: llm-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "15 probes run on the C++ (icase with escapes and UTF-8 ranges, '**' variants, path+lead, literal metacharacters in classes); all agree with entries 001-024; none admitted"}
+    - {round: 5, source: seam-driver+hand-crafted, new_cases: 105, new_coverage: 0, new_behaviors: 16, note: "zopen: 105 cases (zo-*) generated by C++ writes and hand-crafted .Z streams; no .Z archive exists under tests/; recorded twice, byte-identical"}
+    - {round: 6, source: llm-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "zopen probes: misuse and cut-off variants; three crash on misuse and are excluded (B-src_leaves-041)"}
+    - {round: 7, source: llm-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "zopen probes of read sizes and bits; all agree with entries 026-040"}
