@@ -8,7 +8,6 @@
 mod replay;
 mod tap;
 
-#[allow(dead_code)]
 #[path = "../../src_core/src/signatures.rs"]
 mod signatures;
 
