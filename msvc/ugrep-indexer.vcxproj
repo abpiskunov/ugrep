@@ -104,6 +104,7 @@
     <ClCompile Include="..\src\glob.cpp" />
     <ClCompile Include="..\src\ugrep-indexer.cpp" />
     <ClCompile Include="..\src\zopen.c" />
+    <ClCompile Include="..\src\zopen_facade.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Xml Include="include_ugrep\manifest.xml" />

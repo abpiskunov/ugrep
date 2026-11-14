@@ -2,6 +2,11 @@
 //! The unit `glob` is ported here (port of src/glob.cpp, gitignore-style globbing): the replay
 //! harness includes this file alone, so the port lives in it. Strings are NUL-terminated in C++;
 //! here they are byte slices where a read past the end yields NUL, so the pointer arithmetic keeps its shape.
+//! The unit `zopen` (src/zopen.c) is the submodule `zopen` (src/zopen.rs next to this file): a `mod`
+//! declared here is resolved by the harness's `#[path]` include without any harness change.
+#[path = "zopen.rs"]
+pub mod zopen;
+
 #[cfg(windows)]
 const PATHSEP: u8 = b'\\';
 #[cfg(not(windows))]

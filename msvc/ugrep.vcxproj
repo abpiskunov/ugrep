@@ -549,6 +549,7 @@
     <ClCompile Include="..\src\ugrep.cpp" />
     <ClCompile Include="..\src\vkey.cpp" />
     <ClCompile Include="..\src\zopen.c" />
+    <ClCompile Include="..\src\zopen_facade.cpp" />
     <ClCompile Include="..\lib\matcher_avx2.cpp">
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>

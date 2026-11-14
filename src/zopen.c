@@ -119,6 +119,7 @@
 #include <string.h>
 
 #include "zopen.h"
+#include "zopen_seam.h"
 
 #define	BITS		16		/* Default bits. */
 #define	HSIZE		69001		/* 95% occupancy */
@@ -283,7 +284,7 @@ static int	output(struct s_zstate *, code_int);
  * questions about this implementation to ames!jaw.
  */
 int
-z_write(void *handle, const unsigned char *wbp, int num)
+z_write_cpp(void *handle, const unsigned char *wbp, int num)
 {
 	struct s_zstate *zs = handle;
 	code_int i;
@@ -373,7 +374,7 @@ nomatch:	if (output(zs, (code_int) ent) == -1)
 }
 
 int
-z_close(void *handle)
+z_close_cpp(void *handle)
 {
 	struct s_zstate *zs = handle;
 
@@ -501,7 +502,7 @@ output(struct s_zstate *zs, code_int ocode)
  * compress() routine.  See the definitions above.
  */
 int
-z_read(void *handle, unsigned char *rbp, int num)
+z_read_cpp(void *handle, unsigned char *rbp, int num)
 {
 	struct s_zstate *zs = handle;
 	u_int count;
@@ -739,7 +740,7 @@ cl_hash(struct s_zstate *zs, count_int cl_hsize)	/* Reset code table. */
 }
 
 void *
-z_open(FILE *file, const char *mode, int bits, int plain)
+z_open_cpp(FILE *file, const char *mode, int bits, int plain)
 {
 	struct s_zstate *zs;
 

@@ -38,6 +38,37 @@ C++: `TAP_CALL` / `TAP_RET` in the facade, compiled with `/p:CppRustTap=true` (`
 Header: `rust/src_leaves/cpp2rust_tap.hpp`. No outgoing calls, so no `TAP_OUT`, no state.
 Rust-side tap and replay (`rust/src_leaves-harness`) belong to the Behavior task.
 
+## Facade: unit zopen (src/zopen.c, plain C, `extern "C"`)
+
+| Seam id | C++ facade (`src/zopen_facade.cpp`) | Legacy body (`src/zopen.c`) | Rust (C ABI, `rust/src_leaves/src/ffi/zopen.rs`) | Signature module |
+|---|---|---|---|---|
+| `src_leaves.z_open` | `z_open(FILE*, const char *mode, int bits, int plain)` -> `void*` | `z_open_cpp` | `ugrep_rust_z_open` | `signatures::zopen::z_open` |
+| `src_leaves.z_close` | `z_close(void*)` -> `int` | `z_close_cpp` | `ugrep_rust_z_close` | `signatures::zopen::z_close` |
+| `src_leaves.z_read` | `z_read(void*, unsigned char*, int)` -> `int` | `z_read_cpp` | `ugrep_rust_z_read` | `signatures::zopen::z_read` |
+| `src_leaves.z_write` | `z_write(void*, const unsigned char*, int)` -> `int` | `z_write_cpp` | `ugrep_rust_z_write` | `signatures::zopen::z_write` |
+
+`src/zopen.h` is unchanged. `src/zopen_seam.h` declares the legacy bodies and the Rust entry points. The only edits to
+`src/zopen.c` are the four renames (`z_*` -> `z_*_cpp`) and the include of `zopen_seam.h`. Both vcxproj files compile the facade.
+
+Switch: `/p:CPP_RUST_IMPL_SRC_LEAVES_ZOPEN=rust` defines `CPP_RUST_IMPL_ZOPEN` (and links the umbrella); default `cpp`.
+It is a separate sub-switch because the stub Rust zopen must not become active through `CPP_RUST_IMPL_SRC_LEAVES`, which
+already defaults to `rust` for the ported glob. The Switch over task folds it into `CPP_RUST_IMPL_SRC_LEAVES`.
+
+Crossing: `FILE*` is passed as an opaque `*mut c_void` (caller owns it; `z_close` frees the state only, the caller does
+`fclose`); the handle is a leaked `Box<ZState>` from `z_open` to `z_close`; `mode` is the C string bytes; buffers are slices.
+`z_open` returns NULL on failure, `z_read` returns 0 at end of file and negative on error, `z_close` 0 or -1. No panics cross
+(`panic = "abort"`), unsafe only in `src/ffi/zopen.rs`. Retained codecs (zlib, bzip2, ...) are not touched by zopen.c: it only
+implements the `.Z` (LZW) format; `zstream.hpp` calls the facade.
+
+Tap: `TAP_CALL`/`TAP_STATE`/`TAP_RET` in the facade: handles and `FILE*` as `#n` object ids, `z_read` bytes read as `state`,
+`z_write` bytes as an argument. No outgoing calls. The driver and capture/coverage glue are judge files
+(`migration/harness/src_leaves/`, protected by policy-scan, so not in this implementation change): the Behavior task adds
+them (`zopen_driver.cpp`, `build-zopen-driver.ps1`, `build-zopen-coverage.ps1`, `capture-zopen.sh`, `coverage-zopen.sh`);
+a smoke-tested draft is in the run's artifacts. Rust-side replay dispatch for the zopen ids is Behavior work too.
+
+Note: in the Base-Release build zopen is not reachable from `ugrep.exe` (the recorded surface shows `-z` is not available;
+the linker map has no zopen object), so the seam trace is the only witness for this unit.
+
 ## Not in this seam yet
 
-`zopen`, `zstream.hpp`, `flag.hpp`: later Prepare seam tasks of the component.
+`zstream.hpp`, `flag.hpp`: later Prepare seam tasks of the component.

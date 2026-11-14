@@ -2,6 +2,8 @@
 //! One bridge module (`ffi`); all boundary code is here. The bodies are stubs until the Port tasks.
 
 mod signatures;
+#[path = "ffi/zopen.rs"]
+mod zopen_abi;
 
 #[cxx::bridge(namespace = "ugrep_rust")]
 mod ffi {
