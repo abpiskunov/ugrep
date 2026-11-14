@@ -1,6 +1,6 @@
 // Seam declarations for zstream (component src_leaves): the Rust-owned stream behind zstreambuf, C linkage.
-// The facade in src/zstream.cpp calls these when CPP_RUST_IMPL_ZSTREAM is defined (sub-switch
-// CPP_RUST_IMPL_SRC_LEAVES_ZSTREAM); the pure filename predicates go through the cxx bridge instead
+// The facade in src/zstream.cpp calls these when CPP_RUST_IMPL_ZSTREAM is defined (set by
+// CPP_RUST_IMPL_SRC_LEAVES=rust); the pure filename predicates go through the cxx bridge instead
 // (rust/src_leaves/src/lib.rs, "src_leaves/src/lib.rs.h"). The Rust side is rust/src_leaves/src/ffi/zstream.rs.
 //
 // Ownership: ugrep_rust_zs_open returns a handle owned by Rust until ugrep_rust_zs_close; the FILE* and the

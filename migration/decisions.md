@@ -53,3 +53,4 @@ Foundation notes (not user decisions):
 
 Kinds: scope, third-party, plan acceptance, contract, policy, mask approval, behavior triage
 (`intended`, `bug-preserve`, `bug-fix`, `dont-care`), header change, rebaseline, go/no-go.
+| D-zstream-switch (Switch over, 2026-11-14) | switch | Sub-switch CPP_RUST_IMPL_SRC_LEAVES_ZSTREAM merged into CPP_RUST_IMPL_SRC_LEAVES (default rust); CPP_RUST_IMPL_ZSTREAM is defined with it. Base-Release links no codec, so linked-check of Rust zstream is deferred, as D-zopen-switch, to the codec-enabled CodecRef-x64 build; required before Cleanup deletes src/zstream.cpp bodies | operator | `msvc/rust.props`, `msvc/rust.targets`, `rust/src_leaves/SEAM.md` |

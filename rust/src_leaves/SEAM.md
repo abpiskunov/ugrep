@@ -100,7 +100,7 @@ ugrep-indexer) and configuration. The adapter passes `ugrep_rust_zs_config` (`ZS
 `HAVE_LIB*`, so `zstream.cpp` is empty there; compile-checked outside it with HAVE_LIBZ/BZ2/LZ4/LZMA/ZSTD, in all four
 combinations of cpp/rust and tap, and with `WITH_NO_7ZIP`, `WITH_ZIP_CRC32`.
 
-Sub-switch: `CPP_RUST_IMPL_SRC_LEAVES_ZSTREAM` (msvc/rust.props, default `cpp`) sets `CPP_RUST_IMPL_ZSTREAM`
+Switch (merged, D-zstream-switch): the sub-switch `CPP_RUST_IMPL_SRC_LEAVES_ZSTREAM` is gone; `CPP_RUST_IMPL_SRC_LEAVES` (default `rust`) also sets `CPP_RUST_IMPL_ZSTREAM`
 (msvc/rust.targets) and links the umbrella. Rust modules `zstream_codecs.rs`, `zstream_core.rs` (stubs) are reached through
 `#[path]` from `signatures.rs`, so the harness, which includes `signatures.rs`, covers them with no harness change (checked
 by building the harness). `signatures` is `pub mod` so the stubs are not dead code before the Port tasks use them.
