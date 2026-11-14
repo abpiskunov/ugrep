@@ -515,6 +515,7 @@
     <ClInclude Include="..\src\screen.hpp" />
     <ClInclude Include="..\src\stats.hpp" />
     <ClInclude Include="..\src\ugrep.hpp" />
+    <ClInclude Include="..\src\tui_entry.hpp" />
     <ClInclude Include="..\src\vkey.hpp" />
     <ClInclude Include="..\src\zopen.h" />
     <ClInclude Include="..\src\zstream.hpp" />

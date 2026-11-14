@@ -78,7 +78,7 @@ After this, you may want to test ugrep and install it (optional):
 #include "glob.hpp"
 #include "mmap.hpp"
 #include "output.hpp"
-#include "query.hpp"
+#include "tui_entry.hpp"
 #include "stats.hpp"
 #include <reflex/matcher.h>
 #include <reflex/linematcher.h>
@@ -4729,7 +4729,7 @@ int main(int argc, const char **argv)
     flag_max_queue = 65536;
 
     // -Q: TUI query mode
-    Query::query();
+    tui_query();
   }
   else
   {
@@ -5892,7 +5892,7 @@ void options(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, int a
 
               case 'w':
                 if (strcmp(arg, "width") == 0)
-                  flag_width = Screen::getsize();
+                  flag_width = tui_screen_getsize();
                 else if (strncmp(arg, "width=", 6) == 0)
                   flag_width = strtopos(getloptarg(argc, argv, arg + 6, i), "invalid argument --width=");
                 else if (strcmp(arg, "with-filename") == 0)

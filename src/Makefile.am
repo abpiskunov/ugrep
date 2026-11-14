@@ -42,6 +42,7 @@ ugrep_SOURCES = \
 	screen.cpp \
 	stats.hpp \
 	stats.cpp \
+	tui_entry.hpp \
 	vkey.hpp \
 	vkey.cpp \
 	zstream.hpp \

@@ -4579,3 +4579,9 @@ Query::Flags Query::flags_[] = {
   { false, '}', "increase fuzziness" },
   { false, 0, NULL, }
 };
+
+// entry point for the search core, see tui_entry.hpp
+void tui_query()
+{
+  Query::query();
+}
