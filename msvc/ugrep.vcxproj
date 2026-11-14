@@ -507,6 +507,8 @@
     <ClInclude Include="..\include\reflex\unicode.h" />
     <ClInclude Include="..\include\reflex\utf8.h" />
     <ClInclude Include="..\src\cnf.hpp" />
+    <ClInclude Include="..\src\core_rust.hpp" />
+    <ClInclude Include="..\src\core_tap.hpp" />
     <ClInclude Include="..\src\flag.hpp" />
     <ClInclude Include="..\src\glob.hpp" />
     <ClInclude Include="..\src\mmap.hpp" />

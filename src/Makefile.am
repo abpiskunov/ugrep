@@ -29,6 +29,8 @@ ugrep_SOURCES = \
 	$(top_srcdir)/include/reflex/utf8.h \
 	ugrep.cpp \
 	cnf.hpp \
+	core_rust.hpp \
+	core_tap.hpp \
 	cnf.cpp \
 	flag.hpp \
 	glob.hpp \
