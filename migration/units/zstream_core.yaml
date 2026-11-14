@@ -7,7 +7,7 @@ rust_files: rust/src_leaves/src/zstream_codecs.rs rust/src_leaves/src/zstream_co
 rust_crate_name: src_leaves
 harness_crate_name: src_leaves-harness
 depends_on: [zopen]
-status: ported
+status: switched
 notes:
   - 'D-zstream-unit: ported together with zstream_core in one task; both records list all zs_* functions. Codecs live in zstream_codecs.rs (decoders, zip/7z parsing) over ffi/codecs.rs (extern C zlib/bz2/lzma/lz4/zstd/viiz).'
   - 'Intentional deviations: store-branch copy clamped to buf len (C++ overflows); Lz4 compact guards zloc > zlen (C++ wraps); zip crc32 skipped for num <= 0; stale zbuf bytes read as zeros; decoders call inflateEnd/BZ2_bzDecompressEnd/lzma_end on drop (C++ leaks). Brotli and bz3 are always unsupported in Rust (not built in the reference).'
