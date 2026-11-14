@@ -10,7 +10,7 @@
   <ItemDefinitionGroup Condition="'$(RustLinkUmbrella)'=='true'">
     <ClCompile>
       <PreprocessorDefinitions Condition="'$(CPP_RUST_IMPL_SRC_LEAVES)'=='rust'">CPP_RUST_IMPL_SRC_LEAVES=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <PreprocessorDefinitions Condition="'$(CPP_RUST_IMPL_SRC_LEAVES_ZOPEN)'=='rust'">CPP_RUST_IMPL_ZOPEN=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(CPP_RUST_IMPL_SRC_LEAVES)'=='rust'">CPP_RUST_IMPL_ZOPEN=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(CPP_RUST_IMPL_SRC_CORE)'=='rust'">CPP_RUST_IMPL_SRC_CORE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(CPP_RUST_IMPL_SRC_TUI)'=='rust'">CPP_RUST_IMPL_SRC_TUI=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(CPP_RUST_IMPL_SRC_INDEXER)'=='rust'">CPP_RUST_IMPL_SRC_INDEXER=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>

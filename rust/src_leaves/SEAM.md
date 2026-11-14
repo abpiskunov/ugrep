@@ -50,9 +50,9 @@ Rust-side tap and replay (`rust/src_leaves-harness`) belong to the Behavior task
 `src/zopen.h` is unchanged. `src/zopen_seam.h` declares the legacy bodies and the Rust entry points. The only edits to
 `src/zopen.c` are the four renames (`z_*` -> `z_*_cpp`) and the include of `zopen_seam.h`. Both vcxproj files compile the facade.
 
-Switch: `/p:CPP_RUST_IMPL_SRC_LEAVES_ZOPEN=rust` defines `CPP_RUST_IMPL_ZOPEN` (and links the umbrella); default `cpp`.
-It is a separate sub-switch because the stub Rust zopen must not become active through `CPP_RUST_IMPL_SRC_LEAVES`, which
-already defaults to `rust` for the ported glob. The Switch over task folds it into `CPP_RUST_IMPL_SRC_LEAVES`.
+Switch: `CPP_RUST_IMPL_SRC_LEAVES` (default `rust`) defines `CPP_RUST_IMPL_SRC_LEAVES` and `CPP_RUST_IMPL_ZOPEN` and links
+the umbrella; `/p:CPP_RUST_IMPL_SRC_LEAVES=cpp` builds the legacy C. The former sub-switch `CPP_RUST_IMPL_SRC_LEAVES_ZOPEN`
+was folded into it by the Switch over task.
 
 Crossing: `FILE*` is passed as an opaque `*mut c_void` (caller owns it; `z_close` frees the state only, the caller does
 `fclose`); the handle is a leaked `Box<ZState>` from `z_open` to `z_close`; `mode` is the C string bytes; buffers are slices.

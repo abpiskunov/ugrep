@@ -7,7 +7,7 @@ rust_files: rust/src_leaves/src/zopen.rs rust/src_leaves/src/ffi/cfile.rs rust/s
 rust_crate_name: src_leaves
 harness_crate_name: src_leaves-harness
 depends_on: []
-status: ported
+status: switched
 notes:
   - 'unit gate: GATE unit zopen: PASS (migration/out/gates/unit/zopen/report.json); seam-replay 4165 calls, divergent_cases=0; rust-tests 5 passed. ~40 min.'
   - 'Port lives in rust/src_leaves/src/zopen.rs, declared #[path] in signatures.rs (P-zopen-1); libc fread/fwrite/errno are in ffi/cfile.rs (the only unsafe of the unit besides ffi/zopen.rs).'
