@@ -83,7 +83,8 @@ components:
 compare:
   env_matrix: migration/env-matrix.json       # Windows x64 MSVC only (D4)
   repeats: 3
-  differences: []
+  differences:
+    - {id: D-zopen-1, behavior: B-src_leaves-041, decision: Q-zopen-6, note: "C++ segfaults on zopen handle misuse; Rust returns -1 or 0. Not replayable; Rust-side tests only"}
 
 policy:
   protected: ["migration/validation-plan.yaml", "migration/masks/*", "migration/harness/*", "rust/*-harness/*",
@@ -102,7 +103,7 @@ gates:
     scope: component
     checks:
       - name: build-cpp
-        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1"
+        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1 -Extra \"/p:{switch_option}=cpp\""
       - name: version-runs
         run: "powershell -NoProfile -Command \"& '{product_bin_cpp}' --version; exit $LASTEXITCODE\""
       - name: surface-unchanged
@@ -134,7 +135,7 @@ gates:
     scope: component
     checks:
       - name: build-cpp
-        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1"
+        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1 -Extra \"/p:{switch_option}=cpp\""
       - name: record-surface-twice
         run: >-
           {tools} run-cases --bin {product_bin_cpp} --impl cpp --repeat 3

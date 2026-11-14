@@ -222,7 +222,8 @@ behaviors:
   - id: B-src_leaves-030
     statement: "z_close after writes does not flush: the final code and the pending output buffer are never written, so the file lacks the tail of the compressed stream (zs_mode is never set by z_open, calloc leaves it 0, so the 'w' branch of z_close is dead)"
     kind: error
-    status: hypothesis
+    status: dont-care
+    decision: Q-zopen-1
     suspicious: true
     why: "data written then closed cannot be read back whole: the stream loses its tail (e.g. 300 bytes written read back as 279); a zopen writer is not used by ugrep, so the effect is latent"
     evidence: ["case:zo-w-text-small", "case:zo-w-text-chunks", "case:zo-w-bits-12-rand", "case:zo-w-bits-16-rand-full", "case:zo-r-stream-text-small-all", "case:zo-r-stream-bits-12-rand-all", "case:zo-r-stream-bits-16-rand-full-all", "case:zo-r-stream-zero-run-all", "case:zo-r-stream-text-chunks-all"]
@@ -230,7 +231,8 @@ behaviors:
   - id: B-src_leaves-031
     statement: "z_close with no write emits nothing to the FILE (not even the header) and returns 0; the FILE position afterwards is recorded"
     kind: edge-case
-    status: hypothesis
+    status: dont-care
+    decision: Q-zopen-2
     suspicious: true
     why: "an empty stream written through zopen is a zero-byte file, which z_read then rejects (-1)"
     evidence: ["case:zo-w-open-close-only", "case:zo-w-zero-length"]
@@ -244,7 +246,8 @@ behaviors:
   - id: B-src_leaves-033
     statement: "z_write on a handle opened with mode 'r' (writable FILE) succeeds like a write handle: mode is not checked"
     kind: edge-case
-    status: hypothesis
+    status: dont-care
+    decision: Q-zopen-3
     suspicious: true
     why: "read-mode handle accepts writes; mode 'r' vs 'w' is not enforced"
     evidence: ["case:zo-w-on-read-handle"]
@@ -252,7 +255,8 @@ behaviors:
   - id: B-src_leaves-034
     statement: "Writing bits 1, 9 or 11 is accepted and produces a stream whose header maxbits is below 12, which z_read rejects (-1, errno EINVAL)"
     kind: edge-case
-    status: hypothesis
+    status: dont-care
+    decision: Q-zopen-4
     suspicious: true
     why: "writer accepts a bits value that the reader cannot decode"
     evidence: ["case:zo-w-bits-1", "case:zo-w-bits-9", "case:zo-w-bits-11-below-min", "case:zo-r-stream-bits-1", "case:zo-r-stream-bits-9", "case:zo-r-stream-bits-11-below-min"]
@@ -284,7 +288,8 @@ behaviors:
   - id: B-src_leaves-039
     statement: "A stream cut at any point (inside the header block, in the middle of a code group) ends cleanly: bytes up to the last whole code are returned, then 0, with no error"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-zopen-5
     suspicious: true
     why: "truncated input is reported as a clean EOF, not an error, so a damaged archive reads as shorter data"
     evidence: ["case:zo-r-stream-text-small-cut-3", "case:zo-r-stream-text-small-cut-4", "case:zo-r-stream-text-small-cut-5", "case:zo-r-stream-text-small-cut-6", "case:zo-r-stream-text-small-cut-10", "case:zo-r-stream-text-small-cut-40", "case:zo-r-stream-text-small-cut-100", "case:zo-r-stream-text-small-cut-173", "case:zo-r-craft-trailing-partial", "case:zo-r-craft-one-code-one-byte", "case:zo-r-craft-clear-no-block"]
@@ -302,7 +307,9 @@ behaviors:
     suspicious: true
     why: "undefined behaviour on handle misuse; a crashing process cannot be recorded; Triage decides what the Rust must do (preserve a crash is not possible; likely return -1/0)"
     origin: llm-hypothesis
-    note: "cases dropped from the corpus: w-then-read-on-write-handle, r-read-on-ro-file-write-op, second read after empty stream"
+    decision: Q-zopen-6
+    classification: bug-fix
+    note: "cases dropped from the corpus: w-then-read-on-write-handle, r-read-on-ro-file-write-op, second read after empty stream. User classified bug-fix (Rust returns -1 or 0, no crash). No recorded C++ case can exist, so the status stays hypothesis until Rust-side tests are cited (Port task); listed in the plan's compare.differences as D-zopen-1."
 
 openQuestions: []
 
