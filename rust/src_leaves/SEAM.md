@@ -66,6 +66,9 @@ Tap: `TAP_CALL`/`TAP_STATE`/`TAP_RET` in the facade: handles and `FILE*` as `#n`
 them (`zopen_driver.cpp`, `build-zopen-driver.ps1`, `build-zopen-coverage.ps1`, `capture-zopen.sh`, `coverage-zopen.sh`);
 a smoke-tested draft is in the run's artifacts. Rust-side replay dispatch for the zopen ids is Behavior work too.
 
+Port status: `signatures::zopen` (`src/zopen.rs`) is ported; libc `FILE*`/errno calls are in `src/ffi/cfile.rs`. The Rust returns -1
+for a handle used out of sequence (D-zopen-1); `ugrep_rust_z_read/write` accept a NULL buffer with len 0 like the C.
+
 Note: in the Base-Release build zopen is not reachable from `ugrep.exe` (the recorded surface shows `-z` is not available;
 the linker map has no zopen object), so the seam trace is the only witness for this unit.
 
