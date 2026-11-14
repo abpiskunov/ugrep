@@ -28,6 +28,34 @@ observation:
     channels: [return, state]
     compared: [return, state]
     excluded: []
+  src_leaves.zs_open:
+    channels: [return, state]
+    compared: [return, state]
+    excluded: []
+  src_leaves.zs_close:
+    channels: [return, state]
+    compared: [return, state]
+    excluded: []
+  src_leaves.zs_decompressing:
+    channels: [return]
+    compared: [return]
+    excluded: []
+  src_leaves.zs_next:
+    channels: [return, state]
+    compared: [return, state]
+    excluded: []
+  src_leaves.zs_zipinfo:
+    channels: [return, state]
+    compared: [return, state]
+    excluded: []
+  src_leaves.zs_zippeek:
+    channels: [return, state]
+    compared: [return, state]
+    excluded: []
+  src_leaves.zs_is_bz:
+    channels: [return]
+    compared: [return]
+    excluded: []
 behaviors:
   - id: B-src_leaves-001
     statement: "Glob without '/' is matched against the basename only; the pathname is ignored"
@@ -310,6 +338,123 @@ behaviors:
     decision: Q-zopen-6
     classification: bug-fix
     note: "cases dropped from the corpus: w-then-read-on-write-handle, r-read-on-ro-file-write-op, second read after empty stream. User classified bug-fix (Rust returns -1 or 0, no crash). No recorded C++ case can exist, so the status stays hypothesis until Rust-side tests are cited (Port task); listed in the plan's compare.differences as D-zopen-1."
+  # ---- zstream (src/zstream.hpp, facade src/zstream.cpp) ----
+  # Codec-enabled C++ reference "CodecRef-x64" (migration/harness/zstream/build-codec-ref.ps1): HAVE_LIBZ, HAVE_LIBBZ2,
+  # HAVE_LIBLZMA, HAVE_LIBLZ4, HAVE_LIBZSTD defined; HAVE_LIBBROTLI and HAVE_LIBBZIP3 not defined; WITH_NO_7ZIP not
+  # defined (7z built, WITH_MAX_7ZIP_SIZE 1 GiB from ugrep.cpp); WITH_ZIP_CRC32 not defined.
+  # Codec status: gzip/zlib BUILT; zip BUILT (stored, deflate, bzip2 methods); bzip2 BUILT; xz/lzma BUILT;
+  # lz4 BUILT; zstd BUILT; 7z BUILT (lzma/C viiz); compress .Z BUILT (zopen.c); tar/pax/cpio BUILT (-z);
+  # brotli NOT BUILT (no cases); bz3 NOT BUILT (no cases); rar NOT SUPPORTED (predicate only).
+  # Surface cases: migration/corpus/src_leaves/zstream/cases.jsonl (ids gz-*, bz2-*, xz-*, lz4-*, zstd-*, Z-*, zip-*, 7z-*, tar-*, opt-*);
+  # seam cases: migration/corpus/src_leaves/zstream/seam/cases.jsonl (ids zss-*).
+  - id: B-src_leaves-042
+    statement: "ugrep -z decompresses gzip (incl. multi-member, empty middle member, FNAME/extra header, no or wrong extension), bzip2 (multi-stream), xz (CRC32/CRC64/SHA256/none checks, multi-stream, padding), lzma-alone, lz4 (multi-frame), zstd (multi-frame, .zstd) and .Z, searching the decompressed text; -c, -l, -n, context, -v behave as on plain text"
+    kind: normal
+    status: observed
+    evidence: ["case:zs-gz-basic", "case:zs-gz-multi-member", "case:zs-gz-three-members-empty-middle", "case:zs-gz-fname-header", "case:zs-gz-extra-header", "case:zs-gz-large", "case:zs-bz2-basic", "case:zs-bz2-multi-stream", "case:zs-xz-basic", "case:zs-xz-multi-stream", "case:zs-xz-multi-stream-padding", "case:zs-xz-check-none", "case:zs-xz-check-sha256", "case:zs-xz-lzma-alone", "case:zs-lz4-basic", "case:zs-lz4-multi-frame", "case:zs-zstd-basic", "case:zs-zstd-multi-frame", "case:zs-Z-basic", "case:zs-gz-count", "case:zs-gz-line-numbers", "case:zs-opt-context", "case:zs-opt-invert"]
+    origin: capture
+  - id: B-src_leaves-043
+    statement: "Extension selects the decoder (.gz .bz2 .xz .lz4 .zst .Z .zip .7z .tar and the t* short forms), case-insensitively for .ZIP and .7Z; a .gz, .Z or .zip file whose bytes are plain text is searched as plain text, a .bz2/.xz/.lz4/.zst file of plain text gives a 'cannot decompress' diagnostic"
+    kind: edge-case
+    status: observed
+    evidence: ["case:zs-gz-bad-magic-text", "case:zs-Z-bad-magic-text", "case:zs-zip-bad-magic-text", "case:zs-bz2-bad-magic-text", "case:zs-xz-bad-magic-text", "case:zs-lz4-bad-magic-text", "case:zs-zstd-bad-magic-text", "case:zs-bz2-ext-tbz", "case:zs-xz-ext-txz", "case:zs-zstd-ext-zstd", "case:zs-zip-ext-ZIP", "case:zs-7z-ext-7Z", "case:zs-Z-ext-taZ", "case:zs-tzst-ext", "case:zs-gz-wrong-extension", "case:zs-bz2-wrong-extension-gz", "case:zs-gz-no-extension"]
+    origin: capture
+  - id: B-src_leaves-044
+    statement: "Empty file, zero-length stream or empty member: exit 1, no output, no diagnostic (all codecs)"
+    kind: edge-case
+    status: observed
+    evidence: ["case:zs-gz-zero-length-file", "case:zs-gz-empty-member", "case:zs-bz2-empty-stream", "case:zs-xz-empty-stream", "case:zs-lz4-empty-frame", "case:zs-zstd-empty-frame", "case:zs-zip-empty-archive", "case:zs-tar-empty", "case:zs-7z-zero-length-file", "case:zs-Z-zero-length-file"]
+    origin: capture
+  - id: B-src_leaves-045
+    statement: "zip: entries are listed in archive order with names, stored, deflate and bzip2 methods decoded, zero-length and unicode-named entries, -z --zmax levels nest archives (zip in gz needs --zmax=2, output names like {:one.txt}); --zmax=0 and over the upper limit are usage errors (exit 2)"
+    kind: normal
+    status: observed
+    evidence: ["case:zs-zip-basic-deflate", "case:zs-zip-single", "case:zs-zip-stored", "case:zs-zip-bzip2-method", "case:zs-zip-empty-entry", "case:zs-zip-large-entry", "case:zs-zip-unicode-name", "case:zs-zip-glob-include", "case:zs-zip-in-gz-zmax2", "case:zs-zip-in-gz-zmax1", "case:zs-gz-in-zip-zmax2", "case:zs-gz-in-zip-zmax1", "case:zs-opt-zmax0", "case:zs-opt-zmax-too-large", "case:zs-opt-zmax2-plain-gz"]
+    origin: capture
+  - id: B-src_leaves-046
+    statement: "7z: copy and LZMA2 methods, one or several files, file names printed; non-archive bytes named .7z give a 7z diagnostic and exit 1"
+    kind: normal
+    status: observed
+    evidence: ["case:zs-7z-lzma2-single", "case:zs-7z-copy-single", "case:zs-7z-lzma2-two-files", "case:zs-7z-copy-two-files", "case:zs-7z-count", "case:zs-7z-large", "case:zs-7z-bad-text"]
+    origin: capture
+  - id: B-src_leaves-047
+    statement: "tar/pax/ustar/GNU long names are read as archives with the names of the entries; tar combined with gz, bz2, xz, lz4, zstd (.tar.gz .tgz .tar.bz2 .tar.xz .tar.lz4 .tar.zst .tzst) is decompressed then unpacked; a zero-length entry and a bad header checksum are tolerated"
+    kind: normal
+    status: observed
+    evidence: ["case:zs-tar-basic", "case:zs-tar-ustar", "case:zs-tar-gnu-longname", "case:zs-tar-pax-longname", "case:zs-tgz-basic", "case:zs-tar-gz-basic", "case:zs-tar-gz-zmax1", "case:zs-tar-bz2-basic", "case:zs-tar-xz-basic", "case:zs-tar-lz4-basic", "case:zs-tar-zst-basic", "case:zs-tar-zero-length-file", "case:zs-tar-bad-checksum", "case:zs-tar-bad-text"]
+    origin: capture
+  - id: B-src_leaves-048
+    statement: "Many compressed and plain files in one run, recursively and with --sort=name, are searched in order (-J1); without -z the compressed files are searched as binary"
+    kind: normal
+    status: observed
+    evidence: ["case:zs-gz-two-files", "case:zs-gz-mixed-plain-and-gz", "case:zs-gz-recursive", "case:zs-gz-without-z", "case:zs-opt-recursive-all-codecs", "case:zs-opt-no-z-recursive", "case:zs-opt-count-multi-archives", "case:zs-opt-glob-filter-archive-name", "case:zs-opt-binary-after-decompress", "case:zs-gz-stdin"]
+    origin: capture
+  - id: B-src_leaves-049
+    statement: "Truncated gzip body (half the file) or xz/zstd cut in half: partial output of the complete part, exit 0, no diagnostic; gzip with the trailer cut or xz footer cut: the full text is output, exit 0"
+    kind: error
+    status: hypothesis
+    suspicious: true
+    why: "a damaged archive reads as shorter data and the exit code says success; Triage decides intended, bug-preserve or bug-fix"
+    evidence: ["case:zs-gz-trunc-half", "case:zs-gz-trunc-large", "case:zs-gz-trunc-trailer", "case:zs-xz-trunc-half", "case:zs-xz-trunc-large", "case:zs-xz-trunc-footer", "case:zs-zstd-trunc-half", "case:zs-Z-trunc-body", "case:zs-tar-trunc-half"]
+    origin: capture
+  - id: B-src_leaves-050
+    statement: "Truncated bzip2 and zstd header/large files: exit 1 with no output and no diagnostic; truncated lz4: exit 2 with a 'cannot read' warning; truncated zip: partial output plus an 'EOF detected' diagnostic; truncated header of gz, xz, zip, 7z: exit 1"
+    kind: error
+    status: hypothesis
+    suspicious: true
+    why: "truncation is reported inconsistently across codecs (silent, warning, or exit 2); Triage decides the contract"
+    evidence: ["case:zs-bz2-trunc-half", "case:zs-bz2-trunc-header", "case:zs-bz2-trunc-large", "case:zs-lz4-trunc-half", "case:zs-lz4-trunc-header", "case:zs-lz4-trunc-large", "case:zs-zstd-trunc-header", "case:zs-zstd-trunc-large", "case:zs-zip-trunc-half", "case:zs-zip-trunc-header", "case:zs-zip-trunc-first-entry", "case:zs-gz-trunc-header", "case:zs-xz-trunc-header", "case:zs-7z-trunc-half", "case:zs-7z-trunc-header", "case:zs-7z-trunc-end", "case:zs-tar-trunc-header", "case:zs-tar-gz-trunc"]
+    origin: capture
+  - id: B-src_leaves-051
+    statement: "Corrupt or garbage data: gzip bad CRC, bad length or corrupt body exit 1 with the already decoded part possibly output; lz4 and zstd corrupt body report 'Binary file matches' with exit 0; trailing garbage after gz, bz2, lz4, zstd outputs the full text plus a 'cannot decompress ... error detected' diagnostic and exit 0, after xz it outputs nothing and exits 1; bzip2 corrupt body or CRC exit 1 silently"
+    kind: error
+    status: hypothesis
+    suspicious: true
+    why: "corrupt input yields exit 0 or 'Binary file matches' for lz4/zstd and differing exit codes per codec"
+    evidence: ["case:zs-gz-bad-crc", "case:zs-gz-bad-length", "case:zs-gz-corrupt-body", "case:zs-gz-bad-method", "case:zs-gz-second-member-corrupt", "case:zs-gz-trailing-garbage", "case:zs-gz-trailing-zeros", "case:zs-bz2-corrupt-body", "case:zs-bz2-corrupt-crc", "case:zs-bz2-trailing-garbage", "case:zs-xz-corrupt-body", "case:zs-xz-corrupt-check", "case:zs-xz-trailing-garbage", "case:zs-lz4-corrupt-body", "case:zs-lz4-trailing-garbage", "case:zs-zstd-corrupt-body", "case:zs-zstd-trailing-garbage", "case:zs-zstd-skippable-frame", "case:zs-Z-bad-bits", "case:zs-Z-bad-code", "case:zs-Z-trunc-header", "case:zs-Z-header-only"]
+    origin: capture
+  - id: B-src_leaves-052
+    statement: "xz memory limit (XZ::MEMLIMIT 100 MB): an xz or lzma-alone stream needing a 1 GiB dictionary fails with the generic 'error detected in the xz/lzma compressed data' diagnostic and exit 1 (no memory-limit message); a 64 MiB dictionary decodes"
+    kind: error
+    status: hypothesis
+    suspicious: true
+    why: "memory-limit failure is indistinguishable from corruption and the limit is a build-time constant; Triage decides whether the limit and message are contractual"
+    evidence: ["case:zs-xz-memlimit-1g-dict", "case:zs-xz-memlimit-64m-dict", "case:zs-xz-memlimit-lzma-alone-1g"]
+    origin: capture
+  - id: B-src_leaves-053
+    statement: "7z size limit (WITH_MAX_7ZIP_SIZE 1 GiB): a file with unpacked size over the limit gives '7zip archived file size exceeds the set limit: NAME' and is skipped (later files still read); exactly at the limit decodes silently to exit 1; corrupt packed data or bad file CRC exit 1 silently; bad signature or start-header CRC gives a misleading 'encrypted data or 7z input is not seekable' message"
+    kind: error
+    status: hypothesis
+    suspicious: true
+    why: "limit is a build-time macro and the diagnostics for bad 7z input are misleading; Triage decides"
+    evidence: ["case:zs-7z-size-at-limit", "case:zs-7z-size-over-limit", "case:zs-7z-size-way-over-limit", "case:zs-7z-size-over-limit-second-ok", "case:zs-7z-corrupt-packed", "case:zs-7z-bad-file-crc", "case:zs-7z-bad-signature", "case:zs-7z-bad-start-header-crc", "case:zs-7z-bad-next-header-crc", "case:zs-7z-signature-only"]
+    origin: capture
+  - id: B-src_leaves-054
+    statement: "zip CRC32 is not verified (WITH_ZIP_CRC32 not defined in the reference): a wrong CRC32 or wrong usize in the header yields the text and exit 0; a corrupt deflate stream skips that entry silently and later entries are read; the encrypted flag, an unknown method and the LZMA method (14) and a STORE entry with a data descriptor give diagnostics and exit 1"
+    kind: error
+    status: hypothesis
+    suspicious: true
+    why: "zip CRC32 mismatch is accepted silently and a corrupt entry vanishes without a message; Triage decides whether the Rust verifies CRC32 (and whether WITH_ZIP_CRC32 is mirrored)"
+    evidence: ["case:zs-zip-bad-crc32-header", "case:zs-zip-bad-usize", "case:zs-zip-corrupt-deflate", "case:zs-zip-encrypted-flag", "case:zs-zip-unknown-method", "case:zs-zip-lzma-method", "case:zs-zip-data-descriptor", "case:zs-zip-trailing-garbage"]
+    origin: capture
+  - id: B-src_leaves-055
+    statement: "zstreambuf seam: the ten is_* predicates select by extension only (is_bz .bz2/.bzip2/.tbz.., is_xz, is_lz4, is_zstd, is_br, is_bz3, is_Z, is_zip, is_7z, is_rar) with no file access; open/close/decompressing/next (decompress) and zipinfo/zippeek are recorded in one call/return trace per case, with the diagnostics cannot_decompress and warning as outgoing calls"
+    kind: normal
+    status: observed
+    evidence: ["case:zss-pred-a-bz2", "case:zss-pred-a-xz", "case:zss-pred-a-lz4", "case:zss-pred-a-zst", "case:zss-pred-a-br", "case:zss-pred-a-bz3", "case:zss-pred-a-Z", "case:zss-pred-a-zip", "case:zss-pred-a-7z", "case:zss-pred-a-rar", "case:zss-pred-a-txt", "case:zss-pred-a-tbz", "case:zss-pred-a-tgz", "case:zss-pred-a-tzst"]
+    origin: capture
+  - id: B-src_leaves-056
+    statement: "zstreambuf seam: reading gzip, bzip2, xz, lzma-alone and zip streams with different buffer sizes and sgetn returns the same decoded bytes in order, 0 at EOF; zip/7z are iterated with zipinfo and zippeek; reopening after close restarts the stream; empty input returns 0"
+    kind: normal
+    status: observed
+    evidence: ["case:zss-gz-all", "case:zss-gz-small", "case:zss-gz-sgetn", "case:zss-gz-reopen", "case:zss-bz2-all", "case:zss-xz-all", "case:zss-lzma-all", "case:zss-zip-loop", "case:zss-zip-stored", "case:zss-zip-peek", "case:zss-zip-empty", "case:zss-empty-gz", "case:zss-empty-xz"]
+    origin: capture
+  - id: B-src_leaves-057
+    statement: "zstreambuf seam: truncated or trailing-garbage input reports through cannot_decompress / returns a negative count at the point recorded; plain bytes in a .gz are passed through"
+    kind: error
+    status: observed
+    evidence: ["case:zss-gz-trunc", "case:zss-gz-garbage", "case:zss-gz-plain", "case:zss-bz2-trunc", "case:zss-xz-trunc", "case:zss-zip-trunc"]
+    origin: capture
 
 openQuestions: []
 
@@ -317,7 +462,9 @@ uncovered:
   - {region: "src/zopen.c output(): fwrite failure mid-stream and on the final flush", reason: excluded, note: "needs a failing FILE; not reachable with a scratch file"}
   - {region: "src/zopen.c z_open: calloc returns NULL", reason: excluded, note: "allocation failure"}
   - {region: "src/zopen.c z_close: zmode == 'w' branch", reason: unreachable, note: "zs_mode is never set, see B-src_leaves-030"}
-  - {region: "src/zstream.hpp", reason: deferred, note: "later seam of src_leaves"}
+  - {region: "src/zstream.hpp/cpp brotli (HAVE_LIBBROTLI) and bz3 (HAVE_LIBBZIP3) decoders", reason: excluded, note: "codecs not built in the CodecRef reference; no cases recorded"}
+  - {region: "src/zstream.cpp WITH_NO_7ZIP and WITH_ZIP_CRC32 variants", reason: excluded, note: "macros not defined in the reference build"}
+  - {region: "src/zstream.cpp allocation failures and rar", reason: excluded, note: "OOM accepted (D4); rar has a predicate only"}
   - {region: "src/flag.hpp", reason: deferred, note: "later seam of src_leaves"}
 
 discovery:
@@ -329,3 +476,6 @@ discovery:
     - {round: 5, source: seam-driver+hand-crafted, new_cases: 105, new_coverage: 0, new_behaviors: 16, note: "zopen: 105 cases (zo-*) generated by C++ writes and hand-crafted .Z streams; no .Z archive exists under tests/; recorded twice, byte-identical"}
     - {round: 6, source: llm-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "zopen probes: misuse and cut-off variants; three crash on misuse and are excluded (B-src_leaves-041)"}
     - {round: 7, source: llm-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "zopen probes of read sizes and bits; all agree with entries 026-040"}
+    - {round: 8, source: surface+seam-driver, new_cases: 230, new_coverage: 0, new_behaviors: 16, note: "zstream: 197 surface cases (zs via ugrep -z on CodecRef, recorded 3x, flaky 0) and 33 seam cases (zss-*, two runs byte-identical)"}
+    - {round: 9, source: llm-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "zstream probes of option and extension variants all agree with entries 042-057; none admitted"}
+    - {round: 10, source: llm-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "zstream probes of truncation and corruption variants all agree with entries 049-054; none admitted"}

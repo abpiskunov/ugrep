@@ -41,3 +41,4 @@ Foundation notes (not user decisions):
 
 Kinds: scope, third-party, plan acceptance, contract, policy, mask approval, behavior triage
 (`intended`, `bug-preserve`, `bug-fix`, `dont-care`), header change, rebaseline, go/no-go.
+| D-zstream-codecref (Behavior: zstream, 2026-11-14) | environment | Codec-enabled C++ reference | User approved downloading pinned codec sources (zlib 1.3.1, bzip2 1.0.8, xz 5.4.6, lz4 1.10.0, zstd 1.5.6) to sibling folders outside the repo, never vendored; URLs and SHA-256 in environment.json; fetch and build by `migration/harness/zstream/fetch-codecs.ps1` and `build-codec-ref.ps1` (CI can run the same). Base-Release stays the product build. CodecRef-x64 (msvc/bin/CodecRef-x64) is the codec-enabled build to which D-zopen-switch deferred the product-level proof of zopen. Brotli and bz3 are not built; no cases for them. | operator | `migration/harness/zstream/`, `migration/environment.json` |
