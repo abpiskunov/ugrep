@@ -91,7 +91,7 @@ statics) so the Port can keep them that way.
 | Crossing | Error kind |
 |----------|------------|
 | `cnf_*`, `stats_report` | infallible in C++ (no throw, no return code); Rust bodies must not fail and must not panic (`panic = "abort"`) |
-| `ugrep_find_text_preview`, `ugrep_extract` (entry, not switched) | `std::runtime_error`/`bad_alloc` in C++ -> `CoreError::Exception`, rethrown by the facade |
+| `ugrep_find_text_preview`, `ugrep_extract` (entry, not switched) | Future work: these have no facade yet; once they get one, `std::runtime_error`/`bad_alloc` in C++ -> `CoreError::Exception`, rethrown by the facade |
 | `abort(msg)`, `error(msg, arg)` | process exit (`exit(EXIT_ERROR)`), `CoreError::Abort/Errno`, never returned |
 | `report` writes | a short write to `FILE*` is ignored exactly as in the legacy `fprintf` |
 
@@ -120,6 +120,3 @@ to the Behavior task.
 `CPP_RUST_IMPL_SRC_CORE=1` and links `rust_umbrella` when it is `rust`; no change was needed there. Autotools: the new
 headers are listed in `src/Makefile.am`/`.in`; no autotools Rust glue exists for src_leaves either, so none was added.
 `/p:CPP_RUST_IMPL_SRC_CORE=rust` builds and links with the `todo!()` stubs (calls panic -> abort at run time).
-
-Note for the baseline gate: `CPP_RUST_IMPL_SRC_LEAVES` now defaults to `rust`, but the gate for `src_core` compares
-against `msvc/bin/Base-Release-x64/ugrep.exe`; build it with `/p:CPP_RUST_IMPL_SRC_LEAVES=cpp` first.

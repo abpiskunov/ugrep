@@ -9192,6 +9192,7 @@ void ugrep_extract(const char *filename, const char *partname, FILE *output)
 {
   TAP_CALL("src_core.ugrep_extract", std::string(filename), partname != NULL ? std::string(partname) : std::string());
   Grep grep(NULL, NULL, NULL);
+  grep.extract(filename, partname, output);
 }
 
 // set the handle to be able to use cancel_ugrep()
