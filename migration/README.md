@@ -50,7 +50,8 @@ The committed `bin/win64/ugrep.exe` is not a reference (D1).
 **Switch.** `msvc/rust.props` / `msvc/rust.targets` (imported by both projects): `CPP_RUST_IMPL_SRC_LEAVES`,
 `_SRC_CORE`, `_SRC_TUI`, `_SRC_INDEXER` = `cpp` (default) or `rust`, passed as `/p:`. Any `rust` builds
 `rust/rust_umbrella` (staticlib, `+crt-static`) with cargo into `build/cargo`, links it, writes a linker map and
-outputs to `msvc/bin/Base-Release-x64-rust/`. `/p:CppRustTap=true` defines `CPP2RUST_TAP` and enables cargo feature `tap`.
+outputs, like every default build, to `msvc/bin/Base-Release-x64/`; `/p:CppRustOutSuffix=-rust` puts a variant build in
+`msvc/bin/Base-Release-x64-rust/` (the switch gate's rust variant, `product_bin_rust`). `/p:CppRustTap=true` defines `CPP2RUST_TAP` and enables cargo feature `tap`.
 With all switches at `cpp` nothing changes. The umbrella is empty until the first Port.
 
 **Port order** (`depgraph.json`, source-root, file map `depmap.json`; no compile database):
