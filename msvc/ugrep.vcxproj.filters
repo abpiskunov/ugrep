@@ -91,6 +91,9 @@
     <ClInclude Include="..\src\zopen.h">
       <Filter>src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\zopen_seam.h">
+      <Filter>src</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\vkey.hpp">
       <Filter>src</Filter>
     </ClInclude>
@@ -187,6 +190,9 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\src\zopen.c">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\zopen_facade.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\lib\simd_avx2.cpp">
