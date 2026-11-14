@@ -8,7 +8,7 @@
 -->
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Label="CppRustSwitch">
-    <CPP_RUST_IMPL_SRC_LEAVES Condition="'$(CPP_RUST_IMPL_SRC_LEAVES)'==''">cpp</CPP_RUST_IMPL_SRC_LEAVES>
+    <CPP_RUST_IMPL_SRC_LEAVES Condition="'$(CPP_RUST_IMPL_SRC_LEAVES)'==''">rust</CPP_RUST_IMPL_SRC_LEAVES>
     <CPP_RUST_IMPL_SRC_CORE Condition="'$(CPP_RUST_IMPL_SRC_CORE)'==''">cpp</CPP_RUST_IMPL_SRC_CORE>
     <CPP_RUST_IMPL_SRC_TUI Condition="'$(CPP_RUST_IMPL_SRC_TUI)'==''">cpp</CPP_RUST_IMPL_SRC_TUI>
     <CPP_RUST_IMPL_SRC_INDEXER Condition="'$(CPP_RUST_IMPL_SRC_INDEXER)'==''">cpp</CPP_RUST_IMPL_SRC_INDEXER>
