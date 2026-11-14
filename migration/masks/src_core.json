@@ -1,1 +1,1 @@
-{"schema":"cpp2rust-masks/1","masks":[],"rewrites":[]}
+{"schema":"cpp2rust-masks/1","masks":[],"rewrites":[{"pattern":"^(ugrep [0-9.]+ WIN64)(?: \\+\\w+)+","replace":"\\1","approved":"D-version-simd","note":"--version names the SIMD level of the host CPU (recorded +avx2, a CI runner printed +avx512); environment noise, not behavior"}]}
