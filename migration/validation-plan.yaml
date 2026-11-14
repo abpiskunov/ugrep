@@ -30,6 +30,7 @@ components:
     rust_crate: rust/src_leaves
     harness_crate: rust/src_leaves-harness
     switch_option: CPP_RUST_IMPL_SRC_LEAVES
+    switch_files: [msvc/rust.props]
     surface: cli
     product_bin_cpp: msvc/bin/Base-Release-x64/ugrep.exe
     product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep.exe
@@ -42,6 +43,7 @@ components:
     rust_crate: rust/src_core
     harness_crate: rust/src_core-harness
     switch_option: CPP_RUST_IMPL_SRC_CORE
+    switch_files: [msvc/rust.props]
     surface: cli
     product_bin_cpp: msvc/bin/Base-Release-x64/ugrep.exe
     product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep.exe
@@ -54,6 +56,7 @@ components:
     rust_crate: rust/src_tui
     harness_crate: rust/src_tui-harness
     switch_option: CPP_RUST_IMPL_SRC_TUI
+    switch_files: [msvc/rust.props]
     surface: cli
     product_bin_cpp: msvc/bin/Base-Release-x64/ugrep.exe
     product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep.exe
@@ -66,6 +69,7 @@ components:
     rust_crate: rust/src_indexer
     harness_crate: rust/src_indexer-harness
     switch_option: CPP_RUST_IMPL_SRC_INDEXER
+    switch_files: [msvc/rust.props]
     surface: cli
     product_bin_cpp: msvc/bin/Base-Release-x64/ugrep-indexer.exe
     product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep-indexer.exe

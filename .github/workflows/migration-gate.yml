@@ -4,8 +4,9 @@
 # pass is only a claim.
 name: migration-gate
 on:
+  # No paths filter: the build switch lives in build files (msvc/rust.props), and a required check
+  # skipped by a filter never reports. gate-check --changed decides what runs.
   pull_request:
-    paths: ["migration/**", "rust/**", "src/**", "rust-toolchain.toml"]
 permissions:
   contents: read
 env:
