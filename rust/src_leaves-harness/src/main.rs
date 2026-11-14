@@ -6,14 +6,19 @@
 //! the file the C++ driver (`migration/harness/src_leaves/zopen_driver.cpp`) created, the harness creates the
 //! same file, runs the Rust on it and records what the driver records: errno after every call, and at the end
 //! the file position (and the file's bytes if the case wrote).
+//!
+//! `src_leaves.zs_*` (units zstream_core and zstream_codecs) are replayed by `zstream.rs`. The codec libraries the Rust
+//! stream calls through FFI are linked by build.rs.
 mod ffi;
 mod replay;
 mod tap;
+mod zstream;
 
 #[path = "../../src_leaves/src/signatures.rs"]
 mod signatures;
 
 use core::ffi::c_void;
+use replay::Phase;
 use serde_json::Value;
 use signatures::zopen::{self, ZState};
 use tap::{quote, Tap, ToNeutral};
@@ -75,99 +80,111 @@ fn main() {
         eprintln!("usage: src_leaves-harness <recorded.jsonl> <out.jsonl> [functions...]");
         std::process::exit(2);
     }
-    let all = [
+    let mut all = vec![
         "src_leaves.glob_match",
         "src_leaves.z_open",
         "src_leaves.z_close",
         "src_leaves.z_read",
         "src_leaves.z_write",
     ];
-    let mut only: Vec<&str> = if a.len() > 3 { a[3..].iter().flat_map(|s| s.split(',')).collect() } else { all.to_vec() };
+    all.extend(zstream::FUNCTIONS);
+    let mut only: Vec<&str> = if a.len() > 3 { a[3..].iter().flat_map(|s| s.split(',')).collect() } else { all.clone() };
     // the setup call of a zopen case is replayed whenever any z_* function is
     if only.iter().any(|f| f.starts_with("src_leaves.z_")) {
         only.push(FILE_SETUP);
     }
     let mut z = ZCase::new();
-    let n = replay::replay_trace(a[1].as_ref(), a[2].as_ref(), &only, |func, args, _replay, tap| match func {
-        "src_leaves.glob_match" => {
-            let (pathname, basename, glob) = (bytes(&args[0]), bytes(&args[1]), bytes(&args[2]));
-            let (icase, lead, path) = (args[3].as_bool().unwrap(), args[4].as_bool().unwrap(), args[5].as_bool().unwrap());
-            tap.call(func, &[&pathname.as_slice(), &basename.as_slice(), &glob.as_slice(), &icase, &lead, &path]);
-            let r = signatures::glob_match(&pathname, &basename, &glob, icase, lead, path);
-            tap.ret(func, &r);
+    let mut zs = zstream::ZsReplay::new(a[1].as_ref());
+    let n = replay::replay_trace(a[1].as_ref(), a[2].as_ref(), &only, |phase, func, args, _replay, tap| {
+        if func.starts_with(zstream::PREFIX) {
+            zs.dispatch(phase, func, args, tap);
+            return;
         }
-        FILE_SETUP => {
-            if !z.file.is_null() {
-                ffi::close(z.file);
-            }
-            z = ZCase::new();
-            let (data, ro) = (bytes(&args[0]), args[1].as_bool().unwrap());
-            z.file = ffi::open_scratch(&scratch_path(), &data, ro);
-            tap.call(func, &[&data.as_slice(), &ro]);
-            tap.ret(func, &true);
+        if phase == Phase::Ret {
+            return;
         }
-        "src_leaves.z_open" => {
-            let file_id = args[0].as_str().unwrap().to_string();
-            if !z.ids.contains(&file_id) {
-                z.ids.push(file_id.clone());
+        match func {
+            "src_leaves.glob_match" => {
+                let (pathname, basename, glob) = (bytes(&args[0]), bytes(&args[1]), bytes(&args[2]));
+                let (icase, lead, path) = (args[3].as_bool().unwrap(), args[4].as_bool().unwrap(), args[5].as_bool().unwrap());
+                tap.call(func, &[&pathname.as_slice(), &basename.as_slice(), &glob.as_slice(), &icase, &lead, &path]);
+                let r = signatures::glob_match(&pathname, &basename, &glob, icase, lead, path);
+                tap.ret(func, &r);
             }
-            let mode = bytes(&args[1]);
-            let (bits, plain) = (args[2].as_i64().unwrap() as i32, args[3].as_i64().unwrap() as i32);
-            tap.call(func, &[&file_id, &mode.as_slice(), &bits, &plain]);
-            ffi::set_errno(0);
-            let r = zopen::z_open(z.file, &mode, bits, plain);
-            let err = ffi::errno();
-            let id = match r {
-                Some(h) => {
-                    let id = format!("#{}", z.ids.len() + 1);
-                    z.ids.push(id.clone());
-                    z.handle = Some((id.clone(), h));
-                    id
+            FILE_SETUP => {
+                if !z.file.is_null() {
+                    ffi::close(z.file);
                 }
-                None => "null".to_string(),
-            };
-            tap.ret(func, &id);
-            tap.state_after(func, &Raw(format!("[{err}]")));
-            if z.handle.is_none() {
+                z = ZCase::new();
+                let (data, ro) = (bytes(&args[0]), args[1].as_bool().unwrap());
+                z.file = ffi::open_scratch(&scratch_path(), &data, ro);
+                tap.call(func, &[&data.as_slice(), &ro]);
+                tap.ret(func, &true);
+            }
+            "src_leaves.z_open" => {
+                let file_id = args[0].as_str().unwrap().to_string();
+                if !z.ids.contains(&file_id) {
+                    z.ids.push(file_id.clone());
+                }
+                let mode = bytes(&args[1]);
+                let (bits, plain) = (args[2].as_i64().unwrap() as i32, args[3].as_i64().unwrap() as i32);
+                tap.call(func, &[&file_id, &mode.as_slice(), &bits, &plain]);
+                ffi::set_errno(0);
+                let r = zopen::z_open(z.file, &mode, bits, plain);
+                let err = ffi::errno();
+                let id = match r {
+                    Some(h) => {
+                        let id = format!("#{}", z.ids.len() + 1);
+                        z.ids.push(id.clone());
+                        z.handle = Some((id.clone(), h));
+                        id
+                    }
+                    None => "null".to_string(),
+                };
+                tap.ret(func, &id);
+                tap.state_after(func, &Raw(format!("[{err}]")));
+                if z.handle.is_none() {
+                    z.finish(tap, func);
+                }
+            }
+            "src_leaves.z_read" => {
+                let (id, len) = (args[0].as_str().unwrap().to_string(), args[1].as_i64().unwrap() as i32);
+                tap.call(func, &[&id, &len]);
+                let mut buf = vec![0u8; len.max(0) as usize];
+                ffi::set_errno(0);
+                let r = handle(&mut z, &id).map_or(NO_HANDLE, |h| zopen::z_read(h, &mut buf));
+                let err = ffi::errno();
+                let got: &[u8] = if r > 0 { &buf[..r as usize] } else { &[] };
+                tap.state(func, &got);
+                tap.ret(func, &r);
+                tap.state_after(func, &Raw(format!("[{err}]")));
+            }
+            "src_leaves.z_write" => {
+                let (id, data, len) = (args[0].as_str().unwrap().to_string(), bytes(&args[1]), args[2].as_i64().unwrap() as i32);
+                tap.call(func, &[&id, &data.as_slice(), &len]);
+                z.wrote = true;
+                ffi::set_errno(0);
+                let r = handle(&mut z, &id).map_or(NO_HANDLE, |h| zopen::z_write(h, &data));
+                let err = ffi::errno();
+                tap.ret(func, &r);
+                tap.state_after(func, &Raw(format!("[{err}]")));
+            }
+            "src_leaves.z_close" => {
+                let id = args[0].as_str().unwrap().to_string();
+                tap.call(func, &[&id]);
+                let h = z.handle.take().filter(|(hid, _)| *hid == id).map(|(_, h)| h);
+                ffi::set_errno(0);
+                let r = h.map_or(NO_HANDLE, |h| zopen::z_close(*h));
+                let err = ffi::errno();
+                tap.ret(func, &r);
+                tap.state_after(func, &Raw(format!("[{err}]")));
                 z.finish(tap, func);
             }
-        }
-        "src_leaves.z_read" => {
-            let (id, len) = (args[0].as_str().unwrap().to_string(), args[1].as_i64().unwrap() as i32);
-            tap.call(func, &[&id, &len]);
-            let mut buf = vec![0u8; len.max(0) as usize];
-            ffi::set_errno(0);
-            let r = handle(&mut z, &id).map_or(NO_HANDLE, |h| zopen::z_read(h, &mut buf));
-            let err = ffi::errno();
-            let got: &[u8] = if r > 0 { &buf[..r as usize] } else { &[] };
-            tap.state(func, &got);
-            tap.ret(func, &r);
-            tap.state_after(func, &Raw(format!("[{err}]")));
-        }
-        "src_leaves.z_write" => {
-            let (id, data, len) = (args[0].as_str().unwrap().to_string(), bytes(&args[1]), args[2].as_i64().unwrap() as i32);
-            tap.call(func, &[&id, &data.as_slice(), &len]);
-            z.wrote = true;
-            ffi::set_errno(0);
-            let r = handle(&mut z, &id).map_or(NO_HANDLE, |h| zopen::z_write(h, &data));
-            let err = ffi::errno();
-            tap.ret(func, &r);
-            tap.state_after(func, &Raw(format!("[{err}]")));
-        }
-        "src_leaves.z_close" => {
-            let id = args[0].as_str().unwrap().to_string();
-            tap.call(func, &[&id]);
-            let h = z.handle.take().filter(|(hid, _)| *hid == id).map(|(_, h)| h);
-            ffi::set_errno(0);
-            let r = h.map_or(NO_HANDLE, |h| zopen::z_close(*h));
-            let err = ffi::errno();
-            tap.ret(func, &r);
-            tap.state_after(func, &Raw(format!("[{err}]")));
-            z.finish(tap, func);
-        }
-        other => panic!("unknown seam function {other}"),
+            other => panic!("unknown seam function {other}"),
+            }
     })
     .unwrap();
+    zs.finish();
     eprintln!("replayed {n} calls");
     let _ = std::fs::remove_file(scratch_path());
 }

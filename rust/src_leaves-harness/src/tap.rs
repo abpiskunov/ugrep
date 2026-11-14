@@ -115,6 +115,9 @@ impl Tap {
         self.current_in.clear();
     }
     pub fn case(&self) -> &str { &self.case }
+    /// Makes `func` the enclosing inbound call again, as the C++ tap does when a nested call returns, so the events an
+    /// outer call emits after its nested calls carry its `in`.
+    pub fn resume(&mut self, func: &str) { self.current_in = func.to_string() }
     pub fn ret(&mut self, func: &str, v: &dyn ToNeutral) { self.emit("ret", func, &format!("\"ret\":{}", v.to_neutral())); self.current_in.clear() }
     pub fn err(&mut self, func: &str, v: &dyn ToNeutral) { self.emit("ret", func, &format!("\"err\":{}", v.to_neutral())); self.current_in.clear() }
     pub fn out_call(&mut self, callee: &str, args: &[&dyn ToNeutral]) {
