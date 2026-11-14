@@ -54,7 +54,8 @@ jobs:
         # owner instead.
         run: |
           base="origin/${{ github.base_ref }}"
-          if git diff --quiet "$base"...HEAD -- rust/ src/; then
+          # the replay harness crates (rust/*-harness) are judge files like migration/harness
+          if git diff --quiet "$base"...HEAD -- rust/ src/ ':(exclude,glob)rust/*-harness/**'; then
             echo "judge-only change: gates run with the proposed judge; code owner review required"
           else
             for p in migration/tools migration/validation-plan.yaml migration/masks migration/harness migration/env-matrix.json rust-toolchain.toml; do
@@ -63,6 +64,21 @@ jobs:
           fi
       - name: Build the C++ baseline (msvc/ugrep.sln, Base-Release|x64)
         run: powershell -NoProfile -File migration/harness/build-cpp.ps1
+      - name: Cache the codec libraries (built outside the repository)
+        if: hashFiles('migration/harness/zstream/fetch-codecs.ps1') != ''
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/../codec-src
+            ${{ github.workspace }}/../codec-build
+          key: codecs-${{ runner.os }}-${{ hashFiles('migration/harness/zstream/fetch-codecs.ps1', 'lzma/C/**') }}
+      - name: Codec libraries for the zstream replay harness and seam capture
+        # Pinned, SHA-256-verified sources in sibling folders of the workspace, static libraries in ../codec-build/lib
+        # (rust/src_leaves-harness/build.rs links them). A no-op for the libraries the cache restored.
+        run: |
+          if [ -f migration/harness/zstream/fetch-codecs.ps1 ]; then
+            powershell -NoProfile -File migration/harness/zstream/fetch-codecs.ps1
+          fi
       - name: Gates due for this change
         run: cargo run -q --release --locked --manifest-path "$TOOLS/Cargo.toml" -- gate-check --changed "origin/${{ github.base_ref }}"
       - name: Upload gate reports

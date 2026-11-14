@@ -1,6 +1,7 @@
 //! C runtime calls of the replay harness (FILE streams and errno), the only unsafe code of the harness.
 //! The harness hands the Rust `zopen` a real `FILE*` and observes what it left in the file and in errno,
-//! exactly as `migration/harness/src_leaves/zopen_driver.cpp` does for the C++.
+//! exactly as `migration/harness/src_leaves/zopen_driver.cpp` does for the C++; the Rust zstream gets the FILE of
+//! `migration/harness/zstream/zstream_driver.cpp` the same way.
 use core::ffi::{c_char, c_int, c_long, c_void};
 
 extern "C" {
@@ -67,5 +68,12 @@ pub fn end_state(f: *mut c_void, with_data: bool, quote: impl Fn(&[u8]) -> Strin
 pub fn close(f: *mut c_void) {
     unsafe {
         fclose(f);
+    }
+}
+
+/// `fseek(f, 0, SEEK_SET)`: the zstream driver rewinds the FILE before it opens the stream again.
+pub fn rewind(f: *mut c_void) {
+    unsafe {
+        fseek(f, 0, 0);
     }
 }
