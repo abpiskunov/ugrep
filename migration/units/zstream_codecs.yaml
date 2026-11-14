@@ -1,0 +1,14 @@
+schema: cpp-rust-unit/1
+unit: zstream_codecs
+component: src_leaves
+functions: [src_leaves.zs_open, src_leaves.zs_close, src_leaves.zs_decompressing, src_leaves.zs_next, src_leaves.zs_zipinfo, src_leaves.zs_zippeek, src_leaves.zs_is_bz, src_leaves.zs_is_xz, src_leaves.zs_is_lz4, src_leaves.zs_is_zstd, src_leaves.zs_is_br, src_leaves.zs_is_bz3, src_leaves.zs_is_Z, src_leaves.zs_is_zip, src_leaves.zs_is_7z, src_leaves.zs_is_rar]
+cpp_files: [src/zstream.cpp, src/zstream.hpp, src/zstream_seam.h]
+rust_files: rust/src_leaves/src/zstream_codecs.rs rust/src_leaves/src/zstream_core.rs rust/src_leaves/src/ffi/codecs.rs rust/src_leaves/src/ffi/zstream.rs
+rust_crate_name: src_leaves
+harness_crate_name: src_leaves-harness
+depends_on: [zopen]
+status: ported
+notes:
+  - 'D-zstream-unit: ported together with zstream_core in one task; both records list all zs_* functions. Codecs live in zstream_codecs.rs (decoders, zip/7z parsing) over ffi/codecs.rs (extern C zlib/bz2/lzma/lz4/zstd/viiz).'
+  - 'Intentional deviations: store-branch copy clamped to buf len (C++ overflows); Lz4 compact guards zloc > zlen (C++ wraps); zip crc32 skipped for num <= 0; stale zbuf bytes read as zeros; decoders call inflateEnd/BZ2_bzDecompressEnd/lzma_end on drop (C++ leaks). Brotli and bz3 are always unsupported in Rust (not built in the reference).'
+  - 'unit gate: GATE unit zstream_codecs: PASS (migration/out/gates/unit/zstream_codecs/report.json); seam-replay divergent_cases=0 over 33 zs_* cases; rust-tests 6 passed; policy-scan --plan clean. ~120 min. rust/src_leaves/build.rs links the retained codec libs from ..\codec-build\lib (static, bundled) so the umbrella and tests resolve them; ugrep_rust_zs_initial hands the sniffed plain-file prefix to the C++ adapter.'
