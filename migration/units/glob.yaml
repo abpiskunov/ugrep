@@ -7,7 +7,7 @@ rust_files: rust/src_leaves/src/signatures.rs
 rust_crate_name: src_leaves
 harness_crate_name: src_leaves-harness
 depends_on: []
-status: ported
+status: switched
 notes:
   - 'Port lives in signatures.rs because the replay harness includes only that file (#[path]); glob.rs not possible without editing the judge.'
   - 'unit gate: build-lint PASS, seam-replay PASS (184 cases, divergent_cases=0), cpp-build PASS, policy PASS; rust-tests FAIL only because cargo-nextest is not installed on this worker (environment blocker). ~4 min.'

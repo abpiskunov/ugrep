@@ -409,8 +409,9 @@ pub fn run_gate(plan: &Value, gate: &str, target: &str, ctx: &Ctx) -> R<Value> {
     Ok(report)
 }
 
-/// Gates due for a change: unit record -> unit or switch; catalog, corpus or masks ->
-/// the behavior gate of the component's stage; C++ sources or headers -> baseline.
+/// Gates due for a change: unit record -> unit or switch; a component's `switch_files` ->
+/// switch; catalog, corpus or masks -> the behavior gate of the component's stage; C++
+/// sources or headers -> baseline.
 ///
 /// The behavior gate follows the component's stage, read from what the change touches,
 /// because every stage changes the catalog or corpus and only the last can pass
@@ -457,6 +458,25 @@ pub fn changed_targets(base: &str, plan: &Value, mig: &Path, cwd: &Path) -> R<Ve
             let globs: Vec<String> = ["cpp_sources", "cpp_headers"].iter().flat_map(|k| str_list(get(cdef, k))).collect();
             if names.iter().any(|n| match_any_case(n, &globs)) {
                 todo.push(("baseline".into(), comp.clone()));
+            }
+            // The file that holds the build switch decides what ships. A change to it is a
+            // switch change even when no unit record says so. One file often holds every
+            // component's switch, so the diff must name this component's `switch_option`.
+            let switch_files = str_list(get(cdef, "switch_files"));
+            let touched: Vec<&String> = names.iter().filter(|n| match_any_case(n, &switch_files)).collect();
+            if !touched.is_empty() {
+                let option = get(cdef, "switch_option").and_then(Value::as_str).unwrap_or("");
+                let mut args = vec!["diff".to_string(), "-U0".into(), format!("{base}...HEAD"), "--".into()];
+                args.extend(touched.iter().map(|n| n.to_string()));
+                let args: Vec<&str> = args.iter().map(String::as_str).collect();
+                let diff = git_quiet(&args, cwd);
+                let names_option = option.is_empty()
+                    || diff
+                        .lines()
+                        .any(|l| (l.starts_with('+') || l.starts_with('-')) && l.contains(option));
+                if names_option {
+                    todo.push(("switch".into(), comp.clone()));
+                }
             }
         }
     }
@@ -563,6 +583,48 @@ mod tests {
         assert_eq!(format("{out}/x {{y}}", &f).unwrap(), "o/x {y}");
         assert_eq!(format("{nope}", &f).unwrap_err().0, 2);
         assert!(format("--base {base}", &f).unwrap_err().1.contains("--base REF"));
+    }
+
+    /// The Switch over task may forget to mark its units `switched`; the build file still decides.
+    #[test]
+    fn a_build_switch_change_is_due_for_the_switch_gate() {
+        let d = TempDir::new("gswitch");
+        let git = |args: &[&str]| {
+            let ok = std::process::Command::new("git").args(args).current_dir(d.path()).output().unwrap();
+            assert!(ok.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&ok.stderr));
+        };
+        let commit = |m: &str| {
+            git(&[
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                m,
+            ])
+        };
+        git(&["init", "-q"]);
+        d.write("msvc/rust.props", "<LeavesImpl>cpp</LeavesImpl>\n<CoreImpl>cpp</CoreImpl>\n");
+        git(&["add", "-A"]);
+        commit("base");
+        git(&["branch", "base"]);
+        d.write("msvc/rust.props", "<LeavesImpl>rust</LeavesImpl>\n<CoreImpl>cpp</CoreImpl>\n");
+        git(&["add", "-A"]);
+        commit("switch");
+        let plan = json!({"components": {
+                              "leaves": {"switch_files": ["msvc/rust.props"], "switch_option": "LeavesImpl"},
+                              "core": {"switch_files": ["msvc/rust.props"], "switch_option": "CoreImpl"},
+                              "other": {}},
+                          "gates": {"switch": {}}});
+        let due = changed_targets("base", &plan, &d.path().join("migration"), d.path()).unwrap();
+        assert_eq!(
+            due,
+            vec![("switch".to_string(), "leaves".to_string())],
+            "only the flipped component's switch is due"
+        );
     }
 
     /// A sandbox clone of a `master` repository has `origin/master` and no `origin/HEAD`.
