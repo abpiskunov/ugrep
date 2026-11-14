@@ -26,7 +26,7 @@ components:
   src_leaves:
     level: 0
     cpp_sources: "src/glob.cpp src/zopen.c"
-    cpp_headers: "src/glob.hpp src/zopen.h src/zstream.hpp src/flag.hpp"
+    cpp_headers: "src/glob.hpp src/zopen.h src/zstream.hpp src/flag.hpp src/zopen_facade.cpp src/zopen_seam.h src/zstream.cpp src/zstream_seam.h"   # seam facades: C++ the baseline must cover, not yet forbidden by linked-check
     rust_crate: rust/src_leaves
     harness_crate: rust/src_leaves-harness
     switch_option: CPP_RUST_IMPL_SRC_LEAVES

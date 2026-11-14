@@ -456,7 +456,13 @@ pub fn changed_targets(base: &str, plan: &Value, mig: &Path, cwd: &Path) -> R<Ve
     }
     if let Value::Object(cs) = &comps {
         for (comp, cdef) in cs {
-            let globs: Vec<String> = ["cpp_sources", "cpp_headers"].iter().flat_map(|k| str_list(get(cdef, k))).collect();
+            // The plan writes file lists as one whitespace-separated string (the same value is a
+            // `{cpp_sources}` placeholder), so split it: one string is not one glob.
+            let globs: Vec<String> = ["cpp_sources", "cpp_headers"]
+                .iter()
+                .flat_map(|k| str_list(get(cdef, k)))
+                .flat_map(|s| s.split_whitespace().map(String::from).collect::<Vec<_>>())
+                .collect();
             if names.iter().any(|n| match_any_case(n, &globs)) {
                 todo.push(("baseline".into(), comp.clone()));
             }
@@ -465,7 +471,10 @@ pub fn changed_targets(base: &str, plan: &Value, mig: &Path, cwd: &Path) -> R<Ve
             // `cleaned` unit, or whose default the file now sets to rust (`switch_rust`, a regex
             // over the file) even if Switch over forgot its unit records. A component still at
             // cpp is the baseline's business, however often the shared file names it.
-            let switch_files = str_list(get(cdef, "switch_files"));
+            let switch_files: Vec<String> = str_list(get(cdef, "switch_files"))
+                .iter()
+                .flat_map(|s| s.split_whitespace().map(String::from).collect::<Vec<_>>())
+                .collect();
             let touched: Vec<&String> = names.iter().filter(|n| match_any_case(n, &switch_files)).collect();
             if !touched.is_empty() {
                 let switched_unit = component_has_switched_unit(&cwd.join(&rel).join("units"), comp)?;
@@ -607,6 +616,30 @@ mod tests {
         assert_eq!(format("{out}/x {{y}}", &f).unwrap(), "o/x {y}");
         assert_eq!(format("{nope}", &f).unwrap_err().0, 2);
         assert!(format("--base {base}", &f).unwrap_err().1.contains("--base REF"));
+    }
+
+    /// The plan writes file lists as one whitespace-separated string; each entry is its own glob.
+    #[test]
+    fn a_change_to_a_listed_header_is_due_for_the_baseline() {
+        let d = TempDir::new("gbaseline");
+        let git = |args: &[&str]| {
+            let ok = std::process::Command::new("git").args(args).current_dir(d.path()).output().unwrap();
+            assert!(ok.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&ok.stderr));
+        };
+        let commit = |m: &str| git(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", m]);
+        git(&["init", "-q"]);
+        d.write("src/zstream.hpp", "a\n");
+        git(&["add", "-A"]);
+        commit("base");
+        git(&["branch", "base"]);
+        d.write("src/zstream.hpp", "b\n");
+        git(&["add", "-A"]);
+        commit("seam");
+        let plan = json!({"components": {"leaves": {"cpp_sources": "src/glob.cpp src/zopen.c",
+                                                    "cpp_headers": "src/glob.hpp src/zstream.hpp"}},
+                          "gates": {"baseline": {}}});
+        let due = changed_targets("base", &plan, &d.path().join("migration"), d.path()).unwrap();
+        assert_eq!(due, vec![("baseline".to_string(), "leaves".to_string())]);
     }
 
     /// The Switch over task may forget to mark its units `switched`; the build file still decides.
