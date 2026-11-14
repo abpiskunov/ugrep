@@ -35,7 +35,78 @@
 */
 
 #include "ugrep.hpp"
+#include "core_tap.hpp"
+#include "core_rust.hpp"
 #include <reflex/fuzzymatcher.h>
+
+// compile --bool search query into operator tree, normalize to CNF, and populate CNF AND-list of ALT-term lists
+void CNF::compile_cpp(const char *pattern)
+{
+  (void)OpTree(pattern, terms);
+}
+
+// quote a pattern with \Q and \E
+void CNF::quote_cpp(std::string& pattern)
+{
+  // when empty then nothing to quote
+  if (pattern.empty())
+    return;
+
+  size_t from = 0;
+  size_t to;
+
+  // replace each \E in the pattern with \E\\E\Q
+  while ((to = pattern.find("\\E", from)) != std::string::npos)
+  {
+    pattern.insert(to + 2, "\\\\E\\Q");
+    from = to + 7;
+  }
+
+  // enclose in \Q and \E
+  pattern.insert(0, "\\Q").append("\\E");
+}
+
+// anchor a pattern, when specified with -w or -x
+void CNF::anchor_cpp(std::string& pattern)
+{
+  // patterns that start with ^ or end with $ are already anchored
+  if (pattern.empty())
+  {
+    // -x: empty regex matches empty lines with ^$
+    if (flag_line_regexp)
+      pattern.assign("^$");
+  }
+  else if (flag_line_regexp)
+  {
+    // -x: make the regex line-anchored
+    // -G requires \( \) instead of ( )
+    const char *xleft = flag_mode == Mode::BRE ? "^\\(" : "^(?:";
+    const char *xright = flag_mode == Mode::BRE ? "\\)$" : ")$";
+    pattern.insert(0, xleft).append(xright);
+  }
+  else if (flag_word_regexp)
+  {
+    // -w: make the regex word-anchored (or implicitly done with matcher option W instead of \< and \>)
+    if (flag_mode == Mode::PERL)
+    {
+      // -P requires (?<!\w) (?!\w) instead of \< and \>
+#if defined(HAVE_PCRE2)
+      // PCRE2_EXTRA_MATCH_WORD does not work and \b(?:regex)\b is not correct anyway, so we roll out our own
+      const char *wleft = pattern.front() != '^' ? "(?<!\\w)(?:" : "(?:";
+      const char *wright = pattern.back() != '$' ? ")(?!\\w)" : ")";
+#else // Boost.Regex
+      const char *wleft = pattern.front() != '^' ? "(?<![[:word:]])(?:" : "(?:";
+      const char *wright = pattern.back() != '$' ? ")(?![[:word:]])" : ")";
+#endif
+      pattern.insert(0, wleft).append(wright);
+    }
+  }
+  else if (pattern.front() == '^' || pattern.back() == '$')
+  {
+    // enable -Y to match empty
+    flag_empty = true;
+  }
+}
 
 // parse a pattern into an operator tree using a recursive descent parser
 void CNF::OpTree::parse(const char *& pattern)
@@ -197,7 +268,7 @@ void CNF::OpTree::parse3(const char *& pattern)
 
         // if not -x then quote the string with \Q and \E
         if (flag_mode != Mode::FIXED)
-          quote(quoted);
+          quote_cpp(quoted);
 
         regex.append(quoted);
 
@@ -257,10 +328,10 @@ void CNF::OpTree::parse3(const char *& pattern)
     if (flag_line_regexp && regex.empty())
       regex.assign("^$");
     else if (flag_mode == Mode::FIXED)
-      quote(regex);
+      quote_cpp(regex);
 
     // -w and -x
-    anchor(regex);
+    anchor_cpp(regex);
   }
 }
 
@@ -474,7 +545,7 @@ void CNF::OpTree::add_to(Terms& terms) const
 }
 
 // add an ALT pattern or ALT-NOT pattern, optionally negated (option -N)
-void CNF::new_pattern(PATTERN mask, const char *pattern)
+void CNF::new_pattern_cpp(PATTERN mask, const char *pattern)
 {
   if (terms.empty())
     terms.emplace_back();
@@ -482,7 +553,7 @@ void CNF::new_pattern(PATTERN mask, const char *pattern)
   if (flag_bool)
   {
     // --bool: compile to CNF
-    compile(pattern);
+    compile_cpp(pattern);
   }
   else
   {
@@ -493,10 +564,10 @@ void CNF::new_pattern(PATTERN mask, const char *pattern)
 
     // -F
     if (flag_mode == Mode::FIXED)
-      quote(spattern);
+      quote_cpp(spattern);
 
     // -w and -x
-    anchor(spattern);
+    anchor_cpp(spattern);
 
     // -N PATTERN
     if ((mask & PATTERN::NEG) && !spattern.empty())
@@ -539,7 +610,7 @@ void CNF::new_pattern(PATTERN mask, const char *pattern)
 }
 
 // prune empty ALT terms and ALT terms with empty patterns that match anything
-void CNF::prune()
+void CNF::prune_cpp()
 {
   // -x: empty patterns match empty lines
   if (flag_line_regexp)
@@ -560,7 +631,7 @@ void CNF::prune()
 }
 
 // split the patterns at \n and \r newlines, when present
-void CNF::split()
+void CNF::split_cpp()
 {
   // --bool: newlines not present (already converted)
   if (flag_bool)
@@ -609,7 +680,7 @@ void CNF::split()
 }
 
 // report the CNF in readable form
-void CNF::report(FILE *output) const
+void CNF::report_cpp(FILE *output) const
 {
   if (empty() && flag_file.empty())
     return;
@@ -728,7 +799,7 @@ void CNF::report(FILE *output) const
 }
 
 // return all ALT terms of the CNF joined together
-std::string CNF::adjoin() const
+std::string CNF::adjoin_cpp() const
 {
   std::string adjoined;
   const char *sep = flag_mode == Mode::BRE ? "\\|" : "|";
@@ -773,10 +844,132 @@ std::string CNF::adjoin() const
 }
 
 // return the first ALT terms of the CNF
-std::string CNF::first() const
+std::string CNF::first_cpp() const
 {
   if (!terms.empty() && terms.front().front())
     return *terms.front().front();
 
   return "";
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// src_core seam facade (rust/src_core/SEAM.md): the public CNF functions keep their names and signatures and
+// dispatch to the legacy C++ bodies above or, with CPP_RUST_IMPL_SRC_CORE, to Rust. The legacy bodies never call
+// a facade function (no re-entry). The facade runs on the caller's thread; the CNF object stays owned by C++.
+// ---------------------------------------------------------------------------------------------------------------
+
+void CNF::compile(const char *pattern)
+{
+  TAP_CALL("src_core.cnf_compile", core_tap::terms(terms), std::string(pattern), core_tap::cnf_flags());
+#ifdef CPP_RUST_IMPL_SRC_CORE
+  core_rust::from_terms(terms, ugrep_rust::cnf_compile(core_rust::to_terms(terms), core_rust::to_slice(pattern), core_rust::cnf_flags()));
+#else
+  compile_cpp(pattern);
+#endif
+  TAP_STATE(core_tap::terms(terms));
+  TAP_RET(core_tap::none());
+}
+
+void CNF::new_pattern(PATTERN mask, const char *pattern)
+{
+  TAP_CALL("src_core.cnf_new_pattern", core_tap::terms(terms), static_cast<int>(mask), std::string(pattern), core_tap::cnf_flags());
+#ifdef CPP_RUST_IMPL_SRC_CORE
+  core_rust::from_terms(terms, ugrep_rust::cnf_new_pattern(core_rust::to_terms(terms), static_cast<int>(mask), core_rust::to_slice(pattern), core_rust::cnf_flags()));
+#else
+  new_pattern_cpp(mask, pattern);
+#endif
+  TAP_STATE(core_tap::terms(terms));
+  TAP_RET(core_tap::none());
+}
+
+void CNF::prune()
+{
+  TAP_CALL("src_core.cnf_prune", core_tap::terms(terms), core_tap::cnf_flags());
+#ifdef CPP_RUST_IMPL_SRC_CORE
+  core_rust::from_terms(terms, ugrep_rust::cnf_prune(core_rust::to_terms(terms), core_rust::cnf_flags()));
+#else
+  prune_cpp();
+#endif
+  TAP_STATE(core_tap::terms(terms));
+  TAP_RET(core_tap::none());
+}
+
+void CNF::split()
+{
+  TAP_CALL("src_core.cnf_split", core_tap::terms(terms), core_tap::cnf_flags());
+#ifdef CPP_RUST_IMPL_SRC_CORE
+  core_rust::from_terms(terms, ugrep_rust::cnf_split(core_rust::to_terms(terms), core_rust::cnf_flags()));
+#else
+  split_cpp();
+#endif
+  TAP_STATE(core_tap::terms(terms));
+  TAP_RET(core_tap::none());
+}
+
+void CNF::report(FILE *output) const
+{
+  TAP_CALL("src_core.cnf_report", core_tap::terms(terms), core_tap::cnf_flags());
+#ifdef CPP_RUST_IMPL_SRC_CORE
+  rust::Vec<uint8_t> text = ugrep_rust::cnf_report(core_rust::to_terms(terms), core_rust::cnf_flags());
+  core_rust::write_to(output, text);
+  TAP_RET(core_rust::to_string(text));
+#elif defined(CPP2RUST_TAP)
+  std::string text = core_tap::capture([this](FILE *f) { report_cpp(f); });
+  if (!text.empty())
+    fwrite(text.data(), 1, text.size(), output);
+  TAP_RET(text);
+#else
+  report_cpp(output);
+#endif
+}
+
+std::string CNF::adjoin() const
+{
+  TAP_CALL("src_core.cnf_adjoin", core_tap::terms(terms), core_tap::cnf_flags());
+#ifdef CPP_RUST_IMPL_SRC_CORE
+  std::string result = core_rust::to_string(ugrep_rust::cnf_adjoin(core_rust::to_terms(terms), core_rust::cnf_flags()));
+#else
+  std::string result = adjoin_cpp();
+#endif
+  TAP_RET(result);
+  return result;
+}
+
+std::string CNF::first() const
+{
+  TAP_CALL("src_core.cnf_first", core_tap::terms(terms));
+#ifdef CPP_RUST_IMPL_SRC_CORE
+  std::string result = core_rust::to_string(ugrep_rust::cnf_first(core_rust::to_terms(terms)));
+#else
+  std::string result = first_cpp();
+#endif
+  TAP_RET(result);
+  return result;
+}
+
+void CNF::quote(std::string& pattern)
+{
+  TAP_CALL("src_core.cnf_quote", pattern);
+#ifdef CPP_RUST_IMPL_SRC_CORE
+  pattern = core_rust::to_string(ugrep_rust::cnf_quote(core_rust::to_slice(pattern)));
+#else
+  quote_cpp(pattern);
+#endif
+  TAP_STATE(pattern);
+  TAP_RET(core_tap::none());
+}
+
+void CNF::anchor(std::string& pattern)
+{
+  TAP_CALL("src_core.cnf_anchor", pattern, core_tap::cnf_flags());
+#ifdef CPP_RUST_IMPL_SRC_CORE
+  ugrep_rust::CnfAnchored a = ugrep_rust::cnf_anchor(core_rust::to_slice(pattern), core_rust::cnf_flags());
+  pattern = core_rust::to_string(a.pattern);
+  if (a.enable_empty)
+    flag_empty = true; // the only flag this seam writes: the C++ side stays the owner, Rust returns the new value
+#else
+  anchor_cpp(pattern);
+#endif
+  TAP_STATE(pattern);
+  TAP_RET(core_tap::none());
 }

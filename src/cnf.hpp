@@ -117,10 +117,7 @@ class CNF {
   void new_pattern(PATTERN mask, const char *pattern);
 
   // compile --bool search query into operator tree, normalize to CNF, and populate CNF AND-list of ALT-term lists
-  void compile(const char *pattern)
-  {
-    (void)OpTree(pattern, terms);
-  }
+  void compile(const char *pattern);
 
   // return the CNF AND-list of ALT-term lists
   const Terms& lists() const
@@ -144,69 +141,23 @@ class CNF {
   std::string first() const;
 
   // quote a pattern with \Q and \E
-  static void quote(std::string& pattern)
-  {
-    // when empty then nothing to quote
-    if (pattern.empty())
-      return;
-
-    size_t from = 0;
-    size_t to;
-
-    // replace each \E in the pattern with \E\\E\Q
-    while ((to = pattern.find("\\E", from)) != std::string::npos)
-    {
-      pattern.insert(to + 2, "\\\\E\\Q");
-      from = to + 7;
-    }
-
-    // enclose in \Q and \E
-    pattern.insert(0, "\\Q").append("\\E");
-  }
+  static void quote(std::string& pattern);
 
   // anchor a pattern, when specified with -w or -x
-  static void anchor(std::string& pattern)
-  {
-    // patterns that start with ^ or end with $ are already anchored
-    if (pattern.empty())
-    {
-      // -x: empty regex matches empty lines with ^$
-      if (flag_line_regexp)
-        pattern.assign("^$");
-    }
-    else if (flag_line_regexp)
-    {
-      // -x: make the regex line-anchored
-      // -G requires \( \) instead of ( )
-      const char *xleft = flag_mode == Mode::BRE ? "^\\(" : "^(?:";
-      const char *xright = flag_mode == Mode::BRE ? "\\)$" : ")$";
-      pattern.insert(0, xleft).append(xright);
-    }
-    else if (flag_word_regexp)
-    {
-      // -w: make the regex word-anchored (or implicitly done with matcher option W instead of \< and \>)
-      if (flag_mode == Mode::PERL)
-      {
-        // -P requires (?<!\w) (?!\w) instead of \< and \>
-#if defined(HAVE_PCRE2)
-        // PCRE2_EXTRA_MATCH_WORD does not work and \b(?:regex)\b is not correct anyway, so we roll out our own
-        const char *wleft = pattern.front() != '^' ? "(?<!\\w)(?:" : "(?:";
-        const char *wright = pattern.back() != '$' ? ")(?!\\w)" : ")";
-#else // Boost.Regex
-        const char *wleft = pattern.front() != '^' ? "(?<![[:word:]])(?:" : "(?:";
-        const char *wright = pattern.back() != '$' ? ")(?![[:word:]])" : ")";
-#endif
-        pattern.insert(0, wleft).append(wright);
-      }
-    }
-    else if (pattern.front() == '^' || pattern.back() == '$')
-    {
-      // enable -Y to match empty
-      flag_empty = true;
-    }
-  }
+  static void anchor(std::string& pattern);
 
  protected:
+
+  // legacy C++ bodies behind the src_core seam facade (see rust/src_core/SEAM.md); they never call a facade function
+  void compile_cpp(const char *pattern);
+  static void quote_cpp(std::string& pattern);
+  static void anchor_cpp(std::string& pattern);
+  void new_pattern_cpp(PATTERN mask, const char *pattern);
+  void prune_cpp();
+  void split_cpp();
+  void report_cpp(FILE *output) const;
+  std::string adjoin_cpp() const;
+  std::string first_cpp() const;
 
   struct OpTree {
 

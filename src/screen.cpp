@@ -35,6 +35,7 @@
 */
 
 #include "screen.hpp"
+#include "tui_entry.hpp"
 #include <cctype>
 #include <string>
 #include <fcntl.h>
@@ -893,3 +894,9 @@ bool Screen::sel                = false;
 bool Screen::double_width       = false;
 bool Screen::double_width_Emoji = false;
 bool Screen::double_width_CJK   = false;
+
+// entry point for the search core, see tui_entry.hpp
+size_t tui_screen_getsize()
+{
+  return Screen::getsize();
+}

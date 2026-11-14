@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["rust_umbrella", "src_leaves", "src_leaves-harness"]
+members = ["rust_umbrella", "src_leaves", "src_leaves-harness", "src_core"]
 
 # Component crates (rust/src_leaves, rust/src_core, ...) and their harness crates are added by the
 # Prepare seam task of each component; rust_umbrella re-exports them as one staticlib.
