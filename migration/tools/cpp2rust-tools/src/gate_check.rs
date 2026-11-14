@@ -1,6 +1,7 @@
 //! gate-check: run a gate's checks from the accepted plan and compare results to its thresholds.
 
 use crate::util::*;
+use regex::Regex;
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -459,22 +460,25 @@ pub fn changed_targets(base: &str, plan: &Value, mig: &Path, cwd: &Path) -> R<Ve
             if names.iter().any(|n| match_any_case(n, &globs)) {
                 todo.push(("baseline".into(), comp.clone()));
             }
-            // The file that holds the build switch decides what ships. A change to it is a
-            // switch change even when no unit record says so. One file often holds every
-            // component's switch, so the diff must name this component's `switch_option`.
+            // The file that holds the build switch decides what ships. A change to it re-runs
+            // the switch gate of every component that ships as Rust: one with a `switched` or
+            // `cleaned` unit, or whose default the file now sets to rust (`switch_rust`, a regex
+            // over the file) even if Switch over forgot its unit records. A component still at
+            // cpp is the baseline's business, however often the shared file names it.
             let switch_files = str_list(get(cdef, "switch_files"));
             let touched: Vec<&String> = names.iter().filter(|n| match_any_case(n, &switch_files)).collect();
             if !touched.is_empty() {
-                let option = get(cdef, "switch_option").and_then(Value::as_str).unwrap_or("");
-                let mut args = vec!["diff".to_string(), "-U0".into(), format!("{base}...HEAD"), "--".into()];
-                args.extend(touched.iter().map(|n| n.to_string()));
-                let args: Vec<&str> = args.iter().map(String::as_str).collect();
-                let diff = git_quiet(&args, cwd);
-                let names_option = option.is_empty()
-                    || diff
-                        .lines()
-                        .any(|l| (l.starts_with('+') || l.starts_with('-')) && l.contains(option));
-                if names_option {
+                let switched_unit = component_has_switched_unit(&cwd.join(&rel).join("units"), comp)?;
+                let defaults_to_rust = match get(cdef, "switch_rust").and_then(Value::as_str) {
+                    Some(pattern) => {
+                        let re = Regex::new(pattern).map_err(|e| bad_input(format!("gate-check: {comp}.switch_rust: {e}")))?;
+                        touched
+                            .iter()
+                            .any(|n| std::fs::read_to_string(cwd.join(n)).is_ok_and(|t| re.is_match(&t)))
+                    }
+                    None => false,
+                };
+                if switched_unit || defaults_to_rust {
                     todo.push(("switch".into(), comp.clone()));
                 }
             }
@@ -486,6 +490,26 @@ pub fn changed_targets(base: &str, plan: &Value, mig: &Path, cwd: &Path) -> R<Ve
         .into_iter()
         .filter(|t| gates.get(&t.0).is_some() && seen.insert(t.clone()))
         .collect())
+}
+
+/// Whether a unit record of `comp` in `units` is `switched` or `cleaned`.
+fn component_has_switched_unit(units: &Path, comp: &str) -> R<bool> {
+    let Ok(entries) = std::fs::read_dir(units) else {
+        return Ok(false);
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("yaml") {
+            continue;
+        }
+        let rec = load_yaml_file(&path.to_string_lossy())?;
+        if rec.get("component").map(py_str).as_deref() == Some(comp)
+            && matches!(rec.get("status").and_then(Value::as_str), Some("switched" | "cleaned"))
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// The behavior gate a change to `comp`'s catalog, corpus or masks is held to (see
@@ -607,23 +631,35 @@ mod tests {
             ])
         };
         git(&["init", "-q"]);
-        d.write("msvc/rust.props", "<LeavesImpl>cpp</LeavesImpl>\n<CoreImpl>cpp</CoreImpl>\n");
+        let props = |leaves: &str, extra: &str| format!("<LeavesImpl>{leaves}</LeavesImpl>\n<CoreImpl>cpp</CoreImpl>\n{extra}");
+        let plan = json!({"components": {
+                              "leaves": {"switch_files": ["msvc/rust.props"], "switch_rust": "<LeavesImpl>rust<"},
+                              "core": {"switch_files": ["msvc/rust.props"], "switch_rust": "<CoreImpl>rust<"},
+                              "other": {}},
+                          "gates": {"switch": {}}});
+        let mig = d.path().join("migration");
+        d.write("msvc/rust.props", &props("cpp", ""));
         git(&["add", "-A"]);
         commit("base");
         git(&["branch", "base"]);
-        d.write("msvc/rust.props", "<LeavesImpl>rust</LeavesImpl>\n<CoreImpl>cpp</CoreImpl>\n");
+
+        // Switch over flipped the default but forgot its unit record.
+        d.write("msvc/rust.props", &props("rust", ""));
         git(&["add", "-A"]);
         commit("switch");
-        let plan = json!({"components": {
-                              "leaves": {"switch_files": ["msvc/rust.props"], "switch_option": "LeavesImpl"},
-                              "core": {"switch_files": ["msvc/rust.props"], "switch_option": "CoreImpl"},
-                              "other": {}},
-                          "gates": {"switch": {}}});
-        let due = changed_targets("base", &plan, &d.path().join("migration"), d.path()).unwrap();
+        let leaves = vec![("switch".to_string(), "leaves".to_string())];
+        assert_eq!(changed_targets("base", &plan, &mig, d.path()).unwrap(), leaves);
+
+        // A later seam edits a line naming every component: only the one shipping as Rust is due.
+        git(&["branch", "-f", "base"]);
+        d.write("migration/units/glob.yaml", "unit: glob\ncomponent: leaves\nstatus: switched\n");
+        d.write("msvc/rust.props", &props("rust", "<Link>LeavesImpl CoreImpl</Link>\n"));
+        git(&["add", "-A"]);
+        commit("seam");
         assert_eq!(
-            due,
-            vec![("switch".to_string(), "leaves".to_string())],
-            "only the flipped component's switch is due"
+            changed_targets("base", &plan, &mig, d.path()).unwrap(),
+            leaves,
+            "a cpp component is the baseline's"
         );
     }
 
