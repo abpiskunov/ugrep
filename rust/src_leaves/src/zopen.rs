@@ -296,7 +296,7 @@ fn cl_block(zs: &mut ZState) -> i32 {
             zs.in_count / r
         }
     } else {
-        (zs.in_count << 8) / zs.bytes_out
+        (zs.in_count << 8).checked_div(zs.bytes_out).unwrap_or(0x7fff_ffff)
     };
     if rat > zs.ratio {
         zs.ratio = rat;
@@ -400,6 +400,11 @@ pub fn z_read(zs: &mut ZState, out: &mut [u8]) -> i32 {
                 code = zs.oldcode;
             }
             while code >= 256 {
+                // a crafted stream can make the prefix chain a cycle; the C overruns its stack here
+                if zs.stack.len() >= 1 << BITS {
+                    cfile::set_errno(cfile::EINVAL);
+                    return -1;
+                }
                 zs.stack.push(zs.suffix[code as usize]);
                 code = zs.codetab[code as usize] as c_long;
             }
@@ -573,6 +578,29 @@ mod tests {
         assert!(z_open(std::ptr::null_mut(), b"r", 17, 0).is_none());
         assert!(z_open(std::ptr::null_mut(), b"r", -1, 0).is_none());
         assert!(z_open(std::ptr::null_mut(), b"w", 16, 0).is_some());
+    }
+
+    // D-zopen-2: a prefix cycle in a crafted stream fails with -1 instead of growing the decode stack forever
+    #[test]
+    fn crafted_prefix_cycle_is_bounded() {
+        let mut codes: Vec<u32> = vec![300];
+        codes.extend(std::iter::repeat_n(65, 42));
+        codes.extend([257, 65, 300]);
+        let mut data = vec![0x1f, 0x9d, 0x90];
+        let (mut acc, mut nbits) = (0u32, 0u32);
+        for c in codes {
+            acc |= c << nbits;
+            nbits += 9;
+            while nbits >= 8 {
+                data.push(acc as u8);
+                acc >>= 8;
+                nbits -= 8;
+            }
+        }
+        if nbits > 0 {
+            data.push(acc as u8);
+        }
+        assert_eq!(decompress(&data, 0), Err(-1));
     }
 
     // D-zopen-1 (Q-zopen-6): handle misuse that crashes the C returns -1 here.

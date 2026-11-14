@@ -24,6 +24,9 @@ One line per user decision. The id is the `ask_user` question id. Tasks append; 
 | Q-zopen-5 (Triage, 2026-11-14) | behavior triage | B-src_leaves-039: truncated .Z stream reads as clean EOF with shorter data | bug-preserve | catalog B-src_leaves-039 |
 | Q-zopen-6 (Triage, 2026-11-14) | behavior triage | B-src_leaves-041: three handle-misuse paths segfault in C++ | bug-fix (return -1 / 0, no crash; Rust-side tests only) | catalog B-src_leaves-041, plan D-zopen-1 |
 | Q-zopen-masks (Triage, 2026-11-14) | mask approval | src_leaves zopen: proposed masks (none; 289 seam cases byte-identical C++ vs C++); no header change to src/zopen.h | no masks, no header change | `masks/src_leaves.json` |
+| D-zopen-2 (Port review, 2026-11-14) | bug-fix | A crafted .Z stream can make the decode prefix chain a cycle (first code unchecked, e.g. codes `[300] + [65]*42 + [257, 65, 300]`); the C has undefined behaviour (de_stack overrun), the Rust would grow its stack without bound. Rust caps the decode stack at `1 << BITS`, sets errno EINVAL and returns -1 like the existing bad-stream error. Same class as Q-zopen-6 (fail safely) | bug-fix, Rust-side test `crafted_prefix_cycle_is_bounded` | `rust/src_leaves/src/zopen.rs` |
+| D-zopen-3 (Port review, 2026-11-14) | intentional difference | After a mid-stream bad-code error a further `z_read` returns -1 in Rust; the C resumes and emits garbage. ugrep closes on num <= 0, so it is unaffected | intended | `rust/src_leaves/src/zopen.rs` |
+| D-zopen-4 (Port review, 2026-11-14) | dont-care | Writer divide by zero when `bytes_out` wraps on a 32-bit `c_long` is writer-only (covered by Q-zopen-1); Rust uses `checked_div` so it cannot panic across FFI | dont-care | `rust/src_leaves/src/zopen.rs` |
 
 Scenario settings: abi-stability free; bug-compatibility ask-per-behavior; end-state hybrid-with-retained-cpp;
 switch-default cpp-until-switch-task; ui-strategy keep-shell; migration-scope: ugrep's own `src/`
