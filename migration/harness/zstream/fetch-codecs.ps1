@@ -23,7 +23,11 @@ foreach ($p in $pins) {
   if ($h -ne $p.sha) { Write-Error "SHA-256 mismatch for $($p.file): $h"; exit 2 }
   $dest = Join-Path $base $p.dir
   if (-not (Test-Path $dest)) {
-    tar -xzf $f -C $arch
+    # the Windows bsdtar: a GNU tar earlier on PATH (Git Bash, CI's bash steps) reads "D:\..." as a remote host
+    $tar = Join-Path $env:SystemRoot "System32\tar.exe"
+    if (-not (Test-Path $tar)) { $tar = "tar" }
+    & $tar -xzf $f -C $arch
+    if ($LASTEXITCODE) { Write-Error "extract failed: $f"; exit 2 }
     Move-Item (Join-Path $arch ($p.file -replace "\.tar\.gz$", "")) $dest
   }
 }
