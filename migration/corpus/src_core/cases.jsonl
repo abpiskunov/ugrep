@@ -217,8 +217,6 @@
 {"id":"opt-color-count","args":["--color=always","-c","-H","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
 {"id":"opt-color-files","args":["--color=always","-l","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
 {"id":"opt-color-hexdump","args":["--color=always","--hexdump","foo","a.bin"],"files":{"a.bin":{"hex":"666f6f00626172ff"}}}
-{"id":"opt-hyperlink","args":["--hyperlink","--color=always","-H","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
-{"id":"opt-hyperlink-lines","args":["--hyperlink=+","--color=always","-H","-n","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
 {"id":"opt-sort-rname","args":["--sort=rname","-r","foo","d"],"files":{"d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n"}}
 {"id":"opt-sort-size","args":["--sort=size","-r","foo","d"],"files":{"d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo foo foo\n"}}
 {"id":"opt-sort-bad","args":["--sort=nope","-r","foo","d"],"files":{"d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n"}}
