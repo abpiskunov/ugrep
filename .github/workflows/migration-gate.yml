@@ -64,13 +64,19 @@ jobs:
           fi
       - name: Build the C++ baseline (msvc/ugrep.sln, Base-Release|x64)
         run: powershell -NoProfile -File migration/harness/build-cpp.ps1
+      - name: Codec library location (sibling folders of the workspace)
+        if: hashFiles('migration/harness/zstream/fetch-codecs.ps1') != ''
+        # actions/cache rejects '..' in a path: name the parent of the workspace absolutely
+        run: |
+          ws="$(cygpath -m "$GITHUB_WORKSPACE")"
+          echo "CODEC_ROOT=${ws%/*}" >> "$GITHUB_ENV"
       - name: Cache the codec libraries (built outside the repository)
         if: hashFiles('migration/harness/zstream/fetch-codecs.ps1') != ''
         uses: actions/cache@v4
         with:
           path: |
-            ${{ github.workspace }}/../codec-src
-            ${{ github.workspace }}/../codec-build
+            ${{ env.CODEC_ROOT }}/codec-src
+            ${{ env.CODEC_ROOT }}/codec-build
           key: codecs-${{ runner.os }}-${{ hashFiles('migration/harness/zstream/fetch-codecs.ps1', 'lzma/C/**') }}
       - name: Codec libraries for the zstream replay harness and seam capture
         # Pinned, SHA-256-verified sources in sibling folders of the workspace, static libraries in ../codec-build/lib
