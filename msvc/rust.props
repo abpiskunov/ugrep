@@ -14,7 +14,7 @@
     <CPP_RUST_IMPL_SRC_INDEXER Condition="'$(CPP_RUST_IMPL_SRC_INDEXER)'==''">cpp</CPP_RUST_IMPL_SRC_INDEXER>
     <CppRustTap Condition="'$(CppRustTap)'==''">false</CppRustTap>
     <RustRoot>$(MSBuildThisFileDirectory)..\rust\</RustRoot>
-    <RustTargetDir>$(MSBuildThisFileDirectory)..\build\cargo</RustTargetDir>
+    <RustTargetDir>$(MSBuildThisFileDirectory)..\build\cargo\$(MSBuildProjectName)</RustTargetDir>
     <RustUmbrellaLib>$(RustTargetDir)\release\rust_umbrella.lib</RustUmbrellaLib>
     <RustLinkUmbrella>false</RustLinkUmbrella>
     <RustLinkUmbrella Condition="'$(CPP_RUST_IMPL_SRC_LEAVES)'=='rust' Or '$(CPP_RUST_IMPL_SRC_CORE)'=='rust' Or '$(CPP_RUST_IMPL_SRC_TUI)'=='rust' Or '$(CPP_RUST_IMPL_SRC_INDEXER)'=='rust'">true</RustLinkUmbrella>
