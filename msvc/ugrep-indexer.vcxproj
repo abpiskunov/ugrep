@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Base-Debug|Win32">
@@ -103,7 +103,9 @@
     <ClCompile Include="..\lib\input.cpp" />
     <ClCompile Include="..\src\glob.cpp" />
     <ClCompile Include="..\src\ugrep-indexer.cpp" />
-    <ClCompile Include="..\src\zopen.c" />
+    <ClCompile Include="..\src\zopen.c">
+      <PreprocessorDefinitions>ZOPEN_FACADE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
     <ClCompile Include="..\src\zopen_facade.cpp" />
   </ItemGroup>
   <ItemGroup>
