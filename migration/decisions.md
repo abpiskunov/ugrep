@@ -55,3 +55,4 @@ Foundation notes (not user decisions):
 
 Kinds: scope, third-party, plan acceptance, contract, policy, mask approval, behavior triage
 (`intended`, `bug-preserve`, `bug-fix`, `dont-care`), header change, rebaseline, go/no-go.
+| D-version-simd (Integrating CI fix, 2026-11-14) | mask | src_core surface case version@0 diverged on CI: --version prints +avx2 (recording host) vs +avx512 (runner); host CPU noise | Approved rewrite `WIN64 \+avx\w*` -> `WIN64 +avx` in masks/src_core.json | operator | `migration/masks/src_core.json` |

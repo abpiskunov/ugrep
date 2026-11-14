@@ -1,1 +1,1 @@
-{"schema":"cpp2rust-masks/1","masks":[],"rewrites":[]}
+{"schema":"cpp2rust-masks/1","masks":[],"rewrites":[{"pattern":"WIN64 \\+avx\\w*","replace":"WIN64 +avx","approved":"D-version-simd","note":"--version names the SIMD level of the host CPU (recorded avx2, CI runner avx512); environment noise, not behavior"}]}
