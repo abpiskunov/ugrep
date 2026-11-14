@@ -148,6 +148,17 @@ class CNF {
 
  protected:
 
+  // legacy C++ bodies behind the src_core seam facade (see rust/src_core/SEAM.md); they never call a facade function
+  void compile_cpp(const char *pattern);
+  static void quote_cpp(std::string& pattern);
+  static void anchor_cpp(std::string& pattern);
+  void new_pattern_cpp(PATTERN mask, const char *pattern);
+  void prune_cpp();
+  void split_cpp();
+  void report_cpp(FILE *output) const;
+  std::string adjoin_cpp() const;
+  std::string first_cpp() const;
+
   struct OpTree {
 
     // a node is either NONE (a leaf node with a regex pattern) or an AND, OR, NOT operation with a list of OpTree operands

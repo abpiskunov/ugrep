@@ -35,11 +35,13 @@
 */
 
 #include "stats.hpp"
+#include "core_tap.hpp"
+#include "core_rust.hpp"
 #include <cstdlib>
 #include <cstdio>
 
-// report the statistics
-void Stats::report(FILE *output)
+// report the statistics (legacy C++ body behind the src_core seam facade below)
+void Stats::report_cpp(FILE *output)
 {
   size_t sf = searched_files();
   size_t sd = searched_dirs();
@@ -203,6 +205,39 @@ void Stats::report(FILE *output)
     fprintf(output, "  --include-dir=\"%s\"%s%s" NEWLINESTR, i.c_str(), i.front() == '!' ? " (negated)" : "", &i < &flag_all_include_dir.front() + flag_include_iglob_dir_size ? " (ignore case)" : "");
   for (const auto& i : flag_all_exclude_dir)
     fprintf(output, "  --exclude-dir=\"%s\"%s%s" NEWLINESTR, i.c_str(), i.front() == '!' ? " (negated)" : "", &i < &flag_all_exclude_dir.front() + flag_exclude_iglob_dir_size ? " (ignore case)" : "");
+}
+
+// report the statistics: src_core seam facade, dispatches to report_cpp() or to Rust (SEAM.md)
+void Stats::report(FILE *output)
+{
+  TAP_CALL("src_core.stats_report");
+#ifdef CPP_RUST_IMPL_SRC_CORE
+  ugrep_rust::StatsInput in = core_rust::stats_input();
+  in.searched_files = searched_files();
+  in.searched_dirs = searched_dirs();
+  in.searched_indexed = searched_indexed();
+  in.searched_skipped = searched_skipped();
+  in.searched_changed = searched_changed();
+  in.searched_added = searched_added();
+  in.searched_lines = searched_lines();
+  in.found_files = found_files();
+  in.found_parts = found_parts();
+  in.found_matches = found_matches();
+  in.warnings = Static::warnings;
+  in.threads = Static::threads;
+  in.elapsed_ms = reflex::timer_elapsed(timer);
+  in.ignore = core_rust::to_bytes_vec(ignore);
+  rust::Vec<uint8_t> text = ugrep_rust::stats_report(in);
+  core_rust::write_to(output, text);
+  TAP_RET(core_rust::to_string(text));
+#elif defined(CPP2RUST_TAP)
+  std::string text = core_tap::capture([](FILE *f) { report_cpp(f); });
+  if (!text.empty())
+    fwrite(text.data(), 1, text.size(), output);
+  TAP_RET(text);
+#else
+  report_cpp(output);
+#endif
 }
 
 reflex::timer_type       Stats::timer;
