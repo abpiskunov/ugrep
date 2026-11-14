@@ -105,7 +105,11 @@ fn stats_input(a: &[Value]) -> StatsInput {
         warnings: n(11),
         threads: n(12),
         elapsed_ms: a[13].as_str().unwrap().parse().unwrap(),
-        ignore: split_items(&bytes(&a[14]), b'\n'),
+        // core_tap::join ends every item with '\n': drop the trailing empty item
+        ignore: {
+            let raw = bytes(&a[14]);
+            split_items(raw.strip_suffix(b"\n").unwrap_or(&raw), b'\n')
+        },
         ..Default::default()
     };
     let flags = bytes(&a[0]);

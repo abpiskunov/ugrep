@@ -1,6 +1,6 @@
 # Behavior catalog of component src_core (src/ugrep.cpp, output.cpp, stats.cpp, cnf.cpp, mmap.hpp).
 # Every entry was observed by running the C++ (Base-Release|x64, MSVC, LC_ALL=C TZ=UTC); the cases are in
-# migration/corpus/src_core/{cases,round1.cases,stats.cases}.jsonl (surface), the seam trace in seam/all.trace.jsonl.
+# migration/corpus/src_core/{cases,stats.cases}.jsonl (surface), the seam trace in seam/all.trace.jsonl.
 # Entries with status hypothesis and suspicious true are for the Triage task.
 schema: cpp-rust-behavior/1
 component: src_core
@@ -36,13 +36,13 @@ observation:
     compared: [return]
     excluded: []
   src_core.cnf_quote:
-    channels: [return]
-    compared: []
-    excluded: [{channel: return, reason: "no recorded case calls it (see uncovered); the trace has no events"}]
-  src_core.cnf_anchor:
     channels: [state]
     compared: [state]
     excluded: []
+  src_core.cnf_anchor:
+    channels: [state]
+    compared: [state]
+    excluded: [{channel: state, reason: "flag_empty, the one flag CNF::anchor writes, is not recorded by the tap; only the anchored pattern is compared"}]
   src_core.stats_report:
     channels: [return]
     compared: [return]
@@ -99,7 +99,7 @@ behaviors:
     evidence: ["case:cnf-bool-empty-paren", "case:cnf-bool-empty"]
     origin: capture
   - id: B-src_core-009
-    statement: "`--bool` combines with -i, -F, -G, -P, -w, -x, -v, -o, -c, -l, -L, --fuzzy and --best-match; every term gets the mode, anchoring and case folding of the flags"
+    statement: "`--bool` combines with -i, -F, -G, -w, -x, -v, -o, -c, -l, -L, --fuzzy and --best-match; every term gets the mode, anchoring and case folding of the flags; with -P the build without PCRE2 (have_pcre2=0) stops with exit 2 and `option -P is not available in this build configuration` (case:cnf-bool-perl)"
     kind: normal
     status: observed
     evidence: ["case:cnf-bool-ignore-case", "case:cnf-bool-fixed", "case:cnf-bool-bre", "case:cnf-bool-perl", "case:cnf-bool-word", "case:cnf-bool-line", "case:cnf-bool-invert", "case:cnf-bool-only-matching", "case:cnf-bool-fuzzy", "case:cnf-bool-best-match", "case:cnf-bool-files", "case:cnf-bool-files-without"]
@@ -111,13 +111,13 @@ behaviors:
     evidence: ["case:cnf-file-f", "case:cnf-file-f-empty-line", "case:cnf-file-f-empty-file", "case:cnf-file-f-bool", "case:cnf-file-f-missing", "case:cnf-file-f-crlf", "case:cnf-file-f-with-e", "case:cnf-file-f-files"]
     origin: capture
   - id: B-src_core-011
-    statement: "A pattern with embedded newlines is split into alternatives, one per line, in every mode (-E, -F, -G, -P, -w, -x)"
+    statement: "A pattern with embedded newlines is split into alternatives, one per line, in every mode (-E, -F, -G, -w, -x); with -P this build exits 2 with `option -P is not available in this build configuration` (case:cnf-nl-pattern-perl)"
     kind: normal
     status: observed
     evidence: ["case:cnf-nl-pattern", "case:cnf-nl-pattern-fixed", "case:cnf-nl-pattern-perl", "case:cnf-nl-pattern-bre", "case:cnf-nl-pattern-trailing", "case:cnf-nl-pattern-empty-line", "case:cnf-nl-pattern-word", "case:cnf-nl-pattern-line", "case:cnf-nl-pattern-icase-fixed"]
     origin: capture
   - id: B-src_core-012
-    statement: "`-x` anchors the whole pattern to the line and `-w` to word boundaries in each mode; `^` and `$` in the pattern and `-x`/`-w` together are anchored as recorded"
+    statement: "`-x` anchors the whole pattern to the line and `-w` to word boundaries in each mode except -P (exit 2, `option -P is not available in this build configuration`: case:cnf-anchor-line-perl, case:cnf-anchor-word-perl); `^` and `$` in the pattern and `-x`/`-w` together are anchored as recorded"
     kind: normal
     status: observed
     evidence: ["case:cnf-anchor-line", "case:cnf-anchor-line-bre", "case:cnf-anchor-line-fixed", "case:cnf-anchor-line-perl", "case:cnf-anchor-word", "case:cnf-anchor-word-bre", "case:cnf-anchor-word-fixed", "case:cnf-anchor-word-perl", "case:cnf-anchor-word-line", "case:cnf-anchor-caret", "case:cnf-anchor-dollar", "case:cnf-anchor-line-caret", "case:cnf-anchor-empty-x", "case:cnf-anchor-empty-w"]
@@ -171,7 +171,7 @@ behaviors:
     evidence: ["case:stats-quiet", "case:stats-files-with-matches", "case:stats-files-without-match", "case:stats-count", "case:stats-only-matching", "case:stats-ungroup", "case:stats-format", "case:stats-json"]
     origin: capture
   - id: B-src_core-021
-    statement: "`--stats` after `--bool`, `--and`, `--not` and `-f` prints the CNF in `Lines matched if:` form"
+    statement: "`--stats` after `--bool`, `--and`, `--not` and `-f` prints the CNF in `Lines matched if:` form; `--stats` with -P exits 2 in this build (case:stats-mode-perl)"
     kind: normal
     status: observed
     evidence: ["case:stats-fuzzy", "case:stats-bool", "case:stats-bool-files", "case:stats-bool-not-or", "case:stats-and-not", "case:stats-mode-fixed", "case:stats-mode-bre", "case:stats-mode-perl"]
@@ -197,7 +197,7 @@ behaviors:
     suspicious: true
     why: "-m with a negative or overflowing number is silently accepted as no limit"
   - id: B-src_core-025
-    statement: "`-E`, `-G`, `-F`, `-P`: the last mode option wins; an invalid regex in any mode stops with exit 2 and the regex library's error message with a marker"
+    statement: "`-E`, `-G`, `-F`: the last mode option wins (`-P` exits 2 with `option -P is not available in this build configuration`: case:opt-mode-perl-lookahead, case:opt-mode-perl-bad); an invalid regex in any mode stops with exit 2 and the regex library's error message with a marker"
     kind: error
     status: observed
     evidence: ["case:opt-mode-order", "case:opt-mode-perl-lookahead", "case:opt-mode-perl-bad", "case:opt-mode-fixed-regex-chars", "case:opt-mode-bre-plus", "case:opt-bad-regex-bre", "case:opt-bad-regex-ere", "case:opt-bad-regex-range", "case:opt-bad-regex-repeat"]
@@ -310,6 +310,7 @@ uncovered:
   - {region: "src/ugrep.cpp query UI (ugrep_find_text_preview, ugrep_extract, Static::find_text_preview, Grep::extract, Query)", reason: unreachable, note: "needs a terminal; the CLI never calls them without --query"}
   - {region: "src/ugrep.cpp sigint, Static::cancel_ugrep, Grep::cancel", reason: excluded, note: "needs a signal during a run; not deterministic"}
   - {region: "src/cnf.cpp CNF::compile", reason: unreachable, note: "no caller in src/"}
+  - {region: "-P (perl) paths: have_pcre2=1 in cnf_flags, perl-mode CNF::anchor and CNF::report", reason: platform-only, note: "build-config limitation: the recorded build has have_pcre2=0, every -P case exits 2 with `option -P is not available in this build configuration`"}
   - {region: "src/ugrep.cpp save_config, set_depth_long, option_and/andnot/not/all_files, is_output, read_line, modified_time, rev_comp_by_*, JobQueue::steal_job/move_job, Binary/Grep handlers", reason: deferred, note: "reachable from the CLI in principle; cases to reach them are a Behavior follow-up (coverage 60.7% lines, 81.9% functions at this task's end)"}
   - {region: "src/output.cpp color, capture and most format/colour/hex/json output paths", reason: deferred, note: "output.cpp lines 42.5%; needs a Behavior follow-up with more output cases"}
   - {region: "src/ugrep.cpp Windows-only vs POSIX branches", reason: platform-only, note: "recorded on Windows x64 only"}

@@ -210,7 +210,7 @@ void Stats::report_cpp(FILE *output)
 // report the statistics: src_core seam facade, dispatches to report_cpp() or to Rust (SEAM.md)
 void Stats::report(FILE *output)
 {
-  TAP_CALL("src_core.stats_report", core_tap::stats_flags(), searched_files(), searched_dirs(), searched_indexed(), searched_skipped(), searched_changed(), searched_added(), searched_lines(), found_files(), found_parts(), found_matches(), Static::warnings.load(), Static::threads, reflex::timer_elapsed(timer), core_tap::join(std::vector<std::string>(ignore.begin(), ignore.end())));
+  TAP_CALL("src_core.stats_report", core_tap::stats_flags(), searched_files(), searched_dirs(), searched_indexed(), searched_skipped(), searched_changed(), searched_added(), searched_lines(), found_files(), found_parts(), found_matches(), Static::warnings.load(), Static::threads, [&] { reflex::timer_type t = timer; return reflex::timer_elapsed(t); }(), core_tap::join(std::vector<std::string>(ignore.begin(), ignore.end())));
 #ifdef CPP_RUST_IMPL_SRC_CORE
   ugrep_rust::StatsInput in = core_rust::stats_input();
   in.searched_files = searched_files();

@@ -120,3 +120,9 @@ to the Behavior task.
 `CPP_RUST_IMPL_SRC_CORE=1` and links `rust_umbrella` when it is `rust`; no change was needed there. Autotools: the new
 headers are listed in `src/Makefile.am`/`.in`; no autotools Rust glue exists for src_leaves either, so none was added.
 `/p:CPP_RUST_IMPL_SRC_CORE=rust` builds and links with the `todo!()` stubs (calls panic -> abort at run time).
+
+## Units judged by the surface corpus, not the seam replay
+
+- `src_core.ugrep`, `terminal` and `set_terminal_hyperlink` are tapped for call order only and are not replayed. The driver, options, init and terminal parts of ugrep.cpp therefore have no seam cases: their Port units are judged by the surface corpus (migration/corpus/src_core, 1097 cases) and the switch gate, so expect the unit gate's seam-replay check to have nothing to compare for them.
+- `cnf_anchor` writes `flag_empty`, which the tap does not record; the seam compares the anchored pattern only.
+
