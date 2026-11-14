@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- See rust.props. Imported at the end of a project, after its own property groups. -->
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <!-- The Rust variant builds into its own directories so it never overwrites the C++ baseline. -->
-  <PropertyGroup Condition="'$(RustLinkUmbrella)'=='true'">
-    <OutDir>$(OutDir.TrimEnd('\'))-rust\</OutDir>
-    <IntDir>$(IntDir.TrimEnd('\'))-rust\</IntDir>
+  <!-- The default build always lands in $(Configuration)-$(Platform), whichever components default to rust.
+       A variant build names its own directories with /p:CppRustOutSuffix=-rust so it never overwrites the product. -->
+  <PropertyGroup Condition="'$(CppRustOutSuffix)'!=''">
+    <OutDir>$(OutDir.TrimEnd('\'))$(CppRustOutSuffix)\</OutDir>
+    <IntDir>$(IntDir.TrimEnd('\'))$(CppRustOutSuffix)\</IntDir>
   </PropertyGroup>
 
   <!-- src/zstream.cpp is compiled as its own file in both builds, zstream.hpp must not include it. -->

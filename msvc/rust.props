@@ -4,6 +4,8 @@
   CPP_RUST_IMPL_<COMPONENT> = cpp (default) | rust, chosen at build time, e.g.
     msbuild msvc\ugrep.sln /p:Configuration=Base-Release /p:Platform=x64 /p:CPP_RUST_IMPL_SRC_LEAVES=rust
   With every switch at cpp this file changes nothing: no cargo, no extra defines, no extra libs.
+  Output: the default build goes to msvc/bin/<Configuration>-<Platform>/; /p:CppRustOutSuffix=-rust appends a
+  suffix to OutDir and IntDir for a variant build (the switch gate's rust variant).
   Tap variant: /p:CppRustTap=true defines CPP2RUST_TAP and builds the Rust umbrella with feature `tap`.
 -->
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">

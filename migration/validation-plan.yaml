@@ -105,7 +105,7 @@ gates:
       - name: build-cpp
         run: "powershell -NoProfile -File migration/harness/build-cpp.ps1 -Extra \"/p:{switch_option}=cpp\""
       - name: version-runs
-        run: "powershell -NoProfile -Command \"& '{product_bin_cpp}' --version; exit $LASTEXITCODE\""
+        run: "powershell -NoProfile -Command \"$ErrorActionPreference='Stop'; & '{product_bin_cpp}' --version; exit $LASTEXITCODE\""
       - name: surface-unchanged
         run: >-
           {tools} run-cases --bin {product_bin_cpp} --impl cpp
@@ -196,7 +196,7 @@ gates:
     checks:
       - name: build-rust-variant
         run: >-
-          powershell -NoProfile -File migration/harness/build-cpp.ps1 -Extra "/p:{switch_option}=rust"
+          powershell -NoProfile -File migration/harness/build-cpp.ps1 -Extra "/p:{switch_option}=rust /p:CppRustOutSuffix=-rust"
       - name: linked
         run: >-
           {tools} linked-check --map {link_map} --forbid-sources "{cpp_sources}"
