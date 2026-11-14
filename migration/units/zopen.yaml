@@ -1,0 +1,15 @@
+schema: cpp-rust-unit/1
+unit: zopen
+component: src_leaves
+functions: [src_leaves.z_open, src_leaves.z_close, src_leaves.z_read, src_leaves.z_write]
+cpp_files: [src/zopen.c, src/zopen.h]
+rust_files: rust/src_leaves/src/zopen.rs rust/src_leaves/src/ffi/cfile.rs rust/src_leaves/src/ffi/zopen.rs
+rust_crate_name: src_leaves
+harness_crate_name: src_leaves-harness
+depends_on: []
+status: ported
+notes:
+  - 'unit gate: GATE unit zopen: PASS (migration/out/gates/unit/zopen/report.json); seam-replay 4165 calls, divergent_cases=0; rust-tests 5 passed. ~40 min.'
+  - 'Port lives in rust/src_leaves/src/zopen.rs, declared #[path] in signatures.rs (P-zopen-1); libc fread/fwrite/errno are in ffi/cfile.rs (the only unsafe of the unit besides ffi/zopen.rs).'
+  - 'Bug-compat: Q-zopen-5 truncated stream = clean EOF preserved; Q-zopen-1..4 dont-care, ported as is (zs_mode never set, z_close never flushes). Q-zopen-6 / D-zopen-1: the C segfaults on a z_read after a failed or empty first read and on read/write mixed on one handle; the Rust returns -1 (Rust-side tests in zopen.rs).'
+  - 'Retained C codecs (zlib, bzip2, lzma, ...) are not used by zopen.c; nothing to bridge.'

@@ -29,18 +29,20 @@ pub unsafe extern "C" fn ugrep_rust_z_close(handle: *mut c_void) -> c_int {
 /// `handle` is a live handle; `buf` is writable for `len` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn ugrep_rust_z_read(handle: *mut c_void, buf: *mut u8, len: c_int) -> c_int {
-    if handle.is_null() || buf.is_null() || len < 0 {
+    if handle.is_null() || len < 0 || (buf.is_null() && len > 0) {
         return -1;
     }
-    zopen::z_read(&mut *handle.cast::<ZState>(), core::slice::from_raw_parts_mut(buf, len as usize))
+    let buf: &mut [u8] = if len == 0 { &mut [] } else { core::slice::from_raw_parts_mut(buf, len as usize) };
+    zopen::z_read(&mut *handle.cast::<ZState>(), buf)
 }
 
 /// # Safety
 /// `handle` is a live handle; `buf` is readable for `len` bytes.
 #[no_mangle]
 pub unsafe extern "C" fn ugrep_rust_z_write(handle: *mut c_void, buf: *const u8, len: c_int) -> c_int {
-    if handle.is_null() || buf.is_null() || len < 0 {
+    if handle.is_null() || len < 0 || (buf.is_null() && len > 0) {
         return -1;
     }
-    zopen::z_write(&mut *handle.cast::<ZState>(), core::slice::from_raw_parts(buf, len as usize))
+    let buf: &[u8] = if len == 0 { &[] } else { core::slice::from_raw_parts(buf, len as usize) };
+    zopen::z_write(&mut *handle.cast::<ZState>(), buf)
 }
