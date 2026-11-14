@@ -1,0 +1,20 @@
+[package]
+name = "src_core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+build = "build.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+# Seam tap build variant (see rust/src_core/cpp2rust_tap.hpp).
+tap = []
+
+[dependencies]
+cxx = "1"
+
+[build-dependencies]
+cxx-build = "1"
