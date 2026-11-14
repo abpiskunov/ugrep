@@ -61,3 +61,5 @@ migration/out/
 migration/tools/cpp2rust-tools/target/
 /build/cargo/
 /rust/target/
+
+__pycache__/

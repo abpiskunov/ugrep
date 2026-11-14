@@ -1,0 +1,323 @@
+# Behavior catalog of component src_core (src/ugrep.cpp, output.cpp, stats.cpp, cnf.cpp, mmap.hpp).
+# Every entry was observed by running the C++ (Base-Release|x64, MSVC, LC_ALL=C TZ=UTC); the cases are in
+# migration/corpus/src_core/{cases,stats.cases}.jsonl (surface), the seam trace in seam/all.trace.jsonl.
+# Entries with status hypothesis and suspicious true are for the Triage task.
+schema: cpp-rust-behavior/1
+component: src_core
+stop: {quiet_rounds: 2}
+
+observation:
+  src_core.cnf_compile:
+    channels: [state]
+    compared: []
+    excluded: [{channel: state, reason: "no recorded case calls it (see uncovered); the trace has no events"}]
+  src_core.cnf_new_pattern:
+    channels: [state]
+    compared: [state]
+    excluded: []
+  src_core.cnf_prune:
+    channels: [state]
+    compared: [state]
+    excluded: []
+  src_core.cnf_split:
+    channels: [state]
+    compared: [state]
+    excluded: []
+  src_core.cnf_adjoin:
+    channels: [return]
+    compared: [return]
+    excluded: []
+  src_core.cnf_first:
+    channels: [return]
+    compared: [return]
+    excluded: []
+  src_core.cnf_report:
+    channels: [return]
+    compared: [return]
+    excluded: []
+  src_core.cnf_quote:
+    channels: [state]
+    compared: [state]
+    excluded: []
+  src_core.cnf_anchor:
+    channels: [state]
+    compared: [state]
+    excluded: [{channel: state, reason: "flag_empty, the one flag CNF::anchor writes, is not recorded by the tap; only the anchored pattern is compared"}]
+  src_core.stats_report:
+    channels: [return]
+    compared: [return]
+    excluded: []
+  src_core.ugrep: {channels: [return], compared: [], excluded: [{channel: return, reason: "entry function, not switchable; tapped for call order only"}]}
+
+behaviors:
+  - id: B-src_core-001
+    statement: "`-e P1 -e P2` is an OR of the patterns: a line matches if any pattern matches"
+    kind: normal
+    status: observed
+    evidence: ["case:cnf-two-e", "case:cnf-and-or"]
+    origin: capture
+  - id: B-src_core-002
+    statement: "`--and` joins the previous pattern and the next one: a line must match both; `-e foo --and bar` prints the lines containing foo and bar in any order"
+    kind: normal
+    status: observed
+    evidence: ["case:cnf-and", "case:cnf-and-three", "case:cnf-and-or"]
+    origin: capture
+  - id: B-src_core-003
+    statement: "`--not P` excludes lines matching P from the lines matched by the preceding patterns; `--and --not` combines"
+    kind: normal
+    status: observed
+    evidence: ["case:cnf-not", "case:cnf-andnot", "case:cnf-multi-not"]
+    origin: capture
+  - id: B-src_core-004
+    statement: "A leading `--and` or `--not` with no earlier pattern applies to the first pattern; a trailing `--and` with no following pattern and no file reads standard input and matches nothing (exit 1)"
+    kind: edge-case
+    status: observed
+    evidence: ["case:cnf-and-first", "case:cnf-and-last", "case:cnf-not-first"]
+    origin: capture
+  - id: B-src_core-005
+    statement: "`-N PATTERN` is a negated pattern: it contributes a NOT term; alone it matches nothing, after `-e` it adds lines matching the -N pattern"
+    kind: edge-case
+    status: observed
+    evidence: ["case:cnf-N", "case:cnf-N-after-e"]
+    origin: capture
+  - id: B-src_core-006
+    statement: "`--bool` parses a query: space is AND, `|` OR, `-` NOT, parentheses group, `AND`/`OR`/`NOT` words are operators; the query is turned into CNF terms"
+    kind: normal
+    status: observed
+    evidence: ["case:cnf-bool-or", "case:cnf-bool-and", "case:cnf-bool-not", "case:cnf-bool-nested", "case:cnf-bool-distribute", "case:cnf-bool-word-ops", "case:cnf-bool-bar-bar", "case:cnf-bool-not-group", "case:cnf-bool-double-not", "case:cnf-bool-or-not"]
+    origin: capture
+  - id: B-src_core-007
+    statement: "A `--bool` query with an empty sub-expression, an operator in a wrong place or unbalanced parentheses stops with exit 2 and an `error at position N` message with the pattern and a marker line on stderr"
+    kind: error
+    status: observed
+    evidence: ["case:cnf-bool-and-plus", "case:cnf-bool-unbalanced-open", "case:cnf-bool-unbalanced-close", "case:cnf-bool-dangling-and", "case:cnf-bool-operator-only"]
+    origin: capture
+  - id: B-src_core-008
+    statement: "`--bool` with an empty query or `()` matches every line"
+    kind: edge-case
+    status: observed
+    evidence: ["case:cnf-bool-empty-paren", "case:cnf-bool-empty"]
+    origin: capture
+  - id: B-src_core-009
+    statement: "`--bool` combines with -i, -F, -G, -w, -x, -v, -o, -c, -l, -L, --fuzzy and --best-match; every term gets the mode, anchoring and case folding of the flags; with -P the build without PCRE2 (have_pcre2=0) stops with exit 2 and `option -P is not available in this build configuration` (case:cnf-bool-perl)"
+    kind: normal
+    status: observed
+    evidence: ["case:cnf-bool-ignore-case", "case:cnf-bool-fixed", "case:cnf-bool-bre", "case:cnf-bool-perl", "case:cnf-bool-word", "case:cnf-bool-line", "case:cnf-bool-invert", "case:cnf-bool-only-matching", "case:cnf-bool-fuzzy", "case:cnf-bool-best-match", "case:cnf-bool-files", "case:cnf-bool-files-without"]
+    origin: capture
+  - id: B-src_core-010
+    statement: "`--bool -f FILE` and `-f FILE` read one pattern per line; an empty line in the file, CRLF line ends and an empty file each change which lines match as recorded; a missing file stops with `cannot read` and exit 2"
+    kind: edge-case
+    status: observed
+    evidence: ["case:cnf-file-f", "case:cnf-file-f-empty-line", "case:cnf-file-f-empty-file", "case:cnf-file-f-bool", "case:cnf-file-f-missing", "case:cnf-file-f-crlf", "case:cnf-file-f-with-e", "case:cnf-file-f-files"]
+    origin: capture
+  - id: B-src_core-011
+    statement: "A pattern with embedded newlines is split into alternatives, one per line, in every mode (-E, -F, -G, -w, -x); with -P this build exits 2 with `option -P is not available in this build configuration` (case:cnf-nl-pattern-perl)"
+    kind: normal
+    status: observed
+    evidence: ["case:cnf-nl-pattern", "case:cnf-nl-pattern-fixed", "case:cnf-nl-pattern-perl", "case:cnf-nl-pattern-bre", "case:cnf-nl-pattern-trailing", "case:cnf-nl-pattern-empty-line", "case:cnf-nl-pattern-word", "case:cnf-nl-pattern-line", "case:cnf-nl-pattern-icase-fixed"]
+    origin: capture
+  - id: B-src_core-012
+    statement: "`-x` anchors the whole pattern to the line and `-w` to word boundaries in each mode except -P (exit 2, `option -P is not available in this build configuration`: case:cnf-anchor-line-perl, case:cnf-anchor-word-perl); `^` and `$` in the pattern and `-x`/`-w` together are anchored as recorded"
+    kind: normal
+    status: observed
+    evidence: ["case:cnf-anchor-line", "case:cnf-anchor-line-bre", "case:cnf-anchor-line-fixed", "case:cnf-anchor-line-perl", "case:cnf-anchor-word", "case:cnf-anchor-word-bre", "case:cnf-anchor-word-fixed", "case:cnf-anchor-word-perl", "case:cnf-anchor-word-line", "case:cnf-anchor-caret", "case:cnf-anchor-dollar", "case:cnf-anchor-line-caret", "case:cnf-anchor-empty-x", "case:cnf-anchor-empty-w"]
+    origin: capture
+  - id: B-src_core-013
+    statement: "`-F` quotes regex metacharacters of the pattern (including with -w and -x)"
+    kind: normal
+    status: observed
+    evidence: ["case:cnf-quote-meta-fixed-w", "case:cnf-quote-meta-fixed-x"]
+    origin: capture
+  - id: B-src_core-014
+    statement: "Case folding, `-v`, `--files`, --best-match and --fuzzy change the CNF flag snapshot the facade reads; the matched lines follow the recorded outputs"
+    kind: normal
+    status: observed
+    evidence: ["case:cnf-bool-quoted", "case:cnf-bool-escaped-space", "case:cnf-files-and", "case:cnf-bool-large-distribute", "case:cnf-bool-regex-chars", "case:cnf-bool-fixed-escape"]
+    origin: capture
+  - id: B-src_core-015
+    statement: "`--stats` prints a blank line then a report to stdout after the matches: `Searched N file(s) [in M director(y|ies)] in T seconds[ with J threads]: K matching (P%)`, the line counts, warnings, the applied selections and the matched-lines description"
+    kind: normal
+    status: observed
+    evidence: ["case:stats-basic", "case:stats-nomatch", "case:stats-multi-file", "case:stats-recursive", "case:stats-large-counts", "case:stats-threads-1", "case:stats-threads-4"]
+    origin: capture
+  - id: B-src_core-016
+    statement: "The `--stats` report lists, one per line, the pathname selections and search constraints that were applied (mode, `--no-hidden (default)`, `--directories=recurse`, globs, depth, size and count limits, sort, ignore files, ...) as recorded for each option set"
+    kind: normal
+    status: observed
+    evidence: ["case:stats-hidden", "case:stats-no-hidden", "case:stats-include", "case:stats-exclude", "case:stats-iglob", "case:stats-glob-negated", "case:stats-glob-ignore-case", "case:stats-exclude-dir", "case:stats-include-dir", "case:stats-iglob-dir", "case:stats-depth", "case:stats-min-depth", "case:stats-max-count", "case:stats-max-files", "case:stats-min-count", "case:stats-min-max-line", "case:stats-min-max-size", "case:stats-sort", "case:stats-decompress", "case:stats-zmax", "case:stats-dereference", "case:stats-no-dereference", "case:stats-devices-skip", "case:stats-devices-read", "case:stats-directories-skip", "case:stats-directories-read", "case:stats-directories-recurse", "case:stats-ignore-files", "case:stats-ignore-files-nested", "case:stats-ignore-files-named", "case:stats-ignore-files-two", "case:stats-file-type", "case:stats-file-magic", "case:stats-all-options", "case:stats-everything-set"]
+    origin: capture
+  - id: B-src_core-017
+    statement: "`--stats` prints `Received N warning(s)` when a file is missing or unreadable; the exit status is 2 and the warning goes to stderr"
+    kind: error
+    status: observed
+    evidence: ["case:stats-missing-file", "case:stats-warnings"]
+    origin: capture
+  - id: B-src_core-018
+    statement: "The percentages of the stats report are rounded to two decimals"
+    kind: edge-case
+    status: observed
+    evidence: ["case:stats-percent-rounding", "case:stats-percent-rounding-2"]
+    origin: capture
+  - id: B-src_core-019
+    statement: "The report time is printed with three significant digits (`%.3g`) so it differs between runs (a noise mask is proposed)"
+    kind: normal
+    status: observed
+    evidence: ["case:stats-basic", "case:stats-threads-1"]
+    origin: capture
+  - id: B-src_core-020
+    statement: "`--stats` with -q, -l, -L, -c, -o, --ungroup, --format and --json still prints the report; the description of the matched lines follows the flags"
+    kind: normal
+    status: observed
+    evidence: ["case:stats-quiet", "case:stats-files-with-matches", "case:stats-files-without-match", "case:stats-count", "case:stats-only-matching", "case:stats-ungroup", "case:stats-format", "case:stats-json"]
+    origin: capture
+  - id: B-src_core-021
+    statement: "`--stats` after `--bool`, `--and`, `--not` and `-f` prints the CNF in `Lines matched if:` form; `--stats` with -P exits 2 in this build (case:stats-mode-perl)"
+    kind: normal
+    status: observed
+    evidence: ["case:stats-fuzzy", "case:stats-bool", "case:stats-bool-files", "case:stats-bool-not-or", "case:stats-and-not", "case:stats-mode-fixed", "case:stats-mode-bre", "case:stats-mode-perl"]
+    origin: capture
+  - id: B-src_core-022
+    statement: "Option parsing: a short option can be clustered and take an attached or separate argument; `--` ends the options; a unique long prefix is not accepted (`--ignore-c` is reported as invalid with candidates); an ambiguous or unknown option stops with exit 2 and a `did you mean` list"
+    kind: error
+    status: observed
+    evidence: ["case:opt-unknown-short", "case:opt-unknown-long-prefix", "case:opt-ambiguous-long-prefix", "case:opt-long-prefix-unique", "case:opt-long-separate", "case:opt-short-clustered", "case:opt-short-clustered-arg", "case:opt-double-dash", "case:opt-dash-number-context"]
+    origin: capture
+  - id: B-src_core-023
+    statement: "A missing option argument at the end of the command line stops with exit 2 and `missing argument for --NAME`; a non-numeric number stops with `invalid argument -X=value`"
+    kind: error
+    status: observed
+    evidence: ["case:opt-help-bad", "case:opt-missing-arg-last", "case:opt-bad-number", "case:opt-context-bad", "case:opt-tabs-bad", "case:opt-binary-files-bad", "case:opt-hexdump-bad", "case:opt-encoding-bad", "case:opt-color-bad"]
+    origin: capture
+  - id: B-src_core-024
+    statement: "Numeric option arguments accept negative and overflowing values without an error; `-m0` and `-m -1` mean no limit"
+    kind: edge-case
+    status: hypothesis
+    evidence: ["case:opt-negative-number", "case:opt-number-overflow", "case:opt-max-count-zero"]
+    origin: capture
+    suspicious: true
+    why: "-m with a negative or overflowing number is silently accepted as no limit"
+  - id: B-src_core-025
+    statement: "`-E`, `-G`, `-F`: the last mode option wins (`-P` exits 2 with `option -P is not available in this build configuration`: case:opt-mode-perl-lookahead, case:opt-mode-perl-bad); an invalid regex in any mode stops with exit 2 and the regex library's error message with a marker"
+    kind: error
+    status: observed
+    evidence: ["case:opt-mode-order", "case:opt-mode-perl-lookahead", "case:opt-mode-perl-bad", "case:opt-mode-fixed-regex-chars", "case:opt-mode-bre-plus", "case:opt-bad-regex-bre", "case:opt-bad-regex-ere", "case:opt-bad-regex-range", "case:opt-bad-regex-repeat"]
+    origin: capture
+  - id: B-src_core-026
+    statement: "`--version` prints a banner with the version, platform and SIMD level, the license and author lines; `--help` and `--help WHAT` print help text, an unknown WHAT exits 2"
+    kind: normal
+    status: observed
+    evidence: ["case:version", "case:help-short", "case:opt-help-all", "case:opt-help-regex", "case:opt-help-format", "case:opt-help-globs", "case:opt-help-bad", "case:opt-help-q"]
+    origin: capture
+  - id: B-src_core-027
+    statement: "Color options: `--color`, `--colors`, GREP_COLOR(S) and UGREP_COLORS set the SGR sequences; an unknown color name in `--colors` is ignored"
+    kind: normal
+    status: observed
+    evidence: ["case:opt-colors-env-grep", "case:opt-colors-env-ugrep", "case:opt-colors-env-grep-color", "case:opt-colors-opt", "case:opt-colors-bad", "case:opt-color-never", "case:opt-color-bad", "case:opt-color-auto-no-color-env", "case:opt-color-always-no-color-env", "case:opt-color-line", "case:opt-color-context", "case:opt-color-invert", "case:opt-color-only", "case:opt-color-bool"]
+    origin: capture
+  - id: B-src_core-028
+    statement: "A config file is read with `--config=FILE` (or implicitly from the home directory): one long option per line without `--`, `name=value` or `name value`, `#` comments and blank lines; a short option letter or an unknown name stops with exit 2 and `error in config file`; command-line options override it and `--no-config` ignores it"
+    kind: normal
+    status: observed
+    evidence: ["case:conf-basic", "case:conf-comments-blank", "case:conf-equals-and-space", "case:conf-quoted-value", "case:conf-bad-option", "case:conf-bad-value", "case:conf-missing-arg", "case:conf-missing-file", "case:conf-empty", "case:conf-crlf", "case:conf-no-config-after", "case:conf-cmdline-overrides", "case:conf-pattern-in-config", "case:conf-config-in-config", "case:conf-two-files", "case:conf-config-flag-no-file", "case:conf-home-implicit", "case:conf-home-config-flag", "case:conf-home-bad", "case:conf-home-no-config"]
+    origin: capture
+  - id: B-src_core-029
+    statement: "A missing config file named on the command line stops with exit 2 and `cannot read`; only the first of several `--config` options is used and the others are warned about"
+    kind: error
+    status: observed
+    evidence: ["case:conf-missing-file", "case:conf-two-files"]
+    origin: capture
+  - id: B-src_core-030
+    statement: "`-J N` sets the number of threads; `-J0` and no `-J` use the default; a non-numeric value exits 2; with `--sort` or `-J1` the output is in file order, otherwise the order of files is not deterministic"
+    kind: normal
+    status: observed
+    evidence: ["case:thr-1-ordered", "case:thr-bad", "case:thr-zero", "case:thr-many", "case:thr-many-files", "case:thr-binary-mixed", "case:thr-quiet", "case:thr-max-count", "case:thr-context", "case:thr-json", "case:thr-warnings", "case:thr-stdin", "case:thr-stdin-and-file", "case:thr-big-file", "case:thr-many-small", "case:thr-pager-not-tty", "case:thr-many-files-stats", "case:thr-recursive-dirs-stats"]
+    origin: capture
+  - id: B-src_core-031
+    statement: "Standard output of a multi-file or recursive search with threads is complete and unmixed for -c, --json, -q, -m, context and binary files (checked with --sort=name)"
+    kind: normal
+    status: observed
+    evidence: ["case:thr-many", "case:thr-many-files", "case:thr-binary-mixed", "case:thr-quiet", "case:thr-max-count", "case:thr-context", "case:thr-json", "case:thr-big-file", "case:thr-many-small"]
+    origin: capture
+  - id: B-src_core-032
+    statement: "`--json` prints a JSON array of file objects with `matches` entries; `--csv` quotes fields with `\"`; `--xml` prints `<grep><file><match>` elements; `--tsv` is not an option (invalid option, exit 2)"
+    kind: normal
+    status: observed
+    evidence: ["case:output-json", "case:output-csv", "case:output-xml", "case:fmt-json-context", "case:fmt-json-multi", "case:fmt-json-binary", "case:fmt-json-escapes", "case:fmt-json-nomatch", "case:fmt-json-count", "case:fmt-json-only-matching", "case:fmt-json-column", "case:fmt-json-stdin", "case:fmt-json-files", "case:fmt-csv-basic", "case:fmt-csv-all", "case:fmt-csv-quote", "case:fmt-csv-count", "case:fmt-csv-files", "case:fmt-csv-only-matching", "case:fmt-csv-context", "case:fmt-csv-binary", "case:fmt-tsv-basic", "case:fmt-tsv-tab", "case:fmt-xml-basic", "case:fmt-xml-escapes", "case:fmt-xml-multi", "case:fmt-xml-binary", "case:fmt-xml-count", "case:fmt-xml-files", "case:fmt-xml-only-matching"]
+    origin: capture
+  - id: B-src_core-033
+    statement: "`--hexdump` prints offset, hex columns and a `|ascii|` column per 16 bytes, with options for columns, no header/ascii/byte/context parts; line ends of the dump are CRLF on Windows"
+    kind: normal
+    status: observed
+    evidence: ["case:hex-dump", "case:opt-hexdump-opts", "case:opt-hexdump-bad", "case:fmt-hex-long", "case:fmt-hex-context", "case:fmt-hex-multi-match", "case:fmt-hex-invert", "case:fmt-hex-only", "case:fmt-hex-cols", "case:fmt-hex-no-h", "case:fmt-hex-no-a", "case:fmt-hex-no-b", "case:fmt-hex-no-c", "case:fmt-hex-line-number", "case:fmt-hex-text", "case:fmt-hex-color-context", "case:fmt-hex-max-count", "case:fmt-hex-column-offset", "case:fmt-hex-stdin"]
+    origin: capture
+  - id: B-src_core-034
+    statement: "`--format` expands the fields %F %f %a %n %j %k %K %b %B %m %M %u %h %H %N %I and the escapes; an empty format prints nothing and a lone `%` prints nothing with exit 0"
+    kind: edge-case
+    status: hypothesis
+    evidence: ["case:output-format", "case:fmt-format-fields", "case:fmt-format-quotes", "case:fmt-format-text", "case:fmt-format-sep", "case:fmt-format-colors", "case:fmt-format-open-close", "case:fmt-format-escapes", "case:fmt-format-hex-escape", "case:fmt-format-json-escape", "case:fmt-format-csv-escape", "case:fmt-format-xml-escape", "case:fmt-format-count", "case:fmt-format-files", "case:fmt-format-context", "case:fmt-format-invert", "case:fmt-format-only", "case:fmt-format-bad", "case:fmt-format-empty", "case:fmt-format-nonewline", "case:fmt-format-binary", "case:fmt-format-multi", "case:fmt-format-bool", "case:fmt-format-long-line", "case:fmt-format-unicode-field"]
+    origin: capture
+    suspicious: true
+    why: "`--format=%` is accepted silently and prints nothing with exit 0; an empty format exits 1"
+  - id: B-src_core-035
+    statement: "Plain output: context groups and separators, headings, breaks, --pretty, --null, tab alignment, column and byte offsets, labels, counts with --null are written in the order recorded; matches use LF while counts and stats lines use CRLF in the same run on Windows"
+    kind: normal
+    status: observed
+    evidence: ["case:opt-dash-number-context", "case:opt-context-bad", "case:opt-context-after-before", "case:opt-group-separator", "case:opt-no-group-separator", "case:opt-tabs", "case:opt-tabs-size", "case:opt-tabs-bad", "case:opt-column-number", "case:opt-byte-offset", "case:opt-null", "case:opt-label", "case:opt-with-filename-no", "case:opt-heading", "case:opt-break", "case:opt-pretty", "case:opt-line-number-order", "case:fmt-plain-null-data", "case:fmt-plain-tab", "case:fmt-plain-ctx-groups", "case:fmt-plain-ctx-merge", "case:fmt-plain-ctx-files-sep", "case:fmt-plain-ctx-column", "case:fmt-plain-ctx-invert", "case:fmt-plain-heading-break", "case:fmt-plain-heading-color", "case:fmt-plain-pretty-multi", "case:fmt-plain-pretty-ctx", "case:fmt-plain-label", "case:fmt-plain-null-after-name", "case:fmt-plain-count-null", "case:fmt-plain-binary-matches", "case:fmt-plain-binary-matches-color", "case:fmt-plain-binary-q", "case:fmt-plain-binary-count", "case:fmt-plain-binary-files", "case:fmt-plain-binary-only", "case:fmt-plain-binary-invert", "case:fmt-plain-utf16-bom", "case:fmt-plain-utf16-be-bom"]
+    origin: capture
+  - id: B-src_core-036
+    statement: "Binary files: `--binary-files=text|without-match|hex|binary`, -I, -U and -a select how a file with NUL bytes is reported; the default and -U print `Binary file X matches`, `-I` and `without-match` report a non-match (exit 1), `text` and `-a` print the raw line"
+    kind: normal
+    status: observed
+    evidence: ["case:binary-file", "case:text-binary", "case:opt-binary-files-text", "case:opt-binary-files-without-match", "case:opt-binary-files-hex", "case:opt-binary-files-bad", "case:opt-I", "case:opt-U", "case:fmt-json-binary", "case:fmt-csv-binary", "case:fmt-xml-binary", "case:fmt-plain-binary-matches"]
+    origin: capture
+  - id: B-src_core-037
+    statement: "Encodings: `--encoding=latin1|utf16|...` decode the input; UTF-8 patterns and input match as characters"
+    kind: normal
+    status: observed
+    evidence: ["case:unicode-utf8", "case:opt-encoding-latin1", "case:opt-encoding-bad", "case:opt-encoding-utf16"]
+    origin: capture
+  - id: B-src_core-038
+    statement: "Exit status: 0 when something matched, 1 when nothing matched, 2 on an error or any warning (even when lines were printed)"
+    kind: normal
+    status: observed
+    evidence: ["case:bad-option", "case:missing-file", "case:match-basic", "case:nomatch-exit1", "case:quiet-match", "case:quiet-nomatch", "case:bad-regex", "case:thr-warnings"]
+    origin: capture
+  - id: B-src_core-039
+    statement: "`-f pats.txt --and bar a.txt` with pats.txt of two patterns sometimes prints `ugrep: error: bad allocation` (exit 2) and sometimes matches normally on the same input"
+    kind: error
+    status: hypothesis
+    evidence: []
+    origin: capture
+    suspicious: true
+    why: "same command, same input: sometimes `bad allocation` (exit 2), sometimes a normal result; looks like undefined behavior; the case is not in the corpus because it is not deterministic"
+
+  - id: B-src_core-040
+    statement: "with -F -f FILE every pattern line goes through CNF::quote once per line (seam event quote, 48 recorded); the matches seen on the surface equal a literal-string search of the lines"
+    kind: normal
+    status: observed
+    evidence: ["case:cnf-quote-f-fixed", "case:cnf-quote-f-fixed-E", "case:cnf-quote-f-fixed-Q", "case:cnf-quote-f-fixed-star", "case:cnf-quote-f-fixed-empty-line", "case:cnf-quote-f-fixed-empty-file", "case:cnf-quote-f-fixed-word", "case:cnf-quote-f-fixed-line", "case:cnf-quote-f-fixed-icase", "case:cnf-quote-f-fixed-e", "case:cnf-quote-f-fixed-bool", "case:cnf-quote-f-fixed-two-files", "case:cnf-quote-f-ere"]
+    origin: capture
+  - id: B-src_core-041
+    statement: "every long option the parser accepts (flag form, =VALUE form, separate-argument form, invalid and empty value) runs to a deterministic exit code and output on the surface; the sweep covers 683 cases (optf-*, opta-*)"
+    kind: normal
+    status: observed
+    evidence: ["case:optf-after-context", "case:opta-after-context", "case:opta-bad-after-context", "case:opta-empty-after-context", "case:opta-sep-after-context"]
+    origin: capture
+
+openQuestions: []
+
+uncovered:
+  - {region: "src/ugrep.cpp query UI (ugrep_find_text_preview, ugrep_extract, Static::find_text_preview, Grep::extract, Query)", reason: unreachable, note: "needs a terminal; the CLI never calls them without --query"}
+  - {region: "src/ugrep.cpp sigint, Static::cancel_ugrep, Grep::cancel", reason: excluded, note: "needs a signal during a run; not deterministic"}
+  - {region: "src/cnf.cpp CNF::compile", reason: unreachable, note: "no caller in src/"}
+  - {region: "-P (perl) paths: have_pcre2=1 in cnf_flags, perl-mode CNF::anchor and CNF::report", reason: platform-only, note: "build-config limitation: the recorded build has have_pcre2=0, every -P case exits 2 with `option -P is not available in this build configuration`"}
+  - {region: "src/ugrep.cpp save_config, set_depth_long, option_and/andnot/not/all_files, is_output, read_line, modified_time, rev_comp_by_*, JobQueue::steal_job/move_job, Binary/Grep handlers", reason: deferred, note: "reachable from the CLI in principle; cases to reach them are a Behavior follow-up (coverage 60.7% lines, 81.9% functions at this task's end)"}
+  - {region: "src/output.cpp color, capture and most format/colour/hex/json output paths", reason: deferred, note: "output.cpp lines 42.5%; needs a Behavior follow-up with more output cases"}
+  - {region: "src/ugrep.cpp Windows-only vs POSIX branches", reason: platform-only, note: "recorded on Windows x64 only"}
+
+discovery:
+  rounds:
+    - {round: 1, source: seam-driver+surface-proposed, new_cases: 375, new_coverage: 0, new_behaviors: 36, note: "CNF, options, config, threads, formats, output; recorded 3x, flaky 0"}
+    - {round: 2, source: llm-proposed, new_cases: 71, new_coverage: 0, new_behaviors: 0, note: "--stats cases; time noise proposed as mask, pending approval"}
+    - {round: 3, source: seam-driver+hand-crafted, new_cases: 13, new_coverage: 0, new_behaviors: 1, note: "-F -f quoting (only caller of CNF::quote)"}
+    - {round: 4, source: surface-proposed, new_cases: 683, new_coverage: 2.6, new_behaviors: 1, note: "option sweep from the parser's option list; 1 flaky case (optf-tree-no-sort) dropped"}
