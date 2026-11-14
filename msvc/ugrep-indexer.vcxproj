@@ -97,6 +97,7 @@
     <ClInclude Include="..\src\glob.hpp" />
     <ClInclude Include="..\src\zopen.h" />
     <ClInclude Include="..\src\zstream.hpp" />
+    <ClInclude Include="..\src\zstream_seam.h" />
     <ClInclude Include="..\src\zthread.hpp" />
   </ItemGroup>
   <ItemGroup>
@@ -107,6 +108,7 @@
       <PreprocessorDefinitions>ZOPEN_FACADE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <ClCompile Include="..\src\zopen_facade.cpp" />
+    <ClCompile Include="..\src\zstream.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Xml Include="include_ugrep\manifest.xml" />

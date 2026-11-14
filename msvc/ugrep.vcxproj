@@ -518,6 +518,7 @@
     <ClInclude Include="..\src\vkey.hpp" />
     <ClInclude Include="..\src\zopen.h" />
     <ClInclude Include="..\src\zstream.hpp" />
+    <ClInclude Include="..\src\zstream_seam.h" />
     <ClInclude Include="include_ugrep\config.h" />
     <ClInclude Include="include_ugrep\pcre2.h" />
   </ItemGroup>
@@ -552,6 +553,9 @@
       <PreprocessorDefinitions>ZOPEN_FACADE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <ClCompile Include="..\src\zopen_facade.cpp" />
+    <ClCompile Include="..\src\zstream.cpp">
+      <PreprocessorDefinitions>ZSTREAM_MAX_7ZIP_SIZE=1073741824;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
     <ClCompile Include="..\lib\matcher_avx2.cpp">
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>

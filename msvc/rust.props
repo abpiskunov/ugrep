@@ -9,6 +9,8 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Label="CppRustSwitch">
     <CPP_RUST_IMPL_SRC_LEAVES Condition="'$(CPP_RUST_IMPL_SRC_LEAVES)'==''">rust</CPP_RUST_IMPL_SRC_LEAVES>
+    <!-- Sub-switch of zstream.hpp (src_leaves): the Rust zstream is a stub until its Port tasks, so it stays cpp until the Switch over. -->
+    <CPP_RUST_IMPL_SRC_LEAVES_ZSTREAM Condition="'$(CPP_RUST_IMPL_SRC_LEAVES_ZSTREAM)'==''">cpp</CPP_RUST_IMPL_SRC_LEAVES_ZSTREAM>
     <CPP_RUST_IMPL_SRC_CORE Condition="'$(CPP_RUST_IMPL_SRC_CORE)'==''">cpp</CPP_RUST_IMPL_SRC_CORE>
     <CPP_RUST_IMPL_SRC_TUI Condition="'$(CPP_RUST_IMPL_SRC_TUI)'==''">cpp</CPP_RUST_IMPL_SRC_TUI>
     <CPP_RUST_IMPL_SRC_INDEXER Condition="'$(CPP_RUST_IMPL_SRC_INDEXER)'==''">cpp</CPP_RUST_IMPL_SRC_INDEXER>
@@ -17,6 +19,6 @@
     <RustTargetDir>$(MSBuildThisFileDirectory)..\build\cargo\$(MSBuildProjectName)</RustTargetDir>
     <RustUmbrellaLib>$(RustTargetDir)\release\rust_umbrella.lib</RustUmbrellaLib>
     <RustLinkUmbrella>false</RustLinkUmbrella>
-    <RustLinkUmbrella Condition="'$(CPP_RUST_IMPL_SRC_LEAVES)'=='rust' Or '$(CPP_RUST_IMPL_SRC_CORE)'=='rust' Or '$(CPP_RUST_IMPL_SRC_TUI)'=='rust' Or '$(CPP_RUST_IMPL_SRC_INDEXER)'=='rust'">true</RustLinkUmbrella>
+    <RustLinkUmbrella Condition="'$(CPP_RUST_IMPL_SRC_LEAVES)'=='rust' Or '$(CPP_RUST_IMPL_SRC_LEAVES_ZSTREAM)'=='rust' Or '$(CPP_RUST_IMPL_SRC_CORE)'=='rust' Or '$(CPP_RUST_IMPL_SRC_TUI)'=='rust' Or '$(CPP_RUST_IMPL_SRC_INDEXER)'=='rust'">true</RustLinkUmbrella>
   </PropertyGroup>
 </Project>
