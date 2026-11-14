@@ -242,3 +242,14 @@ pub fn glob_match(pathname: &[u8], basename: &[u8], glob: &[u8], icase: bool, le
 
     path || matches(basename, glob, icase, false, false)
 }
+#[cfg(test)]
+mod tests {
+    use super::glob_match;
+
+    #[test]
+    fn matches_basic_patterns() {
+        assert!(glob_match(b"a/foo.c", b"foo.c", b"*.c", false, false, false));
+        assert!(!glob_match(b"a/foo.h", b"foo.h", b"*.c", false, false, false));
+        assert!(glob_match(b"FOO.C", b"FOO.C", b"*.c", true, false, false));
+    }
+}
