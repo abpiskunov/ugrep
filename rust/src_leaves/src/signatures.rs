@@ -6,6 +6,11 @@
 //! declared here is resolved by the harness's `#[path]` include without any harness change.
 #[path = "zopen.rs"]
 pub mod zopen;
+// The unit `zstream` (src/zstream.hpp) is the two submodules `zstream_codecs` and `zstream_core`, the same way.
+#[path = "zstream_codecs.rs"]
+pub mod zstream_codecs;
+#[path = "zstream_core.rs"]
+pub mod zstream_core;
 
 #[cfg(windows)]
 const PATHSEP: u8 = b'\\';

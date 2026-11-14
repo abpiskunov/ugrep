@@ -72,6 +72,49 @@ for a handle used out of sequence (D-zopen-1); `ugrep_rust_z_read/write` accept 
 Note: in the Base-Release build zopen is not reachable from `ugrep.exe` (the recorded surface shows `-z` is not available;
 the linker map has no zopen object), so the seam trace is the only witness for this unit.
 
+## Facade: unit group zstream (src/zstream.hpp, new src/zstream.cpp, `src/zstream_seam.h`)
+
+`src/zstream.hpp` was 2914 lines (not the 2520 of the plan) and is now 853: class declaration, `viiz_stream`, the decoder
+structs, the `std::streambuf` overrides (`underflow`, `uflow`, `showmanyc`, `xsgetn`), `u16/u32/u64`, and the declarations
+of the legacy bodies `<name>_cpp`. The bodies moved to `src/zstream.cpp` (2520 lines, the whole file is inside `#ifdef HAVE_LIBZ`
+like the include of the header). MSVC projects compile it separately and define `ZSTREAM_FACADE`; autotools builds
+still compile only the header, which includes `zstream.cpp` at its end when `ZSTREAM_FACADE` is not set.
+`zstreambuf` stays the thin C++ adapter: it owns the buffer, `cur_`, `len_` and the diagnostics, and forwards to a Rust
+handle (`void *rust_`, NULL in the cpp build) when `CPP_RUST_IMPL_ZSTREAM` is defined.
+
+| seam function | cxx / C ABI | tap id |
+|---|---|---|
+| `is_{bz,xz,lz4,zstd,br,bz3,Z,zip,7z,rar}` (10 predicates, `zstreambuf::is_*`) | cxx `ugrep_rust::zs_is_*` (`zs_is_z`) on `rust::Slice<const uint8_t>` path bytes | `src_leaves.zs_is_<fmt>` |
+| `open`, `close`, `decompressing`, `next`, `zipinfo`, `zippeek` | C ABI `ugrep_rust_zs_{open,close,decompressing,next,at_end,zipinfo,zippeek}` in `ffi/zstream.rs` (a `FILE*` is not expressible in cxx, as for zopen) | `src_leaves.zs_open`, `zs_close`, `zs_decompressing`, `zs_next`, `zs_zipinfo`, `zs_zippeek` |
+| diagnostics `cannot_decompress`, `warning` | Rust queues them, C++ drains `ugrep_rust_zs_diag` (Rust never calls C++) | outgoing `ugrep.cannot_decompress`, `ugrep.warning` |
+
+Plain moves without facade: `ZipInfo::{header,decompress,descriptor,peek,read_num,read,crc32}`, `file_read`, `has_ext`.
+Objects are tapped as `#n` (first-seen order per case), `zs_next` taps the produced bytes as state.
+
+Macros: `HAVE_LIBBZ2/LIBLZMA/LIBLZ4/LIBZSTD/LIBBROTLI/LIBBZIP3`, `WITH_NO_7ZIP`, `WITH_ZIP_CRC32` and `WITH_MAX_7ZIP_SIZE` are
+mirrored at runtime, not as Cargo features: the Rust staticlib is built once while the macros vary per program (ugrep,
+ugrep-indexer) and configuration. The adapter passes `ugrep_rust_zs_config` (`ZS_CODEC_*` bit mask, `zip_crc32`,
+`max_7zip_size`) to `ugrep_rust_zs_open`; zlib is always on. The codec libraries stay C and are reached from Rust through
+`extern "C"` in the Port tasks. `ugrep.cpp` defines `WITH_MAX_7ZIP_SIZE` (1 GiB) and ugrep-indexer does not, so
+`ugrep.vcxproj` passes `ZSTREAM_MAX_7ZIP_SIZE=1073741824` to `zstream.cpp` only. The Base-Release build defines no
+`HAVE_LIB*`, so `zstream.cpp` is empty there; compile-checked outside it with HAVE_LIBZ/BZ2/LZ4/LZMA/ZSTD, in all four
+combinations of cpp/rust and tap, and with `WITH_NO_7ZIP`, `WITH_ZIP_CRC32`.
+
+Sub-switch: `CPP_RUST_IMPL_SRC_LEAVES_ZSTREAM` (msvc/rust.props, default `cpp`) sets `CPP_RUST_IMPL_ZSTREAM`
+(msvc/rust.targets) and links the umbrella. Rust modules `zstream_codecs.rs`, `zstream_core.rs` (stubs) are reached through
+`#[path]` from `signatures.rs`, so the harness, which includes `signatures.rs`, covers them with no harness change (checked
+by building the harness). `signatures` is `pub mod` so the stubs are not dead code before the Port tasks use them.
+
+Units (each at most 1500 lines of legacy C++, to be ported; the adapter code is not ported):
+
+| unit | C++ lines | total |
+|---|---|---|
+| `zstream_codecs` | `src/zstream.hpp` 130-745 (ZipInfo, viiz_stream, decoder structs Z/BZ/XZ/LZ4/ZSTD/BR/BZ3), `src/zstream.cpp` 373-1170 (ZipInfo members, `file_read`, `has_ext`) | 616 + 798 = 1414 |
+| `zstream_core` | `src/zstream.cpp` 1171-2520 (predicates, `open_cpp`, `close_cpp`, `decompressing_cpp`, `zipinfo_cpp`, `zippeek_cpp`, `next_cpp` decoding loops) | 1350 |
+
+The decoding loops of `next` are in core, not in codecs as the plan proposed, because that split keeps both units under 1500.
+Rust modules: `zstream_codecs.rs`, `zstream_core.rs`, `ffi/zstream.rs`.
+
 ## Not in this seam yet
 
-`zstream.hpp`, `flag.hpp`: later Prepare seam tasks of the component.
+`flag.hpp`: a later Prepare seam task of the component.
