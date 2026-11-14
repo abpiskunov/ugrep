@@ -40,6 +40,7 @@
 #include "ugrep.hpp"
 #include "screen.hpp"
 #include "vkey.hpp"
+#include "tui_entry.hpp"
 
 #include <cerrno>
 #include <thread>
@@ -56,10 +57,7 @@
 #define QUERY_BUFFER_SIZE 16384
 #endif
 
-// default -Q response to keyboard input delay is 3 for 300ms, in steps of 100ms
-#ifndef DEFAULT_QUERY_DELAY
-#define DEFAULT_QUERY_DELAY 3
-#endif
+// DEFAULT_QUERY_DELAY moved to tui_entry.hpp, which the search core includes instead of this header
 
 // the max time that a message (to confirm a command) is shown at the query line, in steps of 100ms
 #ifndef QUERY_MESSAGE_DELAY

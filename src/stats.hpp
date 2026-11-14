@@ -213,6 +213,9 @@ class Stats {
 
  protected:
 
+  // legacy C++ body behind the src_core seam facade (see rust/src_core/SEAM.md)
+  static void report_cpp(FILE *output);
+
   static reflex::timer_type       timer;   // elapsed wall-clock time in milli seconds (ms)
   static std::atomic_size_t       files;   // number of files searched, excluding files in archives
   static std::atomic_size_t       dirs;    // number of directories searched

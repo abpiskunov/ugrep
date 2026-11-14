@@ -11,10 +11,11 @@ crate-type = ["staticlib"]
 
 [features]
 # Seam tap build variant: records calls on both sides in one trace schema.
-tap = ["src_leaves/tap"]
+tap = ["src_leaves/tap", "src_core/tap"]
 # Codec libraries are provided by the product link line (msvc/rust.targets enables this for configurations with HAVE_LIB*).
 codecs = ["src_leaves/codecs"]
 
 [dependencies]
 src_leaves = { path = "../src_leaves", default-features = false }
+src_core = { path = "../src_core", default-features = false }
 
