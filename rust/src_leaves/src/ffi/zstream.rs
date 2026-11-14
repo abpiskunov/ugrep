@@ -82,6 +82,16 @@ pub unsafe extern "C" fn ugrep_rust_zs_at_end(handle: *const c_void) -> c_int {
 }
 
 /// # Safety
+/// `handle` is NULL or a live handle; `ptr` and `len` are writable.
+#[no_mangle]
+pub unsafe extern "C" fn ugrep_rust_zs_initial(handle: *const c_void, ptr: *mut *const u8, len: *mut usize) -> c_int {
+    let (Some(s), false, false) = (handle.cast::<ZStream>().as_ref(), ptr.is_null(), len.is_null()) else { return 0 };
+    *ptr = s.initial.as_ptr();
+    *len = s.initial.len();
+    1
+}
+
+/// # Safety
 /// `handle` is NULL or a live handle; `out` is writable.
 #[no_mangle]
 pub unsafe extern "C" fn ugrep_rust_zs_zipinfo(handle: *mut c_void, out: *mut ZsZipInfo) -> c_int {

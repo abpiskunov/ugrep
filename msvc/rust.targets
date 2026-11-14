@@ -41,13 +41,17 @@
   </ItemDefinitionGroup>
 
   <PropertyGroup>
-    <RustCargoFeatures Condition="'$(CppRustTap)'=='true'">--features tap</RustCargoFeatures>
+    <RustCargoFeatures Condition="'$(CppRustTap)'=='true'">tap</RustCargoFeatures>
+    <!-- Configurations that define HAVE_LIB* (not Base-*) link the codec libraries through project references: the Rust zstream
+         may call them (feature codecs). Base-* configurations link none, and the Rust zstream is built without codec calls. -->
+    <RustCargoFeatures Condition="!$(Configuration.StartsWith('Base-'))">$(RustCargoFeatures) codecs</RustCargoFeatures>
+    <RustCargoFeatureArg Condition="'$(RustCargoFeatures.Trim())'!=''">--features &quot;$(RustCargoFeatures.Trim())&quot;</RustCargoFeatureArg>
   </PropertyGroup>
 
   <!-- /MT in the Base configurations: the Rust side must use the static CRT too. -->
   <!-- Before ClCompile: the facade includes the header cargo generates for the cxx bridge. -->
   <Target Name="CargoBuildUmbrella" BeforeTargets="ClCompile" Condition="'$(RustLinkUmbrella)'=='true'">
-    <Exec Command="cargo build --release --locked -p rust_umbrella $(RustCargoFeatures) --manifest-path &quot;$(RustRoot)Cargo.toml&quot; --target-dir &quot;$(RustTargetDir)&quot;"
-          EnvironmentVariables="RUSTFLAGS=-C target-feature=+crt-static" />
+    <Exec Command="cargo build --release --locked -p rust_umbrella $(RustCargoFeatureArg) --manifest-path &quot;$(RustRoot)Cargo.toml&quot; --target-dir &quot;$(RustTargetDir)&quot;"
+          EnvironmentVariables="RUSTFLAGS=-C target-feature=+crt-static;CPP2RUST_CODECS_FROM_LINKER=1" />
   </Target>
 </Project>

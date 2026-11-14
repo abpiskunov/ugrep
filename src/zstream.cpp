@@ -254,6 +254,18 @@ void zstreambuf::open(const char *pathname, FILE *file)
     ugrep_rust_zs_config cfg = zs_config();
     rust_ = ugrep_rust_zs_open(pathname, file, &cfg);
     zs_diagnostics(rust_, pathname);
+    if (rust_ != NULL)
+    {
+      const unsigned char *initial = NULL;
+      size_t initial_len = 0;
+      if (ugrep_rust_zs_initial(rust_, &initial, &initial_len) && initial_len > 0 && initial_len <= sizeof(buf_))
+      {
+        memcpy(buf_, initial, initial_len);
+        len_ = initial_len;
+      }
+      if (ugrep_rust_zs_at_end(rust_))
+        file_ = NULL;
+    }
   }
 #else
   open_cpp(pathname, file);

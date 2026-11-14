@@ -60,6 +60,8 @@ int ugrep_rust_zs_decompressing(const void *handle);
 ptrdiff_t ugrep_rust_zs_next(void *handle, unsigned char *buf, size_t len);
 // true after the stream reached the end of its input or failed, where the legacy code sets file_ to NULL
 int ugrep_rust_zs_at_end(const void *handle);
+// the bytes of a plain file read while the format was detected, to be handed out before the rest of the file
+int ugrep_rust_zs_initial(const void *handle, const unsigned char **ptr, size_t *len);
 // zstreambuf::zipinfo: advance to the next zip/7z entry, true and *out filled when there is one
 int ugrep_rust_zs_zipinfo(void *handle, ugrep_rust_zs_zipinfo_t *out);
 // zstreambuf::zippeek: true and the pending compressed zip data when unzipping

@@ -118,3 +118,5 @@ Rust modules: `zstream_codecs.rs`, `zstream_core.rs`, `ffi/zstream.rs`.
 ## Not in this seam yet
 
 `flag.hpp`: a later Prepare seam task of the component.
+
+Codec libraries: the Rust zstream calls them only with the cargo feature `codecs` (default for tests; msvc/rust.targets enables it on the umbrella for non-Base configurations, which link the libraries through project references). Without it no codec symbol is referenced. The umbrella never bundles codec libraries; tests and the replay harness link `..\codec-build\lib` (build error if missing).
