@@ -392,7 +392,8 @@ behaviors:
   - id: B-src_leaves-049
     statement: "Truncated gzip body (half the file) or xz/zstd cut in half: partial output of the complete part, exit 0, no diagnostic; gzip with the trailer cut or xz footer cut: the full text is output, exit 0"
     kind: error
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-zstream-049
     suspicious: true
     why: "a damaged archive reads as shorter data and the exit code says success; Triage decides intended, bug-preserve or bug-fix"
     evidence: ["case:zs-gz-trunc-half", "case:zs-gz-trunc-large", "case:zs-gz-trunc-trailer", "case:zs-xz-trunc-half", "case:zs-xz-trunc-large", "case:zs-xz-trunc-footer", "case:zs-zstd-trunc-half", "case:zs-Z-trunc-body", "case:zs-tar-trunc-half"]
@@ -400,7 +401,8 @@ behaviors:
   - id: B-src_leaves-050
     statement: "Truncated bzip2 and zstd header/large files: exit 1 with no output and no diagnostic; truncated lz4: exit 2 with a 'cannot read' warning; truncated zip: partial output plus an 'EOF detected' diagnostic; truncated header of gz, xz, zip, 7z: exit 1"
     kind: error
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-zstream-050
     suspicious: true
     why: "truncation is reported inconsistently across codecs (silent, warning, or exit 2); Triage decides the contract"
     evidence: ["case:zs-bz2-trunc-half", "case:zs-bz2-trunc-header", "case:zs-bz2-trunc-large", "case:zs-lz4-trunc-half", "case:zs-lz4-trunc-header", "case:zs-lz4-trunc-large", "case:zs-zstd-trunc-header", "case:zs-zstd-trunc-large", "case:zs-zip-trunc-half", "case:zs-zip-trunc-header", "case:zs-zip-trunc-first-entry", "case:zs-gz-trunc-header", "case:zs-xz-trunc-header", "case:zs-7z-trunc-half", "case:zs-7z-trunc-header", "case:zs-7z-trunc-end", "case:zs-tar-trunc-header", "case:zs-tar-gz-trunc"]
@@ -408,7 +410,8 @@ behaviors:
   - id: B-src_leaves-051
     statement: "Corrupt or garbage data: gzip bad CRC, bad length or corrupt body exit 1 with the already decoded part possibly output; lz4 and zstd corrupt body report 'Binary file matches' with exit 0; trailing garbage after gz, bz2, lz4, zstd outputs the full text plus a 'cannot decompress ... error detected' diagnostic and exit 0, after xz it outputs nothing and exits 1; bzip2 corrupt body or CRC exit 1 silently"
     kind: error
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-zstream-051
     suspicious: true
     why: "corrupt input yields exit 0 or 'Binary file matches' for lz4/zstd and differing exit codes per codec"
     evidence: ["case:zs-gz-bad-crc", "case:zs-gz-bad-length", "case:zs-gz-corrupt-body", "case:zs-gz-bad-method", "case:zs-gz-second-member-corrupt", "case:zs-gz-trailing-garbage", "case:zs-gz-trailing-zeros", "case:zs-bz2-corrupt-body", "case:zs-bz2-corrupt-crc", "case:zs-bz2-trailing-garbage", "case:zs-xz-corrupt-body", "case:zs-xz-corrupt-check", "case:zs-xz-trailing-garbage", "case:zs-lz4-corrupt-body", "case:zs-lz4-trailing-garbage", "case:zs-zstd-corrupt-body", "case:zs-zstd-trailing-garbage", "case:zs-zstd-skippable-frame", "case:zs-Z-bad-bits", "case:zs-Z-bad-code", "case:zs-Z-trunc-header", "case:zs-Z-header-only"]
@@ -416,7 +419,8 @@ behaviors:
   - id: B-src_leaves-052
     statement: "xz memory limit (XZ::MEMLIMIT 100 MB): an xz or lzma-alone stream needing a 1 GiB dictionary fails with the generic 'error detected in the xz/lzma compressed data' diagnostic and exit 1 (no memory-limit message); a 64 MiB dictionary decodes"
     kind: error
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-zstream-052
     suspicious: true
     why: "memory-limit failure is indistinguishable from corruption and the limit is a build-time constant; Triage decides whether the limit and message are contractual"
     evidence: ["case:zs-xz-memlimit-1g-dict", "case:zs-xz-memlimit-64m-dict", "case:zs-xz-memlimit-lzma-alone-1g"]
@@ -424,7 +428,8 @@ behaviors:
   - id: B-src_leaves-053
     statement: "7z size limit (WITH_MAX_7ZIP_SIZE 1 GiB): a file with unpacked size over the limit gives '7zip archived file size exceeds the set limit: NAME' and is skipped (later files still read); exactly at the limit decodes silently to exit 1; corrupt packed data or bad file CRC exit 1 silently; bad signature or start-header CRC gives a misleading 'encrypted data or 7z input is not seekable' message"
     kind: error
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-zstream-053
     suspicious: true
     why: "limit is a build-time macro and the diagnostics for bad 7z input are misleading; Triage decides"
     evidence: ["case:zs-7z-size-at-limit", "case:zs-7z-size-over-limit", "case:zs-7z-size-way-over-limit", "case:zs-7z-size-over-limit-second-ok", "case:zs-7z-corrupt-packed", "case:zs-7z-bad-file-crc", "case:zs-7z-bad-signature", "case:zs-7z-bad-start-header-crc", "case:zs-7z-bad-next-header-crc", "case:zs-7z-signature-only"]
@@ -432,7 +437,8 @@ behaviors:
   - id: B-src_leaves-054
     statement: "zip CRC32 is not verified (WITH_ZIP_CRC32 not defined in the reference): a wrong CRC32 or wrong usize in the header yields the text and exit 0; a corrupt deflate stream skips that entry silently and later entries are read; the encrypted flag, an unknown method and the LZMA method (14) and a STORE entry with a data descriptor give diagnostics and exit 1"
     kind: error
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-zstream-054
     suspicious: true
     why: "zip CRC32 mismatch is accepted silently and a corrupt entry vanishes without a message; Triage decides whether the Rust verifies CRC32 (and whether WITH_ZIP_CRC32 is mirrored)"
     evidence: ["case:zs-zip-bad-crc32-header", "case:zs-zip-bad-usize", "case:zs-zip-corrupt-deflate", "case:zs-zip-encrypted-flag", "case:zs-zip-unknown-method", "case:zs-zip-lzma-method", "case:zs-zip-data-descriptor", "case:zs-zip-trailing-garbage"]
