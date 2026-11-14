@@ -34,7 +34,7 @@ components:
     product_bin_cpp: msvc/bin/Base-Release-x64/ugrep.exe
     product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep.exe
     link_map: msvc/bin/Base-Release-x64-rust/ugrep.map
-    rust_archive: "rust_umbrella:"
+    rust_archive: "rust_umbrella:"   # MSVC maps name archive members <lib stem>:<object>
   src_core:
     level: 2
     cpp_sources: "src/ugrep.cpp src/output.cpp src/stats.cpp src/cnf.cpp"
@@ -46,7 +46,7 @@ components:
     product_bin_cpp: msvc/bin/Base-Release-x64/ugrep.exe
     product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep.exe
     link_map: msvc/bin/Base-Release-x64-rust/ugrep.map
-    rust_archive: "rust_umbrella:"
+    rust_archive: "rust_umbrella:"   # MSVC maps name archive members <lib stem>:<object>
   src_tui:
     level: 2
     cpp_sources: "src/query.cpp src/screen.cpp src/vkey.cpp"
@@ -58,7 +58,7 @@ components:
     product_bin_cpp: msvc/bin/Base-Release-x64/ugrep.exe
     product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep.exe
     link_map: msvc/bin/Base-Release-x64-rust/ugrep.map
-    rust_archive: "rust_umbrella:"
+    rust_archive: "rust_umbrella:"   # MSVC maps name archive members <lib stem>:<object>
   src_indexer:
     level: 3
     cpp_sources: "src/ugrep-indexer.cpp"
@@ -70,7 +70,7 @@ components:
     product_bin_cpp: msvc/bin/Base-Release-x64/ugrep-indexer.exe
     product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep-indexer.exe
     link_map: msvc/bin/Base-Release-x64-rust/ugrep-indexer.map
-    rust_archive: "rust_umbrella:"
+    rust_archive: "rust_umbrella:"   # MSVC maps name archive members <lib stem>:<object>
 
 compare:
   env_matrix: migration/env-matrix.json       # Windows x64 MSVC only (D4)
