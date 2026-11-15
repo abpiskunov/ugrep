@@ -191,9 +191,10 @@ behaviors:
   - id: B-src_core-024
     statement: "Numeric option arguments accept negative and overflowing values without an error; `-m0` and `-m -1` mean no limit"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
     evidence: ["case:opt-negative-number", "case:opt-number-overflow", "case:opt-max-count-zero"]
     origin: capture
+    decision: Q-core-1
     suspicious: true
     why: "-m with a negative or overflowing number is silently accepted as no limit"
   - id: B-src_core-025
@@ -253,9 +254,10 @@ behaviors:
   - id: B-src_core-034
     statement: "`--format` expands the fields %F %f %a %n %j %k %K %b %B %m %M %u %h %H %N %I and the escapes; an empty format prints nothing and a lone `%` prints nothing with exit 0"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
     evidence: ["case:output-format", "case:fmt-format-fields", "case:fmt-format-quotes", "case:fmt-format-text", "case:fmt-format-sep", "case:fmt-format-colors", "case:fmt-format-open-close", "case:fmt-format-escapes", "case:fmt-format-hex-escape", "case:fmt-format-json-escape", "case:fmt-format-csv-escape", "case:fmt-format-xml-escape", "case:fmt-format-count", "case:fmt-format-files", "case:fmt-format-context", "case:fmt-format-invert", "case:fmt-format-only", "case:fmt-format-bad", "case:fmt-format-empty", "case:fmt-format-nonewline", "case:fmt-format-binary", "case:fmt-format-multi", "case:fmt-format-bool", "case:fmt-format-long-line", "case:fmt-format-unicode-field"]
     origin: capture
+    decision: Q-core-2
     suspicious: true
     why: "`--format=%` is accepted silently and prints nothing with exit 0; an empty format exits 1"
   - id: B-src_core-035
@@ -285,9 +287,10 @@ behaviors:
   - id: B-src_core-039
     statement: "`-f pats.txt --and bar a.txt` with pats.txt of two patterns sometimes prints `ugrep: error: bad allocation` (exit 2) and sometimes matches normally on the same input"
     kind: error
-    status: hypothesis
+    status: bug-fix
     evidence: []
     origin: capture
+    decision: Q-core-3
     suspicious: true
     why: "same command, same input: sometimes `bad allocation` (exit 2), sometimes a normal result; looks like undefined behavior; the case is not in the corpus because it is not deterministic"
 

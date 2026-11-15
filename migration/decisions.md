@@ -57,3 +57,8 @@ Foundation notes (not user decisions):
 
 Kinds: scope, third-party, plan acceptance, contract, policy, mask approval, behavior triage
 (`intended`, `bug-preserve`, `bug-fix`, `dont-care`), header change, rebaseline, go/no-go.
+| Q-core-1 (B-src_core-024) | 2026-11-14 | behavior | -m and other numeric options accept negative or overflowing values silently; -m0 / -m -1 mean no limit | bug-preserve | `migration/behavior/src_core.yaml` |
+| Q-core-2 (B-src_core-034) | 2026-11-14 | behavior | --format=% accepted silently, no output, exit 0; empty --format= prints nothing, exit 1 | bug-preserve | `migration/behavior/src_core.yaml` |
+| Q-core-3 (B-src_core-039) | 2026-11-14 | behavior | -f pats.txt --and bar a.txt with two patterns is non-deterministic on the C++ (sometimes bad allocation, exit 2; looks like UB) | bug-fix: Rust always gives the normal match result; the case stays out of the corpus; listed in plan compare.differences as D-src_core-1 | `migration/behavior/src_core.yaml`, `migration/validation-plan.yaml` |
+| Q-core-4 (masks) | 2026-11-14 | mask approval | Proposed noise masks: call mask src_core.stats_report args.13 (ignore) and rewrite of ` in N seconds` to ` in <T> seconds` (0 divergences on 6646 seam events) | approve both | `migration/masks/src_core.json` |
+| Q-core-5 (headers) | 2026-11-14 | header change | Header changes beyond the Prepare seam | none | - |

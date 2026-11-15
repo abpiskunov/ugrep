@@ -1,1 +1,27 @@
-{"schema":"cpp2rust-masks/1","masks":[],"rewrites":[{"pattern":"^(ugrep [0-9.]+ WIN64)(?: \\+\\w+)+","replace":"\\1","approved":"D-version-simd","note":"--version names the SIMD level of the host CPU (recorded +avx2, a CI runner printed +avx512); environment noise, not behavior"}]}
+{
+  "schema": "cpp2rust-masks/1",
+  "masks": [
+    {
+      "fn": "src_core.stats_report",
+      "kind": "call",
+      "path": "args.13",
+      "action": "ignore",
+      "reason": "elapsed milliseconds of the search (wall clock): differs on every run of the C++ against itself (seen in 40 of the 64 stats cases)",
+      "approved": "Q-core-4"
+    }
+  ],
+  "rewrites": [
+    {
+      "pattern": "^(ugrep [0-9.]+ WIN64)(?: \\+\\w+)+",
+      "replace": "\\1",
+      "approved": "D-version-simd",
+      "note": "--version names the SIMD level of the host CPU (recorded +avx2, a CI runner printed +avx512); environment noise, not behavior"
+    },
+    {
+      "pattern": " in [0-9.]+(?:e[+-]?[0-9]+)? seconds",
+      "replace": " in <T> seconds",
+      "reason": "--stats prints the elapsed time with %.3g (0.001 * milliseconds) in the stats text on stdout, in the seam ret of src_core.stats_report and in --json/--format outputs; wall clock, differs on every run",
+      "approved": "Q-core-4"
+    }
+  ]
+}
