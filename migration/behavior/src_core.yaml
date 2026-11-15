@@ -288,7 +288,7 @@ behaviors:
     statement: "`-f pats.txt --and bar a.txt` with pats.txt of two patterns sometimes prints `ugrep: error: bad allocation` (exit 2) and sometimes matches normally on the same input"
     kind: error
     status: bug-fix
-    evidence: []
+    evidence: ["case:cnf-and-or"]
     origin: capture
     decision: Q-core-3
     suspicious: true
