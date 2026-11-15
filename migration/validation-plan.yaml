@@ -93,6 +93,7 @@ compare:
   repeats: 3
   differences:
     - {id: D-zopen-1, behavior: B-src_leaves-041, decision: Q-zopen-6, note: "C++ segfaults on zopen handle misuse; Rust returns -1 or 0. Not replayable; Rust-side tests only"}
+    - {id: D-src_core-1, behavior: B-src_core-039, decision: Q-core-3, note: "C++ is non-deterministic on -f two-patterns --and (sometimes bad allocation, exit 2; UB); Rust always gives the normal match result. Not in the corpus"}
 
 policy:
   protected: ["migration/validation-plan.yaml", "migration/masks/*", "migration/harness/*", "rust/*-harness/*",
