@@ -12,6 +12,13 @@
 /// Bytes of a C string without its NUL, or of a `std::string`. No encoding is assumed (UTF-8 is not validated).
 pub type Bytes = Vec<u8>;
 
+#[path = "cfmt.rs"]
+mod cfmt;
+#[path = "cnf_impl.rs"]
+mod cnf_impl;
+#[path = "stats_impl.rs"]
+mod stats_impl;
+
 /// A pattern in the CNF: `None` is the undefined (NULL smart pointer) pattern, `Some` a possibly empty string.
 pub type Pattern = Option<Bytes>;
 /// A term in the CNF: the first is the OR pattern (with alternations) or `None`, the rest are ALT-NOT patterns.
@@ -173,48 +180,48 @@ pub mod cnf {
     use super::{Anchored, Bytes, CnfFlags, Terms};
 
     /// `CNF::compile`: parse a `--bool` query into an operator tree, normalize to CNF, append to `terms`.
-    pub fn compile(_terms: Terms, _pattern: &[u8], _flags: &CnfFlags) -> Terms {
-        todo!()
+    pub fn compile(terms: Terms, pattern: &[u8], flags: &CnfFlags) -> Terms {
+        super::cnf_impl::compile(terms, pattern, flags)
     }
 
     /// `CNF::new_pattern`: add an ALT, ALT-NOT or `-N` pattern (`mask` is `pattern_mask`).
-    pub fn new_pattern(_terms: Terms, _mask: i32, _pattern: &[u8], _flags: &CnfFlags) -> Terms {
-        todo!()
+    pub fn new_pattern(terms: Terms, mask: i32, pattern: &[u8], flags: &CnfFlags) -> Terms {
+        super::cnf_impl::new_pattern(terms, mask, pattern, flags)
     }
 
     /// `CNF::prune`
-    pub fn prune(_terms: Terms, _flags: &CnfFlags) -> Terms {
-        todo!()
+    pub fn prune(terms: Terms, flags: &CnfFlags) -> Terms {
+        super::cnf_impl::prune(terms, flags)
     }
 
     /// `CNF::split`
-    pub fn split(_terms: Terms, _flags: &CnfFlags) -> Terms {
-        todo!()
+    pub fn split(terms: Terms, flags: &CnfFlags) -> Terms {
+        super::cnf_impl::split(terms, flags)
     }
 
     /// `CNF::adjoin`
-    pub fn adjoin(_terms: &Terms, _flags: &CnfFlags) -> Bytes {
-        todo!()
+    pub fn adjoin(terms: &Terms, flags: &CnfFlags) -> Bytes {
+        super::cnf_impl::adjoin(terms, flags)
     }
 
     /// `CNF::first`
-    pub fn first(_terms: &Terms) -> Bytes {
-        todo!()
+    pub fn first(terms: &Terms) -> Bytes {
+        super::cnf_impl::first(terms)
     }
 
     /// `CNF::report`: the text the C++ writes to the `FILE*` (the facade does the `fwrite`).
-    pub fn report(_terms: &Terms, _flags: &CnfFlags) -> Bytes {
-        todo!()
+    pub fn report(terms: &Terms, flags: &CnfFlags) -> Bytes {
+        super::cnf_impl::report(terms, flags)
     }
 
     /// `CNF::quote` (static)
-    pub fn quote(_pattern: &[u8]) -> Bytes {
-        todo!()
+    pub fn quote(pattern: &[u8]) -> Bytes {
+        super::cnf_impl::quote(pattern)
     }
 
     /// `CNF::anchor` (static): reads `flag_line_regexp`, `flag_word_regexp`, `flag_mode`; writes `flag_empty`.
-    pub fn anchor(_pattern: &[u8], _flags: &CnfFlags) -> Anchored {
-        todo!()
+    pub fn anchor(pattern: &[u8], flags: &CnfFlags) -> Anchored {
+        super::cnf_impl::anchor(pattern, flags)
     }
 }
 
@@ -223,8 +230,8 @@ pub mod stats {
     use super::{Bytes, StatsInput};
 
     /// `Stats::report`: the text the C++ writes to the `FILE*` (the facade does the `fwrite`).
-    pub fn report(_input: &StatsInput) -> Bytes {
-        todo!()
+    pub fn report(input: &StatsInput) -> Bytes {
+        super::stats_impl::report(input)
     }
 }
 
