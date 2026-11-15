@@ -130,3 +130,8 @@ headers are listed in `src/Makefile.am`/`.in`; no autotools Rust glue exists for
 
 `src/output.cpp` (Output and Output::Dump members) stays C++. Output is a fine-grained hot-path buffered writer used by the whole search driver; a per-member facade would add an FFI crossing per write, and no seam, signatures or traces exist for it. Porting it later needs one coarse seam together with the search driver (its own Prepare seam + Behavior follow-up).
 
+
+## ugrep.cpp globals/pager range retained (D-src_core-globals-retained)
+
+The ugrep.cpp ~228-757 and ~4456-4670 range (flag globals, Static members, tables, pager, signal handlers, CPU affinity, fopen_smart) stays C++: the flag/Static ownership decision keeps the globals in C++, and no seam signature, tap or recorded case exists for the pager, signal, affinity and fopen_smart functions. Porting it later needs its own Prepare seam + Behavior follow-up.
+
