@@ -8,6 +8,14 @@
       "action": "ignore",
       "reason": "elapsed milliseconds of the search (wall clock): differs on every run of the C++ against itself (seen in 40 of the 64 stats cases)",
       "approved": "Q-core-4"
+    },
+    {
+      "fn": "src_core.stats_report",
+      "kind": "call",
+      "path": "args.12",
+      "action": "ignore",
+      "reason": "Static::threads, the number of search threads, defaults to the host's core count (recorded 12, a CI runner 4)",
+      "approved": "D-src_core-env-noise"
     }
   ],
   "rewrites": [
@@ -22,6 +30,18 @@
       "replace": " in <T> seconds",
       "reason": "--stats prints the elapsed time with %.3g (0.001 * milliseconds) in the stats text on stdout, in the seam ret of src_core.stats_report and in --json/--format outputs; wall clock, differs on every run",
       "approved": "Q-core-4"
+    },
+    {
+      "pattern": " with [0-9]+ threads?",
+      "replace": " with <N> threads",
+      "reason": "--stats names the number of search threads, the host's core count by default; environment, not behavior",
+      "approved": "D-src_core-env-noise"
+    },
+    {
+      "pattern": "(\\x1b\\]8;;[A-Za-z0-9+.-]*://)[^/\\x1b]+/",
+      "replace": "${1}<HOST>/",
+      "reason": "--hyperlink writes the host name into the file URI (recorded CPC-anton-Y2GY2, a CI runner runnervmm7ud1); environment, not behavior",
+      "approved": "D-src_core-env-noise"
     }
   ]
 }
