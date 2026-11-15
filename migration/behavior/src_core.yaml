@@ -402,3 +402,7 @@ discovery:
     - {round: 2, source: llm-proposed, new_cases: 71, new_coverage: 0, new_behaviors: 0, note: "--stats cases; time noise proposed as mask, pending approval"}
     - {round: 3, source: seam-driver+hand-crafted, new_cases: 13, new_coverage: 0, new_behaviors: 1, note: "-F -f quoting (only caller of CNF::quote)"}
     - {round: 4, source: surface-proposed, new_cases: 683, new_coverage: 2.6, new_behaviors: 1, note: "option sweep from the parser's option list; 1 flaky case (optf-tree-no-sort) dropped"}
+    - {round: 5, source: coverage-admitted, new_cases: 479, new_coverage: 23.4, new_behaviors: 13, note: "large inputs over the 256 KiB reflex buffer, formats, context, hexdump, colours, config, encodings, file selection, seeded combinations; each case admitted because it ran a counter no earlier case ran (admit.py), recorded 3x"}
+    - {round: 6, source: coverage-admitted, new_cases: 3, new_coverage: 0.1, new_behaviors: 0, note: "three more seeded rounds of about 3400 candidates (quiet8, quiet9, quiet10); 13 admitted, 10 of them flaky in the repeated recording (thread timing, rand2 group) and dropped, 3 kept (stable in 5 repeats)"}
+    - {round: 7, source: coverage-admitted, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "quiet6: 3429 seeded candidates, none ran a new counter"}
+    - {round: 8, source: coverage-admitted, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "quiet11 (new seeds): 3434 seeded candidates, none ran a new counter"}

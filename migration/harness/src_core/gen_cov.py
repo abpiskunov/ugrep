@@ -611,7 +611,13 @@ def g_quiet10():
     _sorted_variant(g_hex, "qac", 600, 101003)
 
 
-GROUPS = {"quiet9": g_quiet9, "quiet10": g_quiet10, "quiet8": g_quiet8, "quiet6": g_quiet6, "quiet7": g_quiet7, "rand3": g_rand3, "hex": g_hex, "fmt4": g_fmt4, "fmt3": g_fmt3, "rand2": g_rand2, "rand": g_rand, "ctx": g_ctx, "fmt": g_fmt, "opts": g_opts, "tree": g_tree, "enc": g_enc, "config": g_config, "big": g_big}
+def g_quiet11():
+    _sorted_variant(g_rand, "qba", 1500, 111101)
+    _sorted_variant(g_rand2, "qbb", 1000, 111102)
+    _sorted_variant(g_hex, "qbc", 600, 111103)
+
+
+GROUPS = {"quiet11": g_quiet11, "quiet9": g_quiet9, "quiet10": g_quiet10, "quiet8": g_quiet8, "quiet6": g_quiet6, "quiet7": g_quiet7, "rand3": g_rand3, "hex": g_hex, "fmt4": g_fmt4, "fmt3": g_fmt3, "rand2": g_rand2, "rand": g_rand, "ctx": g_ctx, "fmt": g_fmt, "opts": g_opts, "tree": g_tree, "enc": g_enc, "config": g_config, "big": g_big}
 
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
