@@ -1,0 +1,13 @@
+schema: cpp-rust-unit/1
+unit: output_1
+component: src_core
+functions: []
+cpp_files: [src/output.cpp]
+rust_files: ""
+rust_crate_name: src_core
+harness_crate_name: src_core-harness
+depends_on: []
+status: planned
+notes:
+  - 'BLOCKED, not started: output.cpp has no seam. Every function in it is an Output:: / Output::Dump:: member (hex, line, color, header, ...). SEAM.md lists Output as retained C++ (large inline class with mutex/condvar, embedded by value in Grep, reads flag_* inline on the hot path), so rust/src_core/src/signatures.rs has no output signature, no cxx bridge entry, no facade, no tap and no recorded seam trace. The unit gate seam-replay would have nothing to compare, and the 42.5% line coverage of output.cpp is recorded as deferred in migration/behavior/src_core.yaml.'
+  - 'Needed before the Port: a Prepare seam follow-up (decide the output boundary, e.g. Output::header/Dump/color as facade functions that return bytes or write into a C++-owned buffer, plus taps) and a Behavior follow-up with output cases and seam traces.'
