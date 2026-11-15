@@ -28,6 +28,7 @@ A gate in the plan:
             - {json: \"{out}/seam.json\", field: divergent_cases, op: \"==\", value: 0}
 Placeholders: {out} {target} {unit} {component} {migration} {tools} {base} and every scalar field
 of the unit record (migration/units/<unit>.yaml) and of the plan's components.<component> entry.
+An expect `value` may name one too (`{coverage_lines}`): per-component thresholds compare as numbers.
 {tools} is this program (so a check runs `{tools} trace-diff ...` without another build).
 {base} is the ref the change is judged against: --base, else the --changed base, else
 CPP2RUST_BASE, else the remote's default branch (origin/HEAD, then origin/main, origin/master).
@@ -241,7 +242,15 @@ pub fn check_expect(x: &Value, fmt: &Fmt) -> R<(bool, String)> {
                 Err(e) => return Ok(Err(e)),
             };
             let op = x.get("op").and_then(Value::as_str).unwrap_or("==");
-            let want = x.get("value").cloned().unwrap_or(Value::Null);
+            let want = match x.get("value") {
+                // a per-component threshold: "{coverage_lines}" names a field of the unit record or of the
+                // plan's components.<component> entry; a number after expansion compares as a number
+                Some(Value::String(s)) if s.contains('{') => {
+                    let v = format(s, fmt)?;
+                    v.trim().parse::<f64>().map_or(Value::String(v), |n| json!(n))
+                }
+                other => other.cloned().unwrap_or(Value::Null),
+            };
             let ok = match compare(op, val, &want) {
                 Ok(b) => b,
                 Err(e) => return Ok(Err(e)),
@@ -779,5 +788,20 @@ mod tests {
         assert!(ok, "{msg}");
         let (ok, msg) = check_expect(&json!({"junit": p("j.xml"), "must_include": p("ids.txt")}), &Fmt::new()).unwrap();
         assert!(ok, "{msg}");
+    }
+
+    #[test]
+    fn expect_value_from_a_component_field_compares_as_a_number() {
+        let d = TempDir::new("fieldexp");
+        d.write("c.json", "{\"functions\": 91.76}");
+        let p = d.path().join("c.json").to_string_lossy().into_owned();
+        let mut fmt = Fmt::new();
+        fmt.insert("coverage_functions".into(), "91".into());
+        let at = |v: &str, fmt: &Fmt| check_expect(&json!({"json": p, "field": "functions", "op": ">=", "value": v}), fmt).unwrap().0;
+        assert!(at("{coverage_functions}", &fmt), "91.76 >= 91 from the component field");
+        fmt.insert("coverage_functions".into(), "100".into());
+        assert!(!at("{coverage_functions}", &fmt), "91.76 < 100");
+        assert!(check_expect(&json!({"json": p, "field": "functions", "op": ">=", "value": "{missing}"}), &fmt).is_err(),
+            "an unknown field is an error, as in a path");
     }
 }
