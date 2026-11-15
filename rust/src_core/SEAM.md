@@ -135,3 +135,6 @@ headers are listed in `src/Makefile.am`/`.in`; no autotools Rust glue exists for
 
 The ugrep.cpp ~228-757 and ~4456-4670 range (flag globals, Static members, tables, pager, signal handlers, CPU affinity, fopen_smart) stays C++: the flag/Static ownership decision keeps the globals in C++, and no seam signature, tap or recorded case exists for the pager, signal, affinity and fopen_smart functions. Porting it later needs its own Prepare seam + Behavior follow-up.
 
+## ugrep.cpp Zthread retained (D-src_core-zthread-retained)
+
+The ugrep.cpp ~757-1909 range (struct Zthread: decompression thread, pipes, FILE*) stays C++. zstream and zopen are already Rust from src_leaves; only the threading and pipe plumbing stays C++. No seam signature, tap or recorded case exists. Porting it later needs its own Prepare seam + Behavior follow-up.
