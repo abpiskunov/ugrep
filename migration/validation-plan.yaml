@@ -37,6 +37,8 @@ components:
     product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep.exe
     link_map: msvc/bin/Base-Release-x64-rust/ugrep.map
     rust_archive: "rust_umbrella:"   # MSVC maps name archive members <lib stem>:<object>
+    coverage_functions: 100
+    coverage_lines: 85
   src_core:
     level: 2
     cpp_sources: "src/ugrep.cpp src/output.cpp src/stats.cpp src/cnf.cpp"
@@ -51,6 +53,8 @@ components:
     product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep.exe
     link_map: msvc/bin/Base-Release-x64-rust/ugrep.map
     rust_archive: "rust_umbrella:"   # MSVC maps name archive members <lib stem>:<object>
+    coverage_functions: 90   # D-src_core-coverage: 15 reasoned uncovered functions
+    coverage_lines: 85
   src_tui:
     level: 2
     cpp_sources: "src/query.cpp src/screen.cpp src/vkey.cpp"
@@ -65,6 +69,8 @@ components:
     product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep.exe
     link_map: msvc/bin/Base-Release-x64-rust/ugrep.map
     rust_archive: "rust_umbrella:"   # MSVC maps name archive members <lib stem>:<object>
+    coverage_functions: 100
+    coverage_lines: 85
   src_indexer:
     level: 3
     cpp_sources: "src/ugrep-indexer.cpp"
@@ -79,6 +85,8 @@ components:
     product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep-indexer.exe
     link_map: msvc/bin/Base-Release-x64-rust/ugrep-indexer.map
     rust_archive: "rust_umbrella:"   # MSVC maps name archive members <lib stem>:<object>
+    coverage_functions: 100
+    coverage_lines: 85
 
 compare:
   env_matrix: migration/env-matrix.json       # Windows x64 MSVC only (D4)
@@ -155,8 +163,8 @@ gates:
       - name: coverage
         run: "bash migration/harness/{component}/coverage.sh {out}/coverage.json"
         expect:
-          - {json: "{out}/coverage.json", field: data.0.totals.functions.percent, op: ">=", value: 100}
-          - {json: "{out}/coverage.json", field: data.0.totals.lines.percent, op: ">=", value: 85}
+          - {json: "{out}/coverage.json", field: data.0.totals.functions.percent, op: ">=", value: "{coverage_functions}"}
+          - {json: "{out}/coverage.json", field: data.0.totals.lines.percent, op: ">=", value: "{coverage_lines}"}
       - name: catalog
         run: >-
           {tools} catalog-lint --catalog migration/behavior/{component}.yaml
