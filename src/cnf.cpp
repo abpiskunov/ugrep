@@ -862,7 +862,10 @@ void CNF::compile(const char *pattern)
 {
   TAP_CALL("src_core.cnf_compile", core_tap::terms(terms), std::string(pattern), core_tap::cnf_flags());
 #ifdef CPP_RUST_IMPL_SRC_CORE
-  core_rust::from_terms(terms, ugrep_rust::cnf_compile(core_rust::to_terms(terms), core_rust::to_slice(pattern), core_rust::cnf_flags()));
+  ugrep_rust::CnfCompiled c = ugrep_rust::cnf_compile(core_rust::to_terms(terms), core_rust::to_slice(pattern), core_rust::cnf_flags());
+  core_rust::from_terms(terms, std::move(c.terms));
+  if (c.enable_empty)
+    flag_empty = true;
 #else
   compile_cpp(pattern);
 #endif
@@ -874,7 +877,10 @@ void CNF::new_pattern(PATTERN mask, const char *pattern)
 {
   TAP_CALL("src_core.cnf_new_pattern", core_tap::terms(terms), static_cast<int>(mask), std::string(pattern), core_tap::cnf_flags());
 #ifdef CPP_RUST_IMPL_SRC_CORE
-  core_rust::from_terms(terms, ugrep_rust::cnf_new_pattern(core_rust::to_terms(terms), static_cast<int>(mask), core_rust::to_slice(pattern), core_rust::cnf_flags()));
+  ugrep_rust::CnfCompiled c = ugrep_rust::cnf_new_pattern(core_rust::to_terms(terms), static_cast<int>(mask), core_rust::to_slice(pattern), core_rust::cnf_flags());
+  core_rust::from_terms(terms, std::move(c.terms));
+  if (c.enable_empty)
+    flag_empty = true;
 #else
   new_pattern_cpp(mask, pattern);
 #endif

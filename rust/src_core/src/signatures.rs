@@ -83,6 +83,14 @@ pub struct Anchored {
     pub enable_empty: bool,
 }
 
+/// Result of `CNF::compile` / `CNF::new_pattern`: the new terms and whether the C++ would have set `flag_empty`
+/// (an `anchor` call inside saw `^` first or `$` last without -x/-w).
+#[derive(Clone, Debug, Default)]
+pub struct Compiled {
+    pub terms: Terms,
+    pub enable_empty: bool,
+}
+
 /// Counters and flags read by `Stats::report`, taken by the facade when the report is requested.
 #[derive(Clone, Debug, Default)]
 pub struct StatsInput {
@@ -177,16 +185,26 @@ pub enum CoreError {
 
 /// Facade functions of `CNF` (src/cnf.cpp): pure functions over the terms, the pattern and the flag snapshot.
 pub mod cnf {
-    use super::{Anchored, Bytes, CnfFlags, Terms};
+    use super::{Anchored, Bytes, CnfFlags, Compiled, Terms};
 
     /// `CNF::compile`: parse a `--bool` query into an operator tree, normalize to CNF, append to `terms`.
     pub fn compile(terms: Terms, pattern: &[u8], flags: &CnfFlags) -> Terms {
         super::cnf_impl::compile(terms, pattern, flags)
     }
 
+    /// `CNF::compile` with the `flag_empty` side effect the facade stores back.
+    pub fn compile_flagged(terms: Terms, pattern: &[u8], flags: &CnfFlags) -> Compiled {
+        super::cnf_impl::compile_flagged(terms, pattern, flags)
+    }
+
     /// `CNF::new_pattern`: add an ALT, ALT-NOT or `-N` pattern (`mask` is `pattern_mask`).
     pub fn new_pattern(terms: Terms, mask: i32, pattern: &[u8], flags: &CnfFlags) -> Terms {
         super::cnf_impl::new_pattern(terms, mask, pattern, flags)
+    }
+
+    /// `CNF::new_pattern` with the `flag_empty` side effect the facade stores back.
+    pub fn new_pattern_flagged(terms: Terms, mask: i32, pattern: &[u8], flags: &CnfFlags) -> Compiled {
+        super::cnf_impl::new_pattern_flagged(terms, mask, pattern, flags)
     }
 
     /// `CNF::prune`

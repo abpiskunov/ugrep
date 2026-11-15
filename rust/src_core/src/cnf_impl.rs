@@ -1,7 +1,7 @@
 //! Port of src/cnf.cpp (`CNF`): bodies behind the `signatures::cnf` facade functions. Patterns are bytes; the
 //! C++ walks `const char *` pointers that end at NUL, so every read past the end here yields 0.
 
-use super::{pattern_mask, Anchored, Bytes, CnfFlags, Mode, Term, Terms};
+use super::{pattern_mask, Anchored, Bytes, CnfFlags, Compiled, Mode, Term, Terms};
 
 const NL: &[u8] = if cfg!(windows) { b"\r\n" } else { b"\n" };
 
@@ -99,6 +99,8 @@ struct OpTree {
 struct Cur {
     buf: Bytes,
     pos: usize,
+    /// set when an `anchor` call of the parse would set `flag_empty`
+    enable_empty: bool,
 }
 
 impl Cur {
@@ -339,7 +341,7 @@ impl OpTree {
                 quote_in_place(&mut self.regex);
             }
 
-            anchor_in_place(&mut self.regex, f);
+            cur.enable_empty |= anchor_in_place(&mut self.regex, f);
         }
     }
 
@@ -416,11 +418,14 @@ impl OpTree {
 
     fn convert(&self, terms: &mut Terms, f: &CnfFlags) {
         let mode = Mode(f.mode);
-        if terms.is_empty() {
+        if self.op != Op::And && terms.is_empty() {
             terms.push(Vec::new());
         }
         if self.op == Op::And {
             for i in &self.list {
+                if terms.is_empty() {
+                    terms.push(Vec::new());
+                }
                 if !terms.last().unwrap().is_empty() {
                     terms.push(Vec::new());
                 }
@@ -440,9 +445,6 @@ impl OpTree {
                     terms.pop();
                     if mode == Mode::BRE {
                         terms.pop();
-                    }
-                    if terms.is_empty() {
-                        terms.push(Vec::new());
                     }
                 }
             }
@@ -492,28 +494,36 @@ fn add_alt(term: &mut Term, regex: &[u8], f: &CnfFlags) {
     }
 }
 
-pub fn compile(mut terms: Terms, pattern: &[u8], flags: &CnfFlags) -> Terms {
-    let mut cur = Cur { buf: pattern.to_vec(), pos: 0 };
+pub fn compile(terms: Terms, pattern: &[u8], flags: &CnfFlags) -> Terms {
+    compile_flagged(terms, pattern, flags).terms
+}
+
+pub fn compile_flagged(mut terms: Terms, pattern: &[u8], flags: &CnfFlags) -> Compiled {
+    let mut cur = Cur { buf: pattern.to_vec(), pos: 0, enable_empty: false };
     let mut tree = OpTree::new(Op::And);
     tree.parse(&mut cur, flags);
     tree.normalize(false);
     tree.convert(&mut terms, flags);
-    terms
+    Compiled { terms, enable_empty: cur.enable_empty }
 }
 
-pub fn new_pattern(mut terms: Terms, mask: i32, pattern: &[u8], flags: &CnfFlags) -> Terms {
+pub fn new_pattern(terms: Terms, mask: i32, pattern: &[u8], flags: &CnfFlags) -> Terms {
+    new_pattern_flagged(terms, mask, pattern, flags).terms
+}
+
+pub fn new_pattern_flagged(mut terms: Terms, mask: i32, pattern: &[u8], flags: &CnfFlags) -> Compiled {
     if terms.is_empty() {
         terms.push(Vec::new());
     }
     if flags.boolean {
-        return compile(terms, pattern, flags);
+        return compile_flagged(terms, pattern, flags);
     }
 
     let mut spattern = pattern.to_vec();
     if Mode(flags.mode) == Mode::FIXED {
         quote_in_place(&mut spattern);
     }
-    anchor_in_place(&mut spattern, flags);
+    let enable_empty = anchor_in_place(&mut spattern, flags);
 
     if (mask & pattern_mask::NEG) != 0 && !spattern.is_empty() {
         spattern.splice(0..0, b"(?^".iter().copied());
@@ -526,14 +536,14 @@ pub fn new_pattern(mut terms: Terms, mask: i32, pattern: &[u8], flags: &CnfFlags
             if term.is_empty() {
                 term.push(None);
             } else if matches!(&term[0], Some(p) if p.is_empty()) {
-                return terms;
+                return Compiled { terms, enable_empty };
             }
             term.push(Some(spattern));
         }
     } else {
         add_alt(term, &spattern, flags);
     }
-    terms
+    Compiled { terms, enable_empty }
 }
 
 pub fn prune(mut terms: Terms, flags: &CnfFlags) -> Terms {
@@ -749,6 +759,31 @@ mod tests {
 
     fn flags() -> CnfFlags {
         CnfFlags { mode: Mode::ERE.0, ..Default::default() }
+    }
+
+    #[test]
+    fn enable_empty_follows_anchors() {
+        let f = flags();
+        let ne = |mask, p: &[u8], f: &CnfFlags| new_pattern_flagged(Vec::new(), mask, p, f).enable_empty;
+        assert!(ne(0, b"^$", &f));
+        assert!(ne(0, b"^foo", &f));
+        assert!(ne(0, b"foo$", &f));
+        assert!(!ne(0, b"foo", &f));
+        assert!(!ne(0, b"^$", &CnfFlags { line_regexp: true, ..flags() }));
+        assert!(!ne(0, b"^foo", &CnfFlags { word_regexp: true, ..flags() }));
+
+        let b = CnfFlags { boolean: true, ..flags() };
+        assert!(ne(0, b"^ foo", &b));
+        assert!(compile_flagged(Vec::new(), b"foo$ bar", &b).enable_empty);
+        assert!(!compile_flagged(Vec::new(), b"foo bar", &b).enable_empty);
+        assert!(!ne(0, b"^ foo", &CnfFlags { line_regexp: true, ..b.clone() }));
+        assert!(!ne(0, b"^ foo", &CnfFlags { word_regexp: true, ..b }));
+    }
+
+    #[test]
+    fn bre_pops_do_not_refill_terms() {
+        let f = CnfFlags { mode: Mode::BRE.0, boolean: true, ..Default::default() };
+        assert_eq!(compile(Vec::new(), b"a -\"\"", &f), Vec::<Term>::new());
     }
 
     #[test]
