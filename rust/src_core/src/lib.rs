@@ -48,6 +48,12 @@ mod ffi {
         enable_empty: bool,
     }
 
+    /// Result of `CNF::compile` / `CNF::new_pattern` (`signatures::Compiled`).
+    struct CnfCompiled {
+        terms: Vec<CnfTerm>,
+        enable_empty: bool,
+    }
+
     /// Snapshot for `Stats::report` (`signatures::StatsInput`).
     struct StatsInput {
         searched_files: usize,
@@ -119,9 +125,9 @@ mod ffi {
 
     extern "Rust" {
         /// Seam function `src_core.cnf_compile`.
-        fn cnf_compile(terms: Vec<CnfTerm>, pattern: &[u8], flags: &CnfFlags) -> Vec<CnfTerm>;
+        fn cnf_compile(terms: Vec<CnfTerm>, pattern: &[u8], flags: &CnfFlags) -> CnfCompiled;
         /// Seam function `src_core.cnf_new_pattern`.
-        fn cnf_new_pattern(terms: Vec<CnfTerm>, mask: i32, pattern: &[u8], flags: &CnfFlags) -> Vec<CnfTerm>;
+        fn cnf_new_pattern(terms: Vec<CnfTerm>, mask: i32, pattern: &[u8], flags: &CnfFlags) -> CnfCompiled;
         /// Seam function `src_core.cnf_prune`.
         fn cnf_prune(terms: Vec<CnfTerm>, flags: &CnfFlags) -> Vec<CnfTerm>;
         /// Seam function `src_core.cnf_split`.
@@ -248,12 +254,16 @@ fn stats_in(s: &ffi::StatsInput) -> sig::StatsInput {
     }
 }
 
-fn cnf_compile(terms: Vec<ffi::CnfTerm>, pattern: &[u8], flags: &ffi::CnfFlags) -> Vec<ffi::CnfTerm> {
-    terms_out(sig::cnf::compile(terms_in(&terms), pattern, &flags_in(flags)))
+fn cnf_compile(terms: Vec<ffi::CnfTerm>, pattern: &[u8], flags: &ffi::CnfFlags) -> ffi::CnfCompiled {
+    compiled_out(sig::cnf::compile_flagged(terms_in(&terms), pattern, &flags_in(flags)))
 }
 
-fn cnf_new_pattern(terms: Vec<ffi::CnfTerm>, mask: i32, pattern: &[u8], flags: &ffi::CnfFlags) -> Vec<ffi::CnfTerm> {
-    terms_out(sig::cnf::new_pattern(terms_in(&terms), mask, pattern, &flags_in(flags)))
+fn cnf_new_pattern(terms: Vec<ffi::CnfTerm>, mask: i32, pattern: &[u8], flags: &ffi::CnfFlags) -> ffi::CnfCompiled {
+    compiled_out(sig::cnf::new_pattern_flagged(terms_in(&terms), mask, pattern, &flags_in(flags)))
+}
+
+fn compiled_out(c: sig::Compiled) -> ffi::CnfCompiled {
+    ffi::CnfCompiled { terms: terms_out(c.terms), enable_empty: c.enable_empty }
 }
 
 fn cnf_prune(terms: Vec<ffi::CnfTerm>, flags: &ffi::CnfFlags) -> Vec<ffi::CnfTerm> {

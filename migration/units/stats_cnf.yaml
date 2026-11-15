@@ -1,0 +1,17 @@
+schema: cpp-rust-unit/1
+unit: stats_cnf
+component: src_core
+functions: [src_core.cnf_compile, src_core.cnf_new_pattern, src_core.cnf_prune, src_core.cnf_split, src_core.cnf_adjoin, src_core.cnf_first, src_core.cnf_report, src_core.cnf_quote, src_core.cnf_anchor, src_core.stats_report]
+cpp_files: [src/cnf.cpp, src/cnf.hpp, src/stats.cpp, src/stats.hpp]
+rust_files: rust/src_core/src/cnf_impl.rs rust/src_core/src/stats_impl.rs rust/src_core/src/cfmt.rs
+rust_crate_name: src_core
+harness_crate_name: src_core-harness
+depends_on: []
+status: ported
+notes:
+  - 'rust_files lists the ported modules, not signatures.rs: signatures.rs still holds todo!() stubs of the entry functions (ugrep, terminal, ...) that belong to the later ugrep.cpp units, so the unit gate scans only this unit.'
+  - 'Bodies live in modules declared from signatures.rs with #[path] (cnf_impl.rs, stats_impl.rs, cfmt.rs), because the replay harness includes only signatures.rs (precedent P-zopen-1). Only parameter names changed in signatures.rs (underscore dropped); types and signatures are unchanged.'
+  - 'cfmt.rs holds the %.Ng formatter for the stats report: no shared fmt_g helper (rust_infra) exists in this repository yet. Request: move it to a shared helper in a later task. 0/0 spells -nan(ind) as the MSVC runtime does.'
+  - 'flag_empty seam gap closed in review: compile_flagged / new_pattern_flagged return Compiled {terms, enable_empty} (cnf_compile / cnf_new_pattern bridge functions return CnfCompiled), and the C++ facades CNF::compile / CNF::new_pattern set flag_empty when it is true (rust switch only; the cpp path is unchanged). compile / new_pattern keep their Terms signatures for the replay harness. Rust test enable_empty_follows_anchors covers ^$, ^foo, foo$, -x, -w and --bool.'
+  - 'UB inputs of the C++ (terms.back() on empty Terms in compile, front() of an empty Term in first) return a defined result in Rust (an empty term is added / empty bytes).'
+  - 'unit gate: GATE unit stats_cnf: PASS (migration/out/gates/unit/stats_cnf/report.json); seam-replay 1337 cases, divergent_cases=0; rust-tests 6 passed. About 40 min.'
