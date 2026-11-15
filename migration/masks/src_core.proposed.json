@@ -1,0 +1,26 @@
+{
+ "masks": [
+  {
+   "action": "ignore",
+   "approved": null,
+   "fn": "src_core.stats_report",
+   "kind": "call",
+   "path": "args.*",
+   "reason": "varies between two runs of the same implementation",
+   "seen": 46
+  },
+  {
+   "action": "ignore",
+   "approved": null,
+   "fn": "src_core.stats_report",
+   "kind": "ret",
+   "path": "ret",
+   "reason": "varies between two runs of the same implementation",
+   "seen": 51
+  }
+ ],
+ "note": "Proposals only. Unstable sequences cannot be masked: fix the nondeterminism or mark the events order=set at the seam.",
+ "rewrites": [],
+ "schema": "cpp2rust-masks/1",
+ "unstable_sequences": []
+}

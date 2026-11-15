@@ -306,6 +306,84 @@ behaviors:
     status: observed
     evidence: ["case:optf-after-context", "case:opta-after-context", "case:opta-bad-after-context", "case:opta-empty-after-context", "case:opta-sep-after-context"]
     origin: capture
+  - id: B-src_core-042
+    statement: "on files larger than the 256 KiB reflex buffer the matcher shifts its buffer while it searches; matches, context (-A/-B/-C), -o, -v, -c, a single line longer than the buffer, NUL bytes after the first 256 KiB (-a, --binary-files) and --hexdump context that straddle the boundary give one deterministic output; e.g. `-A2 needle big.txt` prints each match with two lines of context and a `--` separator between the groups"
+    kind: normal
+    status: observed
+    evidence: ["case:cov-big-300-0", "case:cov-long-6", "case:cov-nul-36", "case:cov-rest2-4"]
+    origin: capture
+  - id: B-src_core-043
+    statement: "the Windows build writes the lines ugrep itself makes (context separator `--`, headings, file-name lists of -l/-L, hexdump lines) with CRLF, and copies matching lines byte for byte, so a stdout can mix CRLF and LF line ends"
+    kind: normal
+    status: observed
+    evidence: ["case:cov-big-300-0", "case:cov-hexdump-1-0", "case:cov-ig-0-0"]
+    origin: capture
+  - id: B-src_core-044
+    statement: "--format-begin/--format-end print once, before the first and after the last file; --format-open/--format-close print around the matches of each file that has a match; `%T`, `%S`, `%$`, `%t`, `%s`, `%R`, `%~`, `%m`, `%U`, `%=`, `%<`, `%>` and `%,` are accepted in them; with `--format-begin=B%T| --format-end=E%T| --format-open=O%T| --format-close=C%T| --format=%f:%n%~ foo a.txt` the output is `B|O|a.txt:1`, a line end, `C|E|`"
+    kind: normal
+    status: observed
+    evidence: ["case:cov-f3-be-1", "case:cov-f3-be-3", "case:cov-f3-be-5"]
+    origin: capture
+  - id: B-src_core-045
+    statement: "--format fields (`%f %H %h %N %n %k %K %b %B %d %e %o %O %q %Q %C %c %a %A %w %x %y %z %Z %u %I %i %L %l %F %G %+ %#` with `%[arg]`, `%{width}` and unknown ones) give a deterministic output with -o, -v, -c, -H/--heading/--break/-n/-k/-b/-T/-Z, several files, empty matches and control characters; -v with --format uses the invert format path"
+    kind: normal
+    status: observed
+    evidence: ["case:cov-f3-f-68", "case:cov-f3-f-77", "case:cov-f3-g-9-12", "case:cov-f3-h-0-7", "case:cov-f4-0-0-v", "case:cov-f4-1-0-o", "case:cov-fmt-98-4", "case:cov-fmt2-0-l"]
+    origin: capture
+  - id: B-src_core-046
+    statement: "-A, -B, -C, -y and -v combine with -o, -n, -b, -k, -T, -H, --break, --heading, --tag, --max-count and --and/--or/--not/--bool; the groups, separators and context markers are deterministic for every combination run"
+    kind: normal
+    status: observed
+    evidence: ["case:cov-ctx-c0-p18", "case:cov-ctx-c0-p21", "case:cov-ctx-t0-p24", "case:cov-limit-4", "case:cov-pat-28"]
+    origin: capture
+  - id: B-src_core-047
+    statement: "--hexdump/-X/-W with width and flag arguments (1, 2a, 4b, 8ahc), with -C/-v/-o/-y, --binary-files=hex/text/without-match, -a, -I, -U, --color and over several files give deterministic dumps; the file name is repeated before every dump block when several files are searched"
+    kind: normal
+    status: observed
+    evidence: ["case:cov-hexdump-1-0", "case:cov-hexdump-A-0", "case:cov-hexf-7-0", "case:cov-hexf-8-2", "case:cov-hex-87", "case:cov-hex-48", "case:cov-s3-hex-1431"]
+    origin: capture
+  - id: B-src_core-048
+    statement: "--color=always with --colors=, GREP_COLORS, GREP_COLOR, --hyperlink and -v/-C/-n/-b produce deterministic ANSI sequences; the colour letters are parsed per capability (mt, ms, mc, sl, cx, fn, ln, cn, bn, se, rv, ne, hl)"
+    kind: normal
+    status: observed
+    evidence: ["case:cov-colors-0-1", "case:cov-colors-3-1", "case:cov-colors-6-0", "case:cov-env-0-0", "case:cov-env-1-0", "case:cov-hyper-1-0"]
+    origin: capture
+  - id: B-src_core-049
+    statement: "--config=FILE reads options from a file and --save-config=FILE writes the options of the command line to a file and prints `ugrep: saving configuration file FILE` to stderr; the saved files are part of the observed state"
+    kind: normal
+    status: observed
+    evidence: ["case:cov-config-2", "case:cov-save-0", "case:cov-save-1", "case:cov-save-2"]
+    origin: capture
+  - id: B-src_core-050
+    statement: "--encoding= and UTF-16/UTF-32 byte order marks are decoded before the search; `--encoding=utf-16 foo l1.txt cp.txt e.txt le.txt` prints only the lines of le.txt"
+    kind: normal
+    status: observed
+    evidence: ["case:cov-encn-3", "case:cov-encn-6", "case:cov-enc-4-4"]
+    origin: capture
+  - id: B-src_core-051
+    statement: "file selection with -t/-tNAME file types, -M/-O magic, --ignore-files, --tree, -r depth options and Windows wildcard arguments (`*.txt` expanded by the program, no match for `*.nomatch`) is deterministic with --sort=name"
+    kind: normal
+    status: observed
+    evidence: ["case:cov-type-make", "case:cov-ft-7", "case:cov-ig-0-0", "case:cov-ig2-0-0", "case:cov-tree-8", "case:cov-wild-0", "case:cov-wild-8"]
+    origin: capture
+  - id: B-src_core-052
+    statement: "--best-match with -Z fuzzy distance, --min-count, --max-line, --range and -m limits run deterministically; --filter=txt:`cmd /c type %` passes the file content unchanged through the filter command"
+    kind: normal
+    status: observed
+    evidence: ["case:cov-best-0", "case:cov-best-1", "case:cov-limit-4", "case:cov-filter-1", "case:cov-filter-3"]
+    origin: capture
+  - id: B-src_core-053
+    statement: "-r with -J4 --min-steal=1 searches a directory of several files through the work-stealing job queue and, with --sort=name, gives one deterministic output"
+    kind: normal
+    status: observed
+    evidence: ["case:cov-jobs-4"]
+    origin: capture
+  - id: B-src_core-054
+    statement: "seeded random combinations of options, patterns (empty, -f, --and/--not), file types and encodings run to one deterministic result when the order is fixed with --sort=name"
+    kind: normal
+    status: observed
+    evidence: ["case:cov-rand-6", "case:cov-rand2-0", "case:cov-s1-rand-13", "case:cov-s2-rand2-583"]
+    origin: capture
 
 openQuestions: []
 
