@@ -142,3 +142,8 @@ The ugrep.cpp ~757-1909 range (struct Zthread: decompression thread, pipes, FILE
 ## ugrep.cpp Grep part 1 retained (D-src_core-grep1-retained)
 
 The ugrep.cpp ~1913-3000 range (struct Grep members: file/dir search) stays C++. Grep owns the RE-flex matcher and embeds Output by value; no seam signature, tap or recorded case exists. Porting it later needs one coarse seam together with Output and the driver (its own Prepare seam + Behavior follow-up).
+
+## ugrep.cpp Grep part 2 retained (D-src_core-grep2-retained)
+
+The ugrep.cpp ~3000-4130 range (Grep::cnf_matching, open_file, filter, close_file, init_read, output_restline etc.) stays C++. Grep owns the RE-flex matcher and embeds Output by value; no seam signature, facade, tap, recorded trace or unit record exists. Porting it later needs one coarse seam together with Output and the driver (its own Prepare seam + Behavior follow-up).
+
