@@ -150,3 +150,7 @@ The ugrep.cpp ~3000-4130 range (Grep::cnf_matching, open_file, filter, close_fil
 ## ugrep.cpp GrepMaster/GrepWorker retained (D-src_core-grepmaster-retained)
 
 The ugrep.cpp ~4133-4448 range (GrepMaster, GrepWorker job queue: mutex/condvar, thread handoff) stays C++. GrepWorker owns a Grep (RE-flex matcher + Output by value); no seam signature, facade, tap, recorded trace or unit record exists. Porting it later needs one coarse seam together with Grep, Output and the driver (its own Prepare seam + Behavior follow-up).
+
+## ugrep.cpp config load/save retained (D-src_core-config-retained)
+
+The ugrep.cpp ~4806-5282 range (load_config, save_config: config file parsing and writing, which set the flag globals) stays C++. No seam signature, facade, tap, recorded trace or unit record exists, and the flag globals are retained C++ (D-src_core-globals-retained). Porting it later needs its own Prepare seam + Behavior follow-up.
