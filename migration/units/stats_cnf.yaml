@@ -7,7 +7,7 @@ rust_files: rust/src_core/src/cnf_impl.rs rust/src_core/src/stats_impl.rs rust/s
 rust_crate_name: src_core
 harness_crate_name: src_core-harness
 depends_on: []
-status: ported
+status: switched
 notes:
   - 'rust_files lists the ported modules, not signatures.rs: signatures.rs still holds todo!() stubs of the entry functions (ugrep, terminal, ...) that belong to the later ugrep.cpp units, so the unit gate scans only this unit.'
   - 'Bodies live in modules declared from signatures.rs with #[path] (cnf_impl.rs, stats_impl.rs, cfmt.rs), because the replay harness includes only signatures.rs (precedent P-zopen-1). Only parameter names changed in signatures.rs (underscore dropped); types and signatures are unchanged.'
