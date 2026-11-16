@@ -1,0 +1,14 @@
+schema: cpp-rust-unit/1
+unit: ugrep_select_recurse
+component: src_core
+functions: [src_core.ugrep, src_core.ugrep_find_text_preview, src_core.ugrep_extract]
+cpp_files: [src/ugrep.cpp]
+rust_files: rust/src_core/src/signatures.rs
+rust_crate_name: src_core
+harness_crate_name: src_core-harness
+depends_on: [stats_cnf]
+status: planned
+notes:
+  - 'BLOCKED, nothing ported. The seam cannot express this range. rust/src_core/SEAM.md row 3: ugrep(), ugrep_find_text_preview(), ugrep_extract() are "tapped only", not switchable. Grep, GrepWorker, Output and Static::* are listed as "Cannot be switched in the headers" (RE-flex matcher ownership, FILE*, mutex/condvar), and "Grep::select"/"Grep::recurse"/"Static::*_grep_handle"/"Static::cancel_ugrep" have no seam function ids, no bridge entry and no facade.'
+  - 'No recorded seam cases: migration/corpus/src_core/seam/all.trace.jsonl has only src_core.ugrep (whole-run tap) next to cnf_*, stats_report, terminal, set_terminal_hyperlink. The catalog marks ugrep_find_text_preview/ugrep_extract unreachable and cancel_ugrep excluded.'
+  - 'Needed follow-up: a Prepare seam step (signature change) that defines how select/recurse (file selection, directory traversal, Grep state, output, filesystem) cross the bridge, or a decision that this range is validated only through surface cases (migration/corpus/src_core/surface). Then a Behavior round for select/recurse with Triage of suspicious behaviors (bug-compatibility is ask-per-behavior).'
