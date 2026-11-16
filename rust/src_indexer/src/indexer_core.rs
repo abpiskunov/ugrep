@@ -11,6 +11,11 @@ pub fn index(_flags: &IndexerFlags, _handle: u64, _pathname: &[u8], _archive: bo
     std::process::abort()
 }
 
+/// Releases the stream state behind `handle`; called by `~Stream` when a handle is still held.
+pub fn stream_drop(_handle: u64) {
+    std::process::abort()
+}
+
 /// `noise_percentage()`: noise level in percent for accuracy 0 to 9. Internal to the unit, not a seam function.
 pub fn noise_percentage(_accuracy: i32) -> u32 {
     std::process::abort()

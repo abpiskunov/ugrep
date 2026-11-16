@@ -78,6 +78,8 @@ pub struct Indexed {
     pub archive: bool,
     pub binary: bool,
     pub size: u64,
+    /// `Stream::partname` after the call (archive part name); the walk prints it with `-v`
+    pub partname: Bytes,
     /// the stream handle after the call; 0 when the stream was closed (where the C++ calls `stream.close()`)
     pub handle: u64,
 }

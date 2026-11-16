@@ -46,9 +46,14 @@ collide with `src_core` in the one `rust_umbrella` staticlib.
 4. `rust/src_indexer` crate, workspace member, dependency and re-export of `rust_umbrella` (feature `tap`),
    `msvc/ugrep-indexer.vcxproj` compiles the facade and lists the new headers. `msvc/rust.props` / `rust.targets` needed no
    change: they already carry `CPP_RUST_IMPL_SRC_INDEXER` (default `cpp`), define it and link the umbrella when it is `rust`.
-5. No `src/Makefile.am` change (autotools has no Rust glue for `src_leaves` or `src_core` either, and does not list
-   `zopen_facade.cpp` / `zstream.cpp`); an autotools build of `ugrep-indexer` needs `ugrep-indexer_facade.cpp` and
-   `ugrep-indexer_seam.h` added to `ugrep_indexer_SOURCES` first (**header-level change for approval**, see the result).
+5. `src/Makefile.am` and `src/Makefile.in` list `ugrep-indexer_facade.cpp` and the seam/rust/tap headers in
+   `ugrep_indexer_SOURCES` (objects, depfiles, rules), so the autotools build of `ugrep-indexer` links the facade.
+   Autotools has no Rust glue; only the MSVC build can select `rust`.
+6. Review fixes: `Indexed.partname` (`IndexerIndexed.partname`) carries `Stream::partname` back, the facade writes it with
+   `stream_partname(stream)` so `-v` prints `pathname{partname}` for archive parts. The Rust stream handle is released by
+   `indexer_stream_drop(handle)`, called from `~Stream` through the facade's `stream_release` when `rust_handle != 0`
+   (choice: explicit drop; Rust may keep a handle after a normally indexed file). The facade aborts if Rust returns more
+   than 65536 table bytes (the caller's `hashes[65536]` buffer).
 
 ## Facade
 
@@ -115,7 +120,7 @@ safe; there is no `static mut` anywhere in the crate.
 | Object | Owner | Crossing |
 |---|---|---|
 | `flag_*` globals, `warnings`, `arg_path` | **C++** | by-value snapshot per crossing; changes return in the result (`options` returns all flags, `indexer`/`deleter`/`options` return `warnings`) |
-| `Stream` (FILE*, input, Zthread, partname) | C++ legacy; **Rust** with the switch at `rust` | with the switch at `rust` the stream state of `index` (open file, decompression chain, archive cursor) is owned by Rust behind `handle` (0 = none), created by the first `index` call of a file, kept while `archive` is true, released by Rust at exactly the places where the C++ calls `stream.close()` (it returns handle 0). C++ keeps the number in `Stream::rust_handle` and never dereferences it |
+| `Stream` (FILE*, input, Zthread, partname) | C++ legacy; **Rust** with the switch at `rust` | with the switch at `rust` the stream state of `index` (open file, decompression chain, archive cursor) is owned by Rust behind `handle` (0 = none), created by the first `index` call of a file, kept while `archive` is true, released by Rust at the places where the C++ calls `stream.close()` or, for a handle still held, by `indexer_stream_drop` from `~Stream` |
 | directory stack, `Entry`, `Ignore` stack, `file_entries`, hashes table | the function that creates them (inside one coarse call) | not crossing |
 | index files (`._UG#_Store`) | the file system; opened/closed inside one call | not crossing |
 | `FILE*` of the config file | C++ (`load_config`) | not crossing |
@@ -126,8 +131,13 @@ safe; there is no `static mut` anywhere in the crate.
 |---|---|
 | `index` | `ok == false` is the C++ `false` return (cannot open the file, archive extraction ended); no exception |
 | `indexer`, `deleter` | infallible at the boundary: file errors are `error()` diagnostics on stdout plus `warnings` (the C++ keeps going); `--check` ends with `exited` and exit code 0 or 1 (`EXIT_SUCCESS`/`EXIT_FAILURE`) |
-| `options` | usage errors, `--help`, `--version` end the process (`exited`); with `flags.usage_warnings` a usage error is a warning count and parsing continues; invalid numbers (`--zmax=`) go through `usage` |
+| `options` | `help()` and `version()` always end the process (`exited`); `flags.usage_warnings` only affects usage errors, which then count a warning and parsing continues; invalid numbers (`--zmax=`) go through `usage` |
 | any | no panics cross: `panic = "abort"` (D4). The C++ code throws nothing that is caught here (`std::bad_alloc` terminates as before) |
+
+## Coverage of the trace
+
+`indexer` and `deleter` cover the whole program (file system writes, stdout), so only the surface corpus can judge them;
+their seam trace state is only `warnings`.
 
 ## Console output (decision for the Port, unchanged now)
 
@@ -170,7 +180,7 @@ or propose a mask.
 
 ## Build
 
-- `cpp` (default): `msvc/bin/Base-Release-x64/ugrep-indexer.exe`; the facade is compiled into it, no Rust.
+- `cpp` (default): `msvc/bin/Base-Release-x64/ugrep-indexer.exe`; the facade is compiled into it and calls the legacy bodies; the Rust bridge is not called (the umbrella is still linked, see below).
 - `rust`: `/p:CPP_RUST_IMPL_SRC_INDEXER=rust /p:CppRustOutSuffix=-rust` compiles and links the umbrella with the stubs
   (`msvc/bin/Base-Release-x64-rust/ugrep-indexer.exe`, map contains the `src_indexer` bridge objects).
 - Tap: `/p:CppRustTap=true` (C++17) for either.

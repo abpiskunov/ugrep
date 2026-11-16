@@ -14,6 +14,24 @@
 #include "indexer_tap.hpp"
 #include "indexer_rust.hpp"
 
+// size of the table buffer of the caller (`uint8_t hashes[65536]` in indexer_cpp)
+static const size_t INDEXER_HASHES_MAX = 65536;
+
+// called by ~Stream: releases the Rust stream state when one is still held, no-op in the cpp build
+void stream_release(Stream& stream)
+{
+#ifdef CPP_RUST_IMPL_SRC_INDEXER
+  uint64_t& handle = stream_rust_handle(stream);
+  if (handle != 0)
+  {
+    ugrep_rust::indexer_stream_drop(handle);
+    handle = 0;
+  }
+#else
+  (void)stream;
+#endif
+}
+
 // index() stays ONE coarse call across the seam: opening, reading, hashing and compressing the table of one file
 // (or one archive part) all happen inside it.
 bool index(Stream& stream, const char *pathname, uint8_t *hashes, size_t& hashes_size, float& noise, bool& compressed, bool& archive, bool& binary, uint64_t& size)
@@ -22,6 +40,8 @@ bool index(Stream& stream, const char *pathname, uint8_t *hashes, size_t& hashes
 #ifdef CPP_RUST_IMPL_SRC_INDEXER
   uint64_t& handle = stream_rust_handle(stream);
   ugrep_rust::IndexerIndexed r = ugrep_rust::indexer_index(indexer_rust::flags(), handle, indexer_rust::to_slice(pathname), archive);
+  if (r.hashes.size() > INDEXER_HASHES_MAX)
+    abort();
   hashes_size = r.hashes.size();
   for (size_t i = 0; i < hashes_size; ++i)
     hashes[i] = r.hashes[i];
@@ -30,6 +50,7 @@ bool index(Stream& stream, const char *pathname, uint8_t *hashes, size_t& hashes
   archive = r.archive;
   binary = r.binary;
   size = r.size;
+  stream_partname(stream) = indexer_rust::to_string(r.partname);
   handle = r.handle;
   bool result = r.ok;
 #else

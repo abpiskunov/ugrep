@@ -40,6 +40,12 @@ extern size_t warnings;
 // the handle slot a Rust-owned stream state is kept in (CPP_RUST_IMPL_SRC_INDEXER), 0 when none
 uint64_t& stream_rust_handle(Stream& stream);
 
+// the archive part name of a stream, written back by the facade after a Rust index() call
+std::string& stream_partname(Stream& stream);
+
+// releases the Rust stream state of a stream still holding a handle (called by ~Stream), defined by the facade
+void stream_release(Stream& stream);
+
 // legacy bodies, defined in src/ugrep-indexer.cpp
 bool index_cpp(Stream& stream, const char *pathname, uint8_t *hashes, size_t& hashes_size, float& noise, bool& compressed, bool& archive, bool& binary, uint64_t& size);
 void indexer_cpp(const char *path);

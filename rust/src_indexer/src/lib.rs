@@ -52,6 +52,7 @@ mod ffi {
         archive: bool,
         binary: bool,
         size: u64,
+        partname: Vec<u8>,
         handle: u64,
     }
 
@@ -65,6 +66,8 @@ mod ffi {
     extern "Rust" {
         /// Seam function `src_indexer.index` (unit indexer_core, `index()`).
         fn indexer_index(flags: IndexerFlags, handle: u64, pathname: &[u8], archive: bool) -> IndexerIndexed;
+        /// Releases the Rust stream state of `handle` (called by `~Stream`, never with 0).
+        fn indexer_stream_drop(handle: u64);
         /// Seam function `src_indexer.indexer` (unit indexer_walk, `indexer()`).
         fn indexer_run(flags: IndexerFlags, path: &[u8], has_path: bool, warnings: usize) -> IndexerExit;
         /// Seam function `src_indexer.deleter` (unit indexer_walk, `deleter()`).
@@ -132,8 +135,13 @@ fn indexer_index(flags: ffi::IndexerFlags, handle: u64, pathname: &[u8], archive
         archive: r.archive,
         binary: r.binary,
         size: r.size,
+        partname: r.partname,
         handle: r.handle,
     }
+}
+
+fn indexer_stream_drop(handle: u64) {
+    sig::indexer_core::stream_drop(handle)
 }
 
 fn indexer_run(flags: ffi::IndexerFlags, path: &[u8], has_path: bool, warnings: usize) -> ffi::IndexerExit {

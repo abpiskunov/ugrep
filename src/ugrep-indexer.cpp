@@ -399,6 +399,7 @@ struct Stream {
   ~Stream()
   {
     close();
+    stream_release(*this);
   }
 
   bool open(const char *pathname)
@@ -595,6 +596,12 @@ struct Stream {
 uint64_t& stream_rust_handle(Stream& stream)
 {
   return stream.rust_handle;
+}
+
+// the partname slot of a stream, used by the facade
+std::string& stream_partname(Stream& stream)
+{
+  return stream.partname;
 }
 
 // display the version info and exit
