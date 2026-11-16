@@ -165,3 +165,7 @@ The ugrep.cpp ~13500-14046 range (find_text_preview/extract, trim helpers, set_c
 ## ugrep.cpp Grep::ugrep/select/recurse and Grep::search retained (D-src_core-select-retained, D-src_core-search-retained)
 
 The ugrep.cpp ~9166-10482 range (Grep::ugrep, select, recurse, Static helpers) and the ~10483-13499 range (Grep::compute_cost, Grep::search) stay C++. They drive the RE-flex matcher and Output on every match; porting them needs one coarse seam together with Grep and Output.
+
+## ugrep.cpp options and main/wmain retained (D-src_core-options-main-retained)
+
+The ugrep.cpp ~4670-4765 (main/wmain) and ~5282-6354 (options, option_regexp/and/andnot/not/all_files) ranges stay C++. No seam signature, facade, tap, recorded trace or unit record exists; options only writes C++-owned flag_* globals (D-src_core-globals-retained), and main installs signal handlers and exit paths. Porting it later needs its own Prepare seam (flag snapshot in, resolved options out) + Behavior follow-up.
