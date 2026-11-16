@@ -126,6 +126,7 @@ am__dirstamp = $(am__leading_dot)dirstamp
 am_ugrep_indexer_OBJECTS =  \
 	$(top_builddir)/lib/ugrep_indexer-input.$(OBJEXT) \
 	ugrep_indexer-ugrep-indexer.$(OBJEXT) \
+	ugrep_indexer-ugrep-indexer_facade.$(OBJEXT) \
 	ugrep_indexer-glob.$(OBJEXT) ugrep_indexer-zopen.$(OBJEXT)
 ugrep_indexer_OBJECTS = $(am_ugrep_indexer_OBJECTS)
 ugrep_indexer_DEPENDENCIES = $(am__DEPENDENCIES_1)
@@ -152,6 +153,7 @@ am__depfiles_remade =  \
 	./$(DEPDIR)/ugrep-ugrep.Po ./$(DEPDIR)/ugrep-vkey.Po \
 	./$(DEPDIR)/ugrep-zopen.Po ./$(DEPDIR)/ugrep_indexer-glob.Po \
 	./$(DEPDIR)/ugrep_indexer-ugrep-indexer.Po \
+	./$(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Po \
 	./$(DEPDIR)/ugrep_indexer-zopen.Po
 am__mv = mv -f
 AM_V_lt = $(am__v_lt_@AM_V@)
@@ -407,6 +409,10 @@ ugrep_indexer_SOURCES = \
 	$(top_srcdir)/include/reflex/utf8.h \
 	$(top_srcdir)/lib/input.cpp \
 	ugrep-indexer.cpp \
+	ugrep-indexer_facade.cpp \
+	ugrep-indexer_seam.h \
+	indexer_rust.hpp \
+	indexer_tap.hpp \
 	glob.hpp \
 	glob.cpp \
 	zopen.h \
@@ -529,6 +535,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ugrep-zopen.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ugrep_indexer-glob.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ugrep_indexer-ugrep-indexer.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ugrep_indexer-zopen.Po@am__quote@ # am--include-marker
 
 $(am__depfiles_remade):
@@ -737,6 +744,20 @@ ugrep_indexer-ugrep-indexer.obj: ugrep-indexer.cpp
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_indexer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o ugrep_indexer-ugrep-indexer.obj `if test -f 'ugrep-indexer.cpp'; then $(CYGPATH_W) 'ugrep-indexer.cpp'; else $(CYGPATH_W) '$(srcdir)/ugrep-indexer.cpp'; fi`
 
+ugrep_indexer-ugrep-indexer_facade.o: ugrep-indexer_facade.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_indexer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT ugrep_indexer-ugrep-indexer_facade.o -MD -MP -MF $(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Tpo -c -o ugrep_indexer-ugrep-indexer_facade.o `test -f 'ugrep-indexer_facade.cpp' || echo '$(srcdir)/'`ugrep-indexer_facade.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Tpo $(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='ugrep-indexer_facade.cpp' object='ugrep_indexer-ugrep-indexer_facade.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_indexer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o ugrep_indexer-ugrep-indexer_facade.o `test -f 'ugrep-indexer_facade.cpp' || echo '$(srcdir)/'`ugrep-indexer_facade.cpp
+
+ugrep_indexer-ugrep-indexer_facade.obj: ugrep-indexer_facade.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_indexer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT ugrep_indexer-ugrep-indexer_facade.obj -MD -MP -MF $(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Tpo -c -o ugrep_indexer-ugrep-indexer_facade.obj `if test -f 'ugrep-indexer_facade.cpp'; then $(CYGPATH_W) 'ugrep-indexer_facade.cpp'; else $(CYGPATH_W) '$(srcdir)/ugrep-indexer_facade.cpp'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Tpo $(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='ugrep-indexer_facade.cpp' object='ugrep_indexer-ugrep-indexer_facade.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_indexer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o ugrep_indexer-ugrep-indexer_facade.obj `if test -f 'ugrep-indexer_facade.cpp'; then $(CYGPATH_W) 'ugrep-indexer_facade.cpp'; else $(CYGPATH_W) '$(srcdir)/ugrep-indexer_facade.cpp'; fi`
+
 ugrep_indexer-glob.o: glob.cpp
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_indexer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT ugrep_indexer-glob.o -MD -MP -MF $(DEPDIR)/ugrep_indexer-glob.Tpo -c -o ugrep_indexer-glob.o `test -f 'glob.cpp' || echo '$(srcdir)/'`glob.cpp
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ugrep_indexer-glob.Tpo $(DEPDIR)/ugrep_indexer-glob.Po
@@ -892,6 +913,7 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/ugrep-zopen.Po
 	-rm -f ./$(DEPDIR)/ugrep_indexer-glob.Po
 	-rm -f ./$(DEPDIR)/ugrep_indexer-ugrep-indexer.Po
+	-rm -f ./$(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Po
 	-rm -f ./$(DEPDIR)/ugrep_indexer-zopen.Po
 	-rm -f Makefile
 distclean-am: clean-am distclean-compile distclean-generic \
@@ -950,6 +972,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/ugrep-zopen.Po
 	-rm -f ./$(DEPDIR)/ugrep_indexer-glob.Po
 	-rm -f ./$(DEPDIR)/ugrep_indexer-ugrep-indexer.Po
+	-rm -f ./$(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Po
 	-rm -f ./$(DEPDIR)/ugrep_indexer-zopen.Po
 	-rm -f Makefile
 maintainer-clean-am: distclean-am maintainer-clean-generic
