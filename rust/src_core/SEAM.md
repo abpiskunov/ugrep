@@ -154,3 +154,7 @@ The ugrep.cpp ~4133-4448 range (GrepMaster, GrepWorker job queue: mutex/condvar,
 ## ugrep.cpp config load/save retained (D-src_core-config-retained)
 
 The ugrep.cpp ~4806-5282 range (load_config, save_config: config file parsing and writing, which set the flag globals) stays C++. No seam signature, facade, tap, recorded trace or unit record exists, and the flag globals are retained C++ (D-src_core-globals-retained). Porting it later needs its own Prepare seam + Behavior follow-up.
+
+## ugrep.cpp help/version/error range retained (D-src_core-help-retained)
+
+The ugrep.cpp 14047-15365 range (help, version, is_directory, cannot_decompress, warning, error, abort) stays C++. No facade, bridge entry, tap, recorded trace or unit record exists; warning/error/abort exit and read C++-owned flag/color globals. Porting it later needs its own Prepare seam + Behavior follow-up.
