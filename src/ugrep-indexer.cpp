@@ -267,6 +267,10 @@ inline uint64_t file_size(const struct stat& buf)
 #include <vector>
 #include <stack>
 
+// seam of the src_indexer component: index(), indexer(), deleter() and options() are defined by the facade in
+// src/ugrep-indexer_facade.cpp, the bodies below are their legacy implementations `<name>_cpp`
+#include "ugrep-indexer_seam.h"
+
 // number of bytes to gulp into the buffer to index a file
 #define BUF_SIZE 65536
 
@@ -395,6 +399,7 @@ struct Stream {
   ~Stream()
   {
     close();
+    stream_release(*this);
   }
 
   bool open(const char *pathname)
@@ -573,6 +578,9 @@ struct Stream {
   reflex::Input input;
   std::string partname;
 
+  // handle of the Rust-owned stream state with CPP_RUST_IMPL_SRC_INDEXER, always 0 otherwise
+  uint64_t rust_handle = 0;
+
 #ifdef HAVE_LIBZ
 #ifdef WITH_DECOMPRESSION_THREAD
   Zthread zthread;
@@ -583,6 +591,18 @@ struct Stream {
 #endif
 #endif
 };
+
+// the Rust handle slot of a stream, used by the facade in src/ugrep-indexer_facade.cpp
+uint64_t& stream_rust_handle(Stream& stream)
+{
+  return stream.rust_handle;
+}
+
+// the partname slot of a stream, used by the facade
+std::string& stream_partname(Stream& stream)
+{
+  return stream.partname;
+}
 
 // display the version info and exit
 void version()
@@ -826,7 +846,7 @@ inline uint32_t indexhash(uint32_t h, uint8_t b)
 }
 
 // index a file to produce hashes[0..hashes_size-1] table, noise, and archive/binary file detection flags
-bool index(Stream& stream, const char *pathname, uint8_t *hashes, size_t& hashes_size, float& noise, bool& compressed, bool& archive, bool& binary, uint64_t& size)
+bool index_cpp(Stream& stream, const char *pathname, uint8_t *hashes, size_t& hashes_size, float& noise, bool& compressed, bool& archive, bool& binary, uint64_t& size)
 {
   hashes_size = 0;
   noise = 0;
@@ -1404,7 +1424,7 @@ void cat(const std::string& pathname, std::stack<Entry>& dir_entries, std::vecto
 }
 
 // recursively delete index files
-void deleter(const char *pathname)
+void deleter_cpp(const char *pathname)
 {
   std::stack<Entry> dir_entries;
   std::vector<Entry> file_entries;
@@ -1456,7 +1476,7 @@ void deleter(const char *pathname)
 }
 
 // recursively index files
-void indexer(const char *path)
+void indexer_cpp(const char *path)
 {
   if (!flag_no_messages && !flag_check && !flag_quiet)
   {
@@ -1841,7 +1861,7 @@ void indexer(const char *path)
 }
 
 // parse the command-line options
-void options(int argc, const char **argv)
+void options_cpp(int argc, const char **argv)
 {
   bool options = true;
 

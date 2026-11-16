@@ -195,6 +195,7 @@ name = "rust_umbrella"
 version = "7.8.5"
 dependencies = [
  "src_core",
+ "src_indexer",
  "src_leaves",
 ]
 
@@ -266,6 +267,14 @@ name = "src_core-harness"
 version = "7.8.5"
 dependencies = [
  "serde_json",
+]
+
+[[package]]
+name = "src_indexer"
+version = "7.8.5"
+dependencies = [
+ "cxx",
+ "cxx-build",
 ]
 
 [[package]]

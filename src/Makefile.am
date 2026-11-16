@@ -63,6 +63,10 @@ ugrep_indexer_SOURCES  = \
 	$(top_srcdir)/include/reflex/utf8.h \
 	$(top_srcdir)/lib/input.cpp \
 	ugrep-indexer.cpp \
+	ugrep-indexer_facade.cpp \
+	ugrep-indexer_seam.h \
+	indexer_rust.hpp \
+	indexer_tap.hpp \
 	glob.hpp \
 	glob.cpp \
 	zopen.h \

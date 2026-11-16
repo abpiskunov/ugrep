@@ -2,4 +2,5 @@
 //! Empty until the first Port: Foundation only proves the plumbing.
 
 pub use src_core;
+pub use src_indexer;
 pub use src_leaves;
