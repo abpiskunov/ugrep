@@ -37,6 +37,7 @@ components:
     product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep.exe
     link_map: msvc/bin/Base-Release-x64-rust/ugrep.map
     rust_archive: "rust_umbrella:"   # MSVC maps name archive members <lib stem>:<object>
+    linked_args: '--forbid-sources "src/glob.cpp src/zopen.c"'
     coverage_functions: 100
     coverage_lines: 85
   src_core:
@@ -52,7 +53,8 @@ components:
     product_bin_cpp: msvc/bin/Base-Release-x64/ugrep.exe
     product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep.exe
     link_map: msvc/bin/Base-Release-x64-rust/ugrep.map
-    rust_archive: "rust_umbrella:"   # MSVC maps name archive members <lib stem>:<object>
+    rust_archive: "rust_umbrella:src_core"   # D-src_core-linked: the src_core crate itself, not any umbrella member
+    linked_args: '--forbid "_cpp@(CNF|Stats)@@"'   # D-src_core-linked: the replaced C++ bodies; the rest of these files is retained C++
     coverage_functions: 90   # D-src_core-coverage: 15 reasoned uncovered functions
     coverage_lines: 85
   src_tui:
@@ -69,6 +71,7 @@ components:
     product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep.exe
     link_map: msvc/bin/Base-Release-x64-rust/ugrep.map
     rust_archive: "rust_umbrella:"   # MSVC maps name archive members <lib stem>:<object>
+    linked_args: '--forbid-sources "src/query.cpp src/screen.cpp src/vkey.cpp"'
     coverage_functions: 100
     coverage_lines: 85
   src_indexer:
@@ -85,6 +88,7 @@ components:
     product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep-indexer.exe
     link_map: msvc/bin/Base-Release-x64-rust/ugrep-indexer.map
     rust_archive: "rust_umbrella:"   # MSVC maps name archive members <lib stem>:<object>
+    linked_args: '--forbid-sources "src/ugrep-indexer.cpp"'
     coverage_functions: 100
     coverage_lines: 85
 
@@ -208,7 +212,7 @@ gates:
           powershell -NoProfile -File migration/harness/build-cpp.ps1 -Extra "/p:{switch_option}=rust /p:CppRustOutSuffix=-rust"
       - name: linked
         run: >-
-          {tools} linked-check --map {link_map} --forbid-sources "{cpp_sources}"
+          {tools} linked-check --map {link_map} {linked_args}
           --forbid "cpp2rust[0-9_]?tap|tap@cpp2rust|cpp2rust_shadow" --require "{rust_archive}" --out {out}/linked.json
       - name: surface
         run: >-
