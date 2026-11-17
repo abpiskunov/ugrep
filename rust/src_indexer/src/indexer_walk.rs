@@ -99,20 +99,10 @@ fn open_errno(e: &std::io::Error) -> i32 {
     }
 }
 
-/// The `errno` of a failed CRT call such as `remove` or `lstat`
+/// The `errno` of a failed CRT call such as `lstat`
+#[cfg(not(windows))]
 fn crt_errno(e: &std::io::Error) -> i32 {
-    #[cfg(windows)]
-    {
-        match e.raw_os_error() {
-            Some(2) | Some(3) => ENOENT,
-            Some(5) | Some(32) | Some(33) => EACCES,
-            _ => EINVAL,
-        }
-    }
-    #[cfg(not(windows))]
-    {
-        e.raw_os_error().unwrap_or(EINVAL)
-    }
+    e.raw_os_error().unwrap_or(EINVAL)
 }
 
 /// Text mode of the CRT stream the ignore files are opened with ("r"): CRLF becomes LF, Ctrl-Z ends the file
@@ -138,13 +128,9 @@ fn text_mode(raw: Vec<u8>) -> Vec<u8> {
     out
 }
 
-/// `static_cast<unsigned>(x)` of a double: out of range gives what the x64 conversion gives
+/// `static_cast<unsigned>(x)` of a double
 fn to_unsigned(x: f64) -> u32 {
-    if x.is_nan() || x >= 9.2e18 || x <= -9.2e18 {
-        0
-    } else {
-        (x as i64) as u32
-    }
+    (x as i64) as u32
 }
 
 fn is_space(c: u8) -> bool {
@@ -612,8 +598,8 @@ impl<'a> Walker<'a> {
             // if index time is nonzero, there is a valid index file in this directory that we should remove
             if times.index_time > 0 {
                 let index_filename = index_filename_of(&visit.pathname);
-                if let Err(e) = std::fs::remove_file(os_path(&index_filename)) {
-                    self.error("cannot remove", &index_filename, crt_errno(&e));
+                if let Err(e) =                 sys::remove_file(&index_filename) {
+                                    self.error("cannot remove", &index_filename, e);
                 } else {
                     num_removed += 1;
                     if self.flags.verbose {
@@ -646,10 +632,8 @@ impl<'a> Walker<'a> {
         if !r.ok {
             return false;
         }
-        // the early returns of `index()` leave the table size and `size` of the caller as they were
-        if !r.hashes.is_empty() {
-            st.size = r.size;
-        }
+        // `index()` sets size to 0 on entry, so its early returns leave size == 0
+        st.size = r.size;
         st.hashes = r.hashes;
         st.noise = r.noise;
         st.compressed = r.compressed;
@@ -1153,6 +1137,50 @@ mod tests {
         assert!(!std::path::Path::new(&format!("{dir}/._UG#_Store")).exists());
         let r = indexer(&check, Some(&root), 0);
         assert!(r.exited && r.exit_code == 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn index_early_return_leaves_size_zero() {
+        let root = temp("size0");
+        let dir = String::from_utf8(root).unwrap();
+        let path = format!("{dir}/bin.dat");
+        std::fs::write(&path, b"\0\x01\x02binary\0data\0").unwrap();
+        let mut f = flags();
+        f.ignore_binary = true;
+        let mut st = FileState {
+            hashes: Vec::new(),
+            noise: 0.0,
+            compressed: false,
+            archive: false,
+            binary: false,
+            size: 12345,
+            partname: Vec::new(),
+        };
+        let mut handle = 0u64;
+        assert!(Walker::index(&f, &mut handle, path.as_bytes(), &mut st));
+        assert!(st.binary && st.hashes.is_empty());
+        assert_eq!(st.size, 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn deleter_fails_on_read_only_index() {
+        let root = temp("readonly");
+        let dir = String::from_utf8(root.clone()).unwrap();
+        std::fs::write(format!("{dir}/a.txt"), b"hello world, hello index").unwrap();
+        indexer(&flags(), Some(&root), 0);
+        let store = format!("{dir}/._UG#_Store");
+        let original = std::fs::metadata(&store).unwrap().permissions();
+        let mut perms = original.clone();
+        perms.set_readonly(true);
+        std::fs::set_permissions(&store, perms).unwrap();
+
+        let r = deleter(&flags(), Some(&root), 0);
+        assert_eq!(r.warnings, 1);
+        assert!(std::path::Path::new(&store).exists());
+
+        std::fs::set_permissions(&store, original).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
     }
 

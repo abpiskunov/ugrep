@@ -10,6 +10,21 @@ pub mod sys {
         fn fwrite(buf: *const c_void, size: usize, count: usize, stream: *mut c_void) -> usize;
         fn fflush(stream: *mut c_void) -> i32;
         fn strerror(errnum: i32) -> *const c_char;
+        fn _wremove(path: *const u16) -> i32;
+        fn _errno() -> *mut i32;
+    }
+
+    /// CRT `remove()`: the error is the `errno` of the failed call
+    pub fn remove_file(path: &[u8]) -> Result<(), i32> {
+        let wpath = super::win::wide(path);
+        // SAFETY: the wide name is NUL-terminated; `_errno` returns a valid thread-local pointer
+        unsafe {
+            if _wremove(wpath.as_ptr()) == 0 {
+                Ok(())
+            } else {
+                Err(*_errno())
+            }
+        }
     }
 
     pub fn write_stdout(bytes: &[u8]) {
@@ -39,6 +54,12 @@ pub mod sys {
 
     extern "C" {
         fn strerror(errnum: i32) -> *const c_char;
+    }
+
+    /// `remove()`: the error is the `errno` of the failed call
+    pub fn remove_file(path: &[u8]) -> Result<(), i32> {
+        use std::os::unix::ffi::OsStrExt;
+        std::fs::remove_file(std::ffi::OsStr::from_bytes(path)).map_err(|e| e.raw_os_error().unwrap_or(22))
     }
 
     pub fn write_stdout(bytes: &[u8]) {
@@ -167,7 +188,7 @@ pub mod win {
     }
 
     /// `utf8_decode()` plus the terminating NUL: invalid UTF-8 becomes U+FFFD as with `MultiByteToWideChar`
-    fn wide(path: &[u8]) -> Vec<u16> {
+    pub fn wide(path: &[u8]) -> Vec<u16> {
         String::from_utf8_lossy(path).encode_utf16().chain(std::iter::once(0)).collect()
     }
 }
