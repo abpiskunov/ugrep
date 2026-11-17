@@ -224,8 +224,8 @@ enum Encoding {
 }
 
 /// `reflex::Input` over a `FILE*`: UTF BOM detection and UTF-16/32 to UTF-8 conversion, as `lib/input.cpp`.
-struct Input {
-    file: File,
+pub struct Input {
+    file: Box<dyn Read>,
     utf8: [u8; 8],
     uidx: usize,
     ulen: usize,
@@ -266,9 +266,14 @@ impl Input {
     /// Opens the file like `fopenw_s(file, pathname, "rb")` and runs `Input::file_init`; None when it cannot be opened.
     fn open(pathname: &[u8]) -> Option<Input> {
         let file = open_read(pathname)?;
+        Some(Input::from_reader(Box::new(file)))
+    }
+
+    /// `Input` over an already open stream (the walk reads ignore files this way): runs `Input::file_init`.
+    pub fn from_reader(file: Box<dyn Read>) -> Input {
         let mut input = Input { file, utf8: [0; 8], uidx: 0, ulen: 0, enc: Encoding::Plain };
         input.init();
-        Some(input)
+        input
     }
 
     /// `fread(s, 1, s.len(), file)`: reads until `s` is full or the end of the file, returns the count.
@@ -379,7 +384,7 @@ impl Input {
     }
 
     /// `Input::get(s, n)` for a `FILE*` with `n = out.len()`: the number of bytes written, 0 at the end of the file.
-    fn get(&mut self, out: &mut [u8]) -> usize {
+    pub fn get(&mut self, out: &mut [u8]) -> usize {
         let mut n = out.len();
         let mut t = 0usize;
         if self.ulen > 0 {
