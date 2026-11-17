@@ -1,0 +1,19 @@
+schema: cpp-rust-unit/1
+unit: indexer_walk
+component: src_indexer
+functions: [src_indexer.indexer, src_indexer.deleter]
+cpp_files: [src/ugrep-indexer.cpp, src/ugrep-indexer_facade.cpp, src/ugrep-indexer_seam.h]
+rust_files: rust/src_indexer/src/indexer_walk.rs
+rust_crate_name: src_indexer
+harness_crate_name: src_indexer-harness
+depends_on: [indexer_core]
+status: ported
+notes:
+  - 'Gate: GATE unit indexer_walk: PASS (migration/out/gates/unit/indexer_walk/report.json); seam-replay 95 cases, 0 divergent.'
+  - 'Scope: trim, getline, import_globs, include_dir, include_file, cat, deleter and indexer (one coarse call each; the walk calls the Rust index of indexer_core directly). The index file update (compaction in place, entries of deleted and modified files) and the progress/summary output are ported with it.'
+  - 'Files besides indexer_walk.rs: glob.rs (see below) and ffi.rs (all unsafe of the unit, as policy.unsafe_allowed requires; safe wrappers).'
+  - 'glob_match: rust/src_indexer/src/glob.rs is a verbatim copy of the Rust glob port of src_leaves (rust/src_leaves/src/signatures.rs). The replay harness includes signatures.rs alone and that file uses crate:: paths, so the crate cannot be shared by path. Keep the two in step.'
+  - 'indexer_core.rs: only the reflex::Input reader was made reusable (struct and get() pub, Input::from_reader over Box<dyn Read>); the walk reads ignore files through it like reflex::BufferedInput over a FILE*. No behavior change of index().'
+  - 'Output: on Windows the walk writes through the CRT stdout (fwrite via __acrt_iob_func) and flushes only in warning/error, as the C++ printf. Elsewhere it uses std stdout (the autotools build has no Rust glue). Windows listing uses FindFirstFileW (attributes, symlink reparse tag, ordering as the C++); non-Windows read_dir/lstat is written to the C++ but not compiled or run on this worker.'
+  - 'Ignore files are opened in CRT text mode ("r") by the C++: CRLF becomes LF and Ctrl-Z ends the file; text_mode() reproduces it on Windows.'
+  - 'Known approximations: errno of failed CRT calls is mapped from the Win32 error (open: access denied -> EACCES, else ENOENT, as fopenw_s; remove: not found -> ENOENT, access/sharing -> EACCES, else EINVAL); a failed index() re-opens the file to get its errno; write failures report EINVAL. A float-to-unsigned conversion of NaN/inf (only binary files with -I) gives 0 like the x64 conversion. The seam trace compares only the warnings counter of indexer/deleter; stdout and the index files are judged by the surface cases at Switch over.'
