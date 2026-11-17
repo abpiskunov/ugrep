@@ -38,6 +38,8 @@ components:
     link_map: msvc/bin/Base-Release-x64-rust/ugrep.map
     rust_archive: "rust_umbrella:"   # MSVC maps name archive members <lib stem>:<object>
     linked_args: '--forbid-sources "src/glob.cpp src/zopen.c"'
+    cleanup_map: msvc/bin/Base-Release-x64/ugrep.map   # D-cleanup-gate: the default build is the product after Cleanup
+    retained_args: '--require "matcher[.]obj" --require "pattern[.]obj"'   # Q-cleanup-1: RE-flex stays C++
     coverage_functions: 100
     coverage_lines: 85
   src_core:
@@ -55,6 +57,8 @@ components:
     link_map: msvc/bin/Base-Release-x64-rust/ugrep.map
     rust_archive: "rust_umbrella:src_core"   # D-src_core-linked: the src_core crate itself, not any umbrella member
     linked_args: '--forbid "_cpp@(CNF|Stats)@@"'   # D-src_core-linked: the replaced C++ bodies; the rest of these files is retained C++
+    cleanup_map: msvc/bin/Base-Release-x64/ugrep.map
+    retained_args: '--require "ugrep[.]obj" --require "output[.]obj" --require "query[.]obj" --require "screen[.]obj" --require "vkey[.]obj"'   # Q-cleanup-1: ugrep.cpp/output.cpp remainder and the TUI shell stay C++
     coverage_functions: 90   # D-src_core-coverage: 15 reasoned uncovered functions
     coverage_lines: 85
   src_tui:
@@ -89,6 +93,8 @@ components:
     link_map: msvc/bin/Base-Release-x64-rust/ugrep-indexer.map
     rust_archive: "rust_umbrella:src_indexer"   # D-src_indexer-linked: the src_indexer crate itself
     linked_args: '--forbid "[?](index|indexer|deleter)_cpp@@"'   # D-src_indexer-linked: the replaced C++ bodies; indexer_cli (options/usage/load_config/main) is retained C++
+    cleanup_map: msvc/bin/Base-Release-x64/ugrep-indexer.map
+    retained_args: '--require "[?]options_cpp@@"'   # Q-cleanup-1 / Q-indexer-6: indexer_cli stays C++
     coverage_functions: 100
     coverage_lines: 85
 
@@ -227,11 +233,32 @@ gates:
         run: >-
           {tools} policy-scan --base {base} --plan migration/validation-plan.yaml
           --forbid-todo {rust_crate}/src --out {out}/policy.json
-      # Sanitizers on Windows (/fsanitize=address with the Rust side) are opt-in; the first Port decides. After
-      # Cleanup deleted the C++ and the tap: add `--no-tap {rust_crate}/src src` to the policy check.
+      # Sanitizers on Windows (/fsanitize=address with the Rust side) are opt-in; the first Port decides.
 
-# Cleanup checks (Q-cleanup-1, end state hybrid-with-retained-cpp). Cleanup deletes only ported bodies/files: src/glob.cpp,
-# src/zopen.c, CNF::*_cpp, Stats::report_cpp, index/indexer/deleter_cpp and their facades/taps. Retained and required linked:
-# ugrep.cpp/output.cpp remainder, indexer_cli, RE-flex (lib/, include/reflex), third-party libs, TUI shell (query/screen/vkey).
-# The cleanup form of the switch gate keeps each component's linked_args forbid list (deleted symbols), adds --require for the
-# retained objects, and adds `--no-tap {rust_crate}/src src` to the policy check.
+  # After Cleanup (Q-cleanup-1, D-cleanup-gate) a switched component has no C++ variant and no tap: the default build
+  # is the product. This gate replaces `switch` for src_leaves, src_core and src_indexer. The deleted C++ stays
+  # forbidden (linked_args), the retained C++ must still link (retained_args), and no tap is left in the product.
+  # baseline still works as the C++-change regression check (it builds the default product); behavior-ready's
+  # seam capture and coverage need the deleted C++ and apply only to components that have not been cleaned up.
+  cleanup:
+    scope: component
+    checks:
+      - name: build-default
+        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1"
+      - name: linked
+        run: >-
+          {tools} linked-check --map {cleanup_map} {linked_args} {retained_args}
+          --forbid "cpp2rust[0-9_]?tap|tap@cpp2rust|cpp2rust_shadow" --require "{rust_archive}" --out {out}/linked.json
+      - name: surface
+        run: >-
+          {tools} run-cases --bin {product_bin_cpp} --impl rust
+          --cases migration/corpus/{component}/cases.jsonl --env-matrix migration/env-matrix.json --out {out}/surface.rust.jsonl
+          && {tools} trace-diff diff --a migration/corpus/{component}/surface/cases.trace.jsonl
+          --b {out}/surface.rust.jsonl --masks migration/masks/{component}.json --out {out}/surface.json
+        expect:
+          - {json: "{out}/surface.json", field: divergent_cases, op: "==", value: 0}
+          - {json: "{out}/surface.json", field: cases, op: ">=", value: 20}
+      - name: policy
+        run: >-
+          {tools} policy-scan --base {base} --plan migration/validation-plan.yaml
+          --forbid-todo {rust_crate}/src --no-tap {rust_crate}/src src --out {out}/policy.json
