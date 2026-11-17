@@ -3,10 +3,12 @@
   Shared by msvc/ugrep.vcxproj and msvc/ugrep-indexer.vcxproj. Per-component build switch:
   CPP_RUST_IMPL_<COMPONENT> = cpp (default) | rust, chosen at build time, e.g.
     msbuild msvc\ugrep.sln /p:Configuration=Base-Release /p:Platform=x64 /p:CPP_RUST_IMPL_SRC_LEAVES=rust
-  With every switch at cpp this file changes nothing: no cargo, no extra defines, no extra libs.
+  Cleanup (end state hybrid-with-retained-cpp): the legacy C++ of src_leaves, src_core (CNF, Stats) and src_indexer
+  (index/indexer/deleter) is deleted, so the Rust umbrella is always built and linked and the switches no longer select
+  the C++ implementation of those components; src_tui stays C++ (retained shell).
   Output: the default build goes to msvc/bin/<Configuration>-<Platform>/; /p:CppRustOutSuffix=-rust appends a
   suffix to OutDir and IntDir for a variant build (the switch gate's rust variant).
-  Tap variant: /p:CppRustTap=true defines CPP2RUST_TAP and builds the Rust umbrella with feature `tap`.
+  The seam tap build variant (CppRustTap) was removed with the tap code.
 -->
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Label="CppRustSwitch">
@@ -14,11 +16,9 @@
     <CPP_RUST_IMPL_SRC_CORE Condition="'$(CPP_RUST_IMPL_SRC_CORE)'==''">rust</CPP_RUST_IMPL_SRC_CORE>
     <CPP_RUST_IMPL_SRC_TUI Condition="'$(CPP_RUST_IMPL_SRC_TUI)'==''">cpp</CPP_RUST_IMPL_SRC_TUI>
     <CPP_RUST_IMPL_SRC_INDEXER Condition="'$(CPP_RUST_IMPL_SRC_INDEXER)'==''">rust</CPP_RUST_IMPL_SRC_INDEXER>
-    <CppRustTap Condition="'$(CppRustTap)'==''">false</CppRustTap>
     <RustRoot>$(MSBuildThisFileDirectory)..\rust\</RustRoot>
     <RustTargetDir>$(MSBuildThisFileDirectory)..\build\cargo\$(MSBuildProjectName)</RustTargetDir>
     <RustUmbrellaLib>$(RustTargetDir)\release\rust_umbrella.lib</RustUmbrellaLib>
-    <RustLinkUmbrella>false</RustLinkUmbrella>
-    <RustLinkUmbrella Condition="'$(CPP_RUST_IMPL_SRC_LEAVES)'=='rust' Or '$(CPP_RUST_IMPL_SRC_CORE)'=='rust' Or '$(CPP_RUST_IMPL_SRC_TUI)'=='rust' Or '$(CPP_RUST_IMPL_SRC_INDEXER)'=='rust'">true</RustLinkUmbrella>
+    <RustLinkUmbrella>true</RustLinkUmbrella>
   </PropertyGroup>
 </Project>

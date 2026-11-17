@@ -108,7 +108,7 @@ functions, listed in `signatures::entry` so a later task can facade them without
 
 ## Tap
 
-`src/core_tap.hpp` (`-DCPP2RUST_TAP`, via `/p:CppRustTap=true`): `TAP_CALL("src_core.<fn>", args...)` at every
+Historical (deleted at Cleanup): `src/core_tap.hpp` (`-DCPP2RUST_TAP`, via `/p:CppRustTap=true`): `TAP_CALL("src_core.<fn>", args...)` at every
 facade function and unit entry function; neutral encoders for `CNF::Terms` (nested array, `null` for the NULL
 pattern), the flag snapshot (`name=value;`) and `FILE*` output (captured text; tap build only). Without the macro the
 tap macros expand to nothing. The Rust tap, capture script and replay harness crate (`rust/src_core-harness`) belong

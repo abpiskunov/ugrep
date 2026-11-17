@@ -36,7 +36,9 @@ jobs:
       - name: Make clean
         run: make clean
       - name: Configure ARM64
-        run: ./configure --enable-static --without-brotli --build x86_64-pc-linux-gnu --host aarch64-linux-gnu || (cat config.log; exit 1)
+        run: |
+          rustup target add aarch64-unknown-linux-gnu
+          ./configure --enable-static --without-brotli --build x86_64-pc-linux-gnu --host aarch64-linux-gnu || (cat config.log; exit 1)
       - name: Make AMD64
         run: make -k -j
       - name: Upload zip for ARM64

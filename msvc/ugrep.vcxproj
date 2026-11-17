@@ -508,7 +508,6 @@
     <ClInclude Include="..\include\reflex\utf8.h" />
     <ClInclude Include="..\src\cnf.hpp" />
     <ClInclude Include="..\src\core_rust.hpp" />
-    <ClInclude Include="..\src\core_tap.hpp" />
     <ClInclude Include="..\src\flag.hpp" />
     <ClInclude Include="..\src\glob.hpp" />
     <ClInclude Include="..\src\mmap.hpp" />
@@ -545,16 +544,13 @@
     <ClCompile Include="..\lib\unicode.cpp" />
     <ClCompile Include="..\lib\utf8.cpp" />
     <ClCompile Include="..\src\cnf.cpp" />
-    <ClCompile Include="..\src\glob.cpp" />
+    <ClCompile Include="..\src\glob_facade.cpp" />
     <ClCompile Include="..\src\output.cpp" />
     <ClCompile Include="..\src\query.cpp" />
     <ClCompile Include="..\src\screen.cpp" />
     <ClCompile Include="..\src\stats.cpp" />
     <ClCompile Include="..\src\ugrep.cpp" />
     <ClCompile Include="..\src\vkey.cpp" />
-    <ClCompile Include="..\src\zopen.c">
-      <PreprocessorDefinitions>ZOPEN_FACADE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-    </ClCompile>
     <ClCompile Include="..\src\zopen_facade.cpp" />
     <ClCompile Include="..\src\zstream.cpp">
       <PreprocessorDefinitions>ZSTREAM_MAX_7ZIP_SIZE=1073741824;%(PreprocessorDefinitions)</PreprocessorDefinitions>

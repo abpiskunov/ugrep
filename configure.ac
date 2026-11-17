@@ -346,19 +346,15 @@ AX_CHECK_LZ4LIB([], [echo "optional liblz4 not found: install if you want ugrep 
 
 AX_CHECK_ZSTDLIB([], [echo "optional libzstd not found: install if you want ugrep option -z to search .zst files"])
 
-AX_CHECK_BROTLILIB([], [echo "optional brotli library not found: install if you want ugrep option -z to search .br files"])
-
+# the Rust zstream does not decode .br and .bz3: brotli and bzip3 are neither detected, defined nor linked
+AC_ARG_WITH(brotli,
+  [AS_HELP_STRING([--with-brotli],
+                  [not supported by the Rust build: .br files cannot be searched])],
+  [AS_IF([test "x$withval" != "xno"], [AC_MSG_WARN([--with-brotli ignored: the Rust build does not support .br files])])])
 AC_ARG_WITH(bzip3,
   [AS_HELP_STRING([--with-bzip3],
-                  [to enable bzip3 library to decompress .bz3 files])],
-  [with_bzip3_library="$withval"],
-  [with_bzip3_library=""])
-if test "x$with_bzip3_library" != "x"; then
-  if test "x$with_bzip3" = "xyes"; then
-    unset with_bzip3
-  fi
-  AX_CHECK_BZIP3LIB([], [echo "optional libbzip3 not found: install if you want ugrep option -z to search .bz3 files"])
-fi
+                  [not supported by the Rust build: .bz3 files cannot be searched])],
+  [AS_IF([test "x$withval" != "xno"], [AC_MSG_WARN([--with-bzip3 ignored: the Rust build does not support .bz3 files])])])
 
 AC_ARG_ENABLE(7zip,
   [AS_HELP_STRING([--disable-7zip],
@@ -379,6 +375,48 @@ fi
 
 fi
 AM_CONDITIONAL([ENABLE_7ZIP],[test "x$with_7zip" = "xyes"])
+
+################################################################################
+# Rust: src/ components ported to Rust are built by cargo into one static library (rust/rust_umbrella)
+################################################################################
+
+AC_CHECK_PROG([CARGO], [cargo], [cargo])
+if test "x$CARGO" = "x"; then
+  AC_MSG_ERROR([cargo not found: ugrep requires the Rust toolchain (see rust-toolchain.toml)])
+fi
+# the Rust zstream calls only the codec libraries on the link line; the others are stubbed (like the C++ without HAVE_LIB*)
+rust_codec_libs=""
+for lib in z bz2 lzma lz4 zstd viiz; do
+  case " $LIBS " in
+    *" -l$lib "*)
+      name=$lib
+      if test "x$lib" = "xz"; then name=zlib; fi
+      rust_codec_libs="${rust_codec_libs:+$rust_codec_libs,}$name"
+      ;;
+  esac
+done
+RUST_FEATURES=""
+if test "x$rust_codec_libs" != "x"; then
+  RUST_FEATURES="--features codecs"
+fi
+RUST_CODEC_LIBS="$rust_codec_libs"
+AC_MSG_CHECKING([which codec libraries the Rust zstream calls])
+AC_MSG_RESULT([${rust_codec_libs:-none}])
+RUST_TARGET=""
+RUST_TRIPLE=""
+if test "x$cross_compiling" = "xyes"; then
+  case "$host_cpu" in
+    aarch64*) rust_triple="aarch64-unknown-linux-gnu" ;;
+    x86_64*) rust_triple="x86_64-unknown-linux-gnu" ;;
+    *) AC_MSG_ERROR([no Rust target known for host $host]) ;;
+  esac
+  RUST_TRIPLE="$rust_triple"
+  RUST_TARGET="--target $rust_triple"
+fi
+AC_SUBST([RUST_FEATURES])
+AC_SUBST([RUST_CODEC_LIBS])
+AC_SUBST([RUST_TARGET])
+AC_SUBST([RUST_TRIPLE])
 
 ################################################################################
 # Completions

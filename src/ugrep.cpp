@@ -79,7 +79,6 @@ After this, you may want to test ugrep and install it (optional):
 #include "mmap.hpp"
 #include "output.hpp"
 #include "tui_entry.hpp"
-#include "core_tap.hpp"
 #include "stats.hpp"
 #include <reflex/matcher.h>
 #include <reflex/linematcher.h>
@@ -7524,7 +7523,6 @@ void init(int argc, const char **argv)
 // check TTY info and set colors
 void terminal()
 {
-  TAP_CALL("src_core.terminal");
   // check if standard output is a TTY
   flag_tty_term = isatty(STDOUT_FILENO) != 0;
 
@@ -7890,7 +7888,6 @@ void terminal()
 // --hyperlink parsing
 void set_terminal_hyperlink()
 {
-  TAP_CALL("src_core.set_terminal_hyperlink");
   // set prefix, host, current working directory path to output hyperlinks with --hyperlink
   if (flag_hyperlink != NULL)
   {
@@ -7945,7 +7942,6 @@ void set_terminal_hyperlink()
 // search the specified files, directories, and/or standard input for pattern matches, may throw an exception
 void ugrep()
 {
-  TAP_CALL("src_core.ugrep");
   // reset stats
   Stats::reset();
 
@@ -9165,7 +9161,6 @@ void ugrep()
 // perform a limited ugrep search on a single file with optional archive part and store up to num results in a vector, may throw an exception, used by the TUI
 void ugrep_find_text_preview(const char *filename, const char *partname, size_t from_lineno, size_t max, size_t& lineno, size_t& num, std::vector<std::string>& text)
 {
-  TAP_CALL("src_core.ugrep_find_text_preview", std::string(filename), partname != NULL ? std::string(partname) : std::string(), from_lineno, max);
   // we can only return a text preview when the main search engine ugrep() already started and executes, or after it ends
   if (!Static::matcher)
     return;
@@ -9190,7 +9185,6 @@ void ugrep_find_text_preview(const char *filename, const char *partname, size_t 
 // extract a part from an archive and send to a stream, used by the TUI
 void ugrep_extract(const char *filename, const char *partname, FILE *output)
 {
-  TAP_CALL("src_core.ugrep_extract", std::string(filename), partname != NULL ? std::string(partname) : std::string());
   Grep grep(NULL, NULL, NULL);
   grep.extract(filename, partname, output);
 }

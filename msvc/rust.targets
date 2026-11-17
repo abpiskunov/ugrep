@@ -15,15 +15,8 @@
     </ClCompile>
   </ItemDefinitionGroup>
 
+  <!-- Cleanup: the legacy C++ bodies of the ported units are deleted, so the umbrella is always linked. -->
   <ItemDefinitionGroup Condition="'$(RustLinkUmbrella)'=='true'">
-    <ClCompile>
-      <PreprocessorDefinitions Condition="'$(CPP_RUST_IMPL_SRC_LEAVES)'=='rust'">CPP_RUST_IMPL_SRC_LEAVES=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <PreprocessorDefinitions Condition="'$(CPP_RUST_IMPL_SRC_LEAVES)'=='rust'">CPP_RUST_IMPL_ZOPEN=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <PreprocessorDefinitions Condition="'$(CPP_RUST_IMPL_SRC_LEAVES)'=='rust'">CPP_RUST_IMPL_ZSTREAM=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <PreprocessorDefinitions Condition="'$(CPP_RUST_IMPL_SRC_CORE)'=='rust'">CPP_RUST_IMPL_SRC_CORE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <PreprocessorDefinitions Condition="'$(CPP_RUST_IMPL_SRC_TUI)'=='rust'">CPP_RUST_IMPL_SRC_TUI=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <PreprocessorDefinitions Condition="'$(CPP_RUST_IMPL_SRC_INDEXER)'=='rust'">CPP_RUST_IMPL_SRC_INDEXER=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-    </ClCompile>
     <ClCompile>
       <AdditionalIncludeDirectories>$(RustTargetDir)\cxxbridge;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
@@ -34,18 +27,10 @@
     </Link>
   </ItemDefinitionGroup>
 
-  <ItemDefinitionGroup Condition="'$(CppRustTap)'=='true'">
-    <ClCompile>
-      <PreprocessorDefinitions>CPP2RUST_TAP=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <LanguageStandard>stdcpp17</LanguageStandard>
-    </ClCompile>
-  </ItemDefinitionGroup>
-
   <PropertyGroup>
-    <RustCargoFeatures Condition="'$(CppRustTap)'=='true'">tap</RustCargoFeatures>
     <!-- Configurations that define HAVE_LIB* (not Base-*) link the codec libraries through project references: the Rust zstream
          may call them (feature codecs). Base-* configurations link none, and the Rust zstream is built without codec calls. -->
-    <RustCargoFeatures Condition="!$(Configuration.StartsWith('Base-'))">$(RustCargoFeatures) codecs</RustCargoFeatures>
+    <RustCargoFeatures Condition="!$(Configuration.StartsWith('Base-'))">codecs</RustCargoFeatures>
     <RustCargoFeatureArg Condition="'$(RustCargoFeatures.Trim())'!=''">--features &quot;$(RustCargoFeatures.Trim())&quot;</RustCargoFeatureArg>
   </PropertyGroup>
 

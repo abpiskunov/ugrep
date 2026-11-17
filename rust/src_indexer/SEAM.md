@@ -166,7 +166,7 @@ Port of `indexer_cli`, with its own seam.
 
 ## Tap
 
-`src/indexer_tap.hpp` (`-DCPP2RUST_TAP`, via `/p:CppRustTap=true`): `TAP_CALL("src_indexer.<fn>", args...)` at the four
+Historical (deleted at Cleanup): `src/indexer_tap.hpp` (`-DCPP2RUST_TAP`, via `/p:CppRustTap=true`): `TAP_CALL("src_indexer.<fn>", args...)` at the four
 facade functions. The flag snapshot is one `name=value;` string, argv a JSON array, `index` out-parameters one
 `hashes_size=..;hashes_fnv=..;noise=..;...` state string (the 64-bit FNV-1a of the table stands for its 65536..128 bytes),
 `void` results are `null` with the `warnings` counter as `state`. `indexer`, `options` end the process inside the call for

@@ -96,7 +96,6 @@
   <ItemGroup>
     <ClInclude Include="..\src\glob.hpp" />
     <ClInclude Include="..\src\indexer_rust.hpp" />
-    <ClInclude Include="..\src\indexer_tap.hpp" />
     <ClInclude Include="..\src\ugrep-indexer_seam.h" />
     <ClInclude Include="..\src\zopen.h" />
     <ClInclude Include="..\src\zstream.hpp" />
@@ -105,12 +104,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\lib\input.cpp" />
-    <ClCompile Include="..\src\glob.cpp" />
+    <ClCompile Include="..\src\glob_facade.cpp" />
     <ClCompile Include="..\src\ugrep-indexer.cpp" />
     <ClCompile Include="..\src\ugrep-indexer_facade.cpp" />
-    <ClCompile Include="..\src\zopen.c">
-      <PreprocessorDefinitions>ZOPEN_FACADE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-    </ClCompile>
     <ClCompile Include="..\src\zopen_facade.cpp" />
     <ClCompile Include="..\src\zstream.cpp" />
   </ItemGroup>

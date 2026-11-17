@@ -8,6 +8,11 @@ man1_MANS = man/ugrep.1 man/ugrep-indexer.1
 
 EXTRA_DIST = README.md LICENSE.txt CONTRIBUTING.md CODE_OF_CONDUCT.md
 
+# the Rust workspace (built by src/Makefile.am rust-umbrella) is part of the distribution, without build output
+dist-hook:
+	cp -R $(srcdir)/rust $(distdir)/rust
+	rm -rf $(distdir)/rust/target
+
 UGREP = $(shell pwd)/$(top_builddir)/bin/ugrep$(EXEEXT)
 CONFIGH = $(shell pwd)/$(top_builddir)/config.h
 
