@@ -1,7 +1,7 @@
 # Fetches the pinned codec sources (never vendored into the repo) into sibling folders of the repository root
 # (<repo>\..\codec-src for the archives, <repo>\..\zlib, bzip2, xz, lz4, zstd for the sources, as msvc/ugrep.vcxproj
 # expects) and builds static /MT x64 libraries into <repo>\..\codec-build\lib. Verifies SHA-256 against the pins below
-# (the same values are recorded in migration/environment.json). Brotli and bzip3 are not fetched: not built.
+# (the same values are recorded in migration/environment.json). Brotli 1.1.0 (brotlicommon, brotlidec) and bzip3 1.5.1 are fetched and built too (D-S6-1).
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..\..\..")
 $base = Split-Path $root
@@ -14,7 +14,9 @@ $pins = @(
   @{ name = "bzip2"; dir = "bzip2"; file = "bzip2-1.0.8.tar.gz"; url = "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz";                                      sha = "AB5A03176EE106D3F0FA90E381DA478DDAE405918153CCA248E682CD0C4A2269" },
   @{ name = "xz";    dir = "xz";    file = "xz-5.4.6.tar.gz";    url = "https://github.com/tukaani-project/xz/releases/download/v5.4.6/xz-5.4.6.tar.gz";      sha = "AEBA3E03BF8140DDEDF62A0A367158340520F6B384F75CA6045CCC6C0D43FD5C" },
   @{ name = "lz4";   dir = "lz4";   file = "lz4-1.10.0.tar.gz";   url = "https://github.com/lz4/lz4/releases/download/v1.10.0/lz4-1.10.0.tar.gz";             sha = "537512904744B35E232912055CCF8EC66D768639FF3ABE5788D90D792EC5F48B" },
-  @{ name = "zstd";  dir = "zstd";  file = "zstd-1.5.6.tar.gz";   url = "https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz";          sha = "8C29E06CF42AACC1EAFC4077AE2EC6C6FCB96A626157E0593D5E82A34FD403C1" }
+  @{ name = "zstd";  dir = "zstd";  file = "zstd-1.5.6.tar.gz";   url = "https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz";          sha = "8C29E06CF42AACC1EAFC4077AE2EC6C6FCB96A626157E0593D5E82A34FD403C1" },
+  @{ name = "brotli"; dir = "brotli"; file = "brotli-1.1.0.tar.gz"; url = "https://github.com/google/brotli/archive/refs/tags/v1.1.0.tar.gz";                  sha = "E720A6CA29428B803F4AD165371771F5398FABA397EDF6778837A18599EA13FF" },
+  @{ name = "bzip3"; dir = "bzip3"; file = "bzip3-1.5.1.tar.gz";  url = "https://github.com/iczelia/bzip3/releases/download/1.5.1/bzip3-1.5.1.tar.gz";      sha = "CC7CACDA6D15F24D3FE73FD87B895D5FD2C0F8B6DD0630AE4993AA45C4853C3B" }
 )
 foreach ($p in $pins) {
   $f = Join-Path $arch $p.file
@@ -48,6 +50,13 @@ Build-Lib "lz4" "$base\lz4\lib" @("lz4.c","lz4hc.c","lz4frame.c","xxhash.c") "" 
 $zs = @()
 foreach ($sub in "common","compress","decompress") { $zs += Get-ChildItem "$base\zstd\lib\$sub" -Filter *.c | ForEach-Object { "$sub\$($_.Name)" } }
 Build-Lib "zstd" "$base\zstd\lib" $zs "/DZSTD_DISABLE_ASM /DXXH_NAMESPACE=ZSTD_" "/I`"$base\zstd\lib`" /I`"$base\zstd\lib\common`""
+$bc = Get-ChildItem "$base\brotli\c\common" -Filter *.c | ForEach-Object { "common\$($_.Name)" }
+Build-Lib "brotlicommon" "$base\brotli\c" $bc "/D_CRT_SECURE_NO_WARNINGS" "/I`"$base\brotli\c\include`""
+$bd = Get-ChildItem "$base\brotli\c\dec" -Filter *.c | ForEach-Object { "dec\$($_.Name)" }
+Build-Lib "brotlidec" "$base\brotli\c" $bd "/D_CRT_SECURE_NO_WARNINGS" "/I`"$base\brotli\c\include`""
+$be = Get-ChildItem "$base\brotli\c\enc" -Filter *.c | ForEach-Object { "enc\$($_.Name)" }
+Build-Lib "brotlienc" "$base\brotli\c" $be "/D_CRT_SECURE_NO_WARNINGS" "/I`"$base\brotli\c\include`""   # encoder: corpus generator only
+Build-Lib "bzip3" "$base\bzip3\src" @("libbz3.c") "/D_CRT_SECURE_NO_WARNINGS /DVERSION=\`"1.5.1\`"" "/I`"$base\bzip3\include`""
 # 7zip support (not WITH_NO_7ZIP) is the in-repo lzma/C (libviiz); built with the flags of lzma/C/Makefile.am
 Build-Lib "viiz" "$root\lzma\C" @("viizip.c","7zAlloc.c","7zArcIn.c","7zBuf.c","7zBuf2.c","7zCrc.c","7zCrcOpt.c","7zDec.c","7zFile.c","7zStream.c","Bcj2.c","Bra.c","Bra86.c","BraIA64.c","CpuArch.c","Delta.c","Lzma2Dec.c","LzmaDec.c","Ppmd7.c","Ppmd7Dec.c") "/DZ7_PPMD_SUPPORT /DZ7_EXTRACT_ONLY /DNDEBUG /D_REENTRANT /D_CRT_SECURE_NO_WARNINGS" ""
 if (-not (Test-Path (Join-Path $libdir "lzma.lib"))) {
