@@ -97,20 +97,8 @@ void deleter(const char *pathname)
 void options(int argc, const char **argv)
 {
   TAP_CALL("src_indexer.options", indexer_tap::flags(), argc, indexer_tap::args(argc, argv), arg_path, warnings);
-#ifdef CPP_RUST_IMPL_SRC_INDEXER
-  rust::Vec<ugrep_rust::IndexerString> args;
-  for (int i = 0; i < argc; ++i)
-    args.push_back(ugrep_rust::IndexerString{indexer_rust::to_vec(argv[i] != NULL ? argv[i] : "")});
-  ugrep_rust::IndexerOptions r = ugrep_rust::indexer_options(indexer_rust::flags(), std::move(args), arg_path != NULL ? indexer_rust::to_slice(arg_path) : indexer_rust::to_slice(""), arg_path != NULL, warnings);
-  indexer_rust::apply(r.flags);
-  if (r.arg_path_index >= 0 && r.arg_path_index < argc)
-    arg_path = argv[r.arg_path_index];
-  warnings = r.exit.warnings;
-  if (r.exit.exited)
-    exit(r.exit.exit_code);
-#else
+  // indexer_cli stays retained C++ (Q-indexer-6): it writes the C++-owned flag_* globals, so both builds run it
   options_cpp(argc, argv);
-#endif
   TAP_STATE(indexer_tap::flags());
   TAP_RET(indexer_tap::none());
 }
