@@ -15,9 +15,10 @@ use serde_json::Value;
 use signatures::{indexer_cli, indexer_core, indexer_walk, Bytes, Exit, IndexerFlags};
 use tap::{quote, ToNeutral};
 
-/// Trace strings are JSON strings of the bytes; pathnames and arguments are plain ASCII/UTF-8 in the corpus.
+/// Trace strings carry one byte per character: the tap writes every byte as the code point of the same value
+/// (Latin-1), so a non-ASCII pathname such as UTF-8 `caf\xc3\xa9.txt` arrives as two characters, not one.
 fn bytes(v: &Value) -> Bytes {
-    v.as_str().unwrap().as_bytes().to_vec()
+    v.as_str().unwrap().chars().map(|c| c as u32 as u8).collect()
 }
 
 fn opt_bytes(v: &Value) -> Option<Bytes> {
@@ -227,10 +228,13 @@ fn main() {
         std::process::exit(2);
     }
     let only: Vec<&str> = if a.len() > 3 { a[3..].iter().flat_map(|s| s.split(',')).collect() } else { ALL.to_vec() };
-    let mut fs = CaseFs::new(a[1].as_ref());
+    // every case runs in its own current directory (`CaseFs::enter`), so relative paths would resolve elsewhere
+    let recorded = std::path::absolute(&a[1]).expect("recorded trace path");
+    let out = std::path::absolute(&a[2]).expect("output path");
+    let mut fs = CaseFs::new(&recorded);
     // results of the calls between their Phase::Call and Phase::Ret; the recorded nesting is last in, first out
     let mut pending: Vec<Pending> = Vec::new();
-    let n = replay::replay_trace(a[1].as_ref(), a[2].as_ref(), &only, |phase, func, args, _replay, tap| {
+    let n = replay::replay_trace(&recorded, &out, &only, |phase, func, args, _replay, tap| {
         if phase == replay::Phase::Ret {
             match pending.pop().expect("Ret without Call") {
                 Pending::Exited => {}
