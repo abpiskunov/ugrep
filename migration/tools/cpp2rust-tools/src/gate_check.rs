@@ -430,6 +430,10 @@ pub fn run_gate(plan: &Value, gate: &str, target: &str, ctx: &Ctx) -> R<Value> {
 /// - the approvals record changed, `decisions.md` or the approved masks `masks/<c>.json`
 ///   (Behavior approvals): `behavior-ready`;
 /// - otherwise (a Behavior task: catalog, corpus, harness, proposed masks): `behavior-proposed`.
+///
+/// A component the plan marks `cleaned: true` has no C++ left to record a seam from or to
+/// measure coverage of, so its catalog changes are held to `<gate>-cleaned` instead, when
+/// the plan defines that gate.
 pub fn changed_targets(base: &str, plan: &Value, mig: &Path, cwd: &Path) -> R<Vec<(String, String)>> {
     let names: Vec<String> = git_quiet(&["diff", "--name-only", &format!("{base}...HEAD")], cwd)
         .lines()
@@ -455,9 +459,11 @@ pub fn changed_targets(base: &str, plan: &Value, mig: &Path, cwd: &Path) -> R<Ve
             if let Some(rest) = n.strip_prefix(&format!("{rel}/{kind}/")) {
                 let first = rest.split('/').next().unwrap_or("");
                 let comp = first.rsplit_once('.').map_or(first, |(a, _)| a);
-                if comps.get(comp).is_some() {
+                if let Some(cdef) = comps.get(comp) {
                     if let Some(gate) = behavior_gate(&norm(mig), comp, &names, &rel) {
-                        todo.push((gate.into(), comp.into()));
+                        let cleaned = get(cdef, "cleaned").and_then(Value::as_bool) == Some(true);
+                        let gate = if cleaned { format!("{gate}-cleaned") } else { gate.to_string() };
+                        todo.push((gate, comp.into()));
                     }
                 }
             }
@@ -649,6 +655,37 @@ mod tests {
                           "gates": {"baseline": {}}});
         let due = changed_targets("base", &plan, &d.path().join("migration"), d.path()).unwrap();
         assert_eq!(due, vec![("baseline".to_string(), "leaves".to_string())]);
+    }
+
+    /// A cleaned component has no C++ seam or coverage left; its catalog goes to the cleaned gate.
+    #[test]
+    fn a_cleaned_components_catalog_is_held_to_the_cleaned_behavior_gate() {
+        let d = TempDir::new("gcleaned");
+        let git = |args: &[&str]| {
+            let ok = std::process::Command::new("git").args(args).current_dir(d.path()).output().unwrap();
+            assert!(ok.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&ok.stderr));
+        };
+        let commit = |m: &str| git(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", m]);
+        git(&["init", "-q"]);
+        d.write("migration/behavior/leaves.yaml", "behaviors: []\n");
+        d.write("migration/behavior/core.yaml", "behaviors: []\n");
+        d.write("migration/decisions.md", "| D |\n");
+        git(&["add", "-A"]);
+        commit("base");
+        git(&["branch", "base"]);
+        d.write("migration/behavior/leaves.yaml", "behaviors: [a]\n");
+        d.write("migration/behavior/core.yaml", "behaviors: [a]\n");
+        d.write("migration/decisions.md", "| D |\n| E |\n");
+        git(&["add", "-A"]);
+        commit("behaviors");
+        let plan = json!({"components": {"leaves": {"cleaned": true}, "core": {}},
+                          "gates": {"behavior-ready": {}, "behavior-ready-cleaned": {}}});
+        let mut due = changed_targets("base", &plan, &d.path().join("migration"), d.path()).unwrap();
+        due.sort();
+        assert_eq!(due, vec![
+            ("behavior-ready".to_string(), "core".to_string()),
+            ("behavior-ready-cleaned".to_string(), "leaves".to_string()),
+        ]);
     }
 
     /// The Switch over task may forget to mark its units `switched`; the build file still decides.
