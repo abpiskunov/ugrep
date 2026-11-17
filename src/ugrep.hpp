@@ -637,36 +637,13 @@ struct Static {
 };
 
 // ANSI SGR substrings extracted from GREP_COLORS and --colors
-#define COLORLEN 32
-extern char color_sl[COLORLEN]; // selected line
-extern char color_cx[COLORLEN]; // context line
-extern char color_mt[COLORLEN]; // matched text in any matched line
-extern char color_ms[COLORLEN]; // matched text in a selected line
-extern char color_mc[COLORLEN]; // matched text in a context line
-extern char color_fn[COLORLEN]; // file name
-extern char color_ln[COLORLEN]; // line number
-extern char color_cn[COLORLEN]; // column number
-extern char color_bn[COLORLEN]; // byte offset
-extern char color_se[COLORLEN]; // separator
+// the color_* and match_* strings are fields of Settings (flag.hpp), owned by Rust
 
-extern char color_qp[COLORLEN]; // TUI prompt
-extern char color_qe[COLORLEN]; // TUI errors
-extern char color_qr[COLORLEN]; // TUI regex highlight
-extern char color_qm[COLORLEN]; // TUI regex meta symbols highlight
-extern char color_ql[COLORLEN]; // TUI regex bracket list highlight
-extern char color_qb[COLORLEN]; // TUI regex brace highlight
 
-extern char match_ms[COLORLEN];  // --match or --tag: matched text in a selected line
-extern char match_mc[COLORLEN];  // --match or --tag: matched text in a context line
-extern char match_off[COLORLEN]; // --match or --tag: off
 
 extern std::string color_wd; // hyperlink working directory path
 
-extern const char *color_hl; // hyperlink
-extern const char *color_st; // ST
 
-extern const char *color_off; // disable colors
-extern const char *color_del; // erase line after the cursor
 
 // --encoding file format/encoding table
 struct Encoding {

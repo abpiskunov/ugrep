@@ -203,38 +203,11 @@ After this, you may want to test ugrep and install it (optional):
 #endif
 
 // ANSI SGR substrings extracted from GREP_COLORS
-char color_sl[COLORLEN]; // selected line
-char color_cx[COLORLEN]; // context line
-char color_mt[COLORLEN]; // matched text in any matched line
-char color_ms[COLORLEN]; // matched text in a selected line
-char color_mc[COLORLEN]; // matched text in a context line
-char color_fn[COLORLEN]; // file name
-char color_ln[COLORLEN]; // line number
-char color_cn[COLORLEN]; // column number
-char color_bn[COLORLEN]; // byte offset
-char color_se[COLORLEN]; // separator
 
-char color_qp[COLORLEN]; // TUI prompt
-char color_qe[COLORLEN]; // TUI errors
-char color_qr[COLORLEN]; // TUI regex highlight
-char color_qm[COLORLEN]; // TUI regex meta characters highlight
-char color_ql[COLORLEN]; // TUI regex lists and literals highlight
-char color_qb[COLORLEN]; // TUI regex braces highlight
 
-char match_ms[COLORLEN];  // --match or --tag: matched text in a selected line
-char match_mc[COLORLEN];  // --match or --tag: matched text in a context line
-char match_off[COLORLEN]; // --match or --tag: off
 
-const char *color_hl      = NULL; // hyperlink
-const char *color_st      = NULL; // ST
 
-const char *color_del     = ""; // erase line after the cursor
-const char *color_off     = ""; // disable colors
 
-const char *color_high    = ""; // stderr highlighted text
-const char *color_error   = ""; // stderr error text
-const char *color_warning = ""; // stderr warning text
-const char *color_message = ""; // stderr error or warning message text
 
 #ifndef OS_WIN_OR_MINGW
 
@@ -301,162 +274,23 @@ inline uint64_t fsid_to_uint64(fsid_t& fsid)
 #endif
 
 // ugrep command-line options
-bool flag_all_threads              = false;
-bool flag_any_line                 = false;
-bool flag_best_match               = false;
-bool flag_bool                     = false;
-bool flag_color_term               = false;
-bool flag_confirm                  = DEFAULT_CONFIRM;
-bool flag_count                    = false;
-bool flag_cpp                      = false;
-bool flag_csv                      = false;
-bool flag_decompress               = false;
-bool flag_dereference              = false;
-bool flag_dereference_files        = false;
-bool flag_files                    = false;
-bool flag_files_with_matches       = false;
-bool flag_files_without_match      = false;
-bool flag_glob_ignore_case         = false;
-bool flag_grep                     = false;
-bool flag_hex                      = false;
-bool flag_hex_star                 = false;
-bool flag_hex_cbr                  = true;
-bool flag_hex_chr                  = true;
-bool flag_hex_hbr                  = true;
-bool flag_hidden                   = DEFAULT_HIDDEN;
-bool flag_hyperlink_line           = false;
-bool flag_invert_match             = false;
-bool flag_json                     = false;
-bool flag_line_buffered            = false;
-bool flag_line_regexp              = false;
-bool flag_match                    = false;
-bool flag_multiline                = false;
-bool flag_no_dereference           = false;
-bool flag_no_filename              = false;
-bool flag_no_header                = false;
-bool flag_no_messages              = false;
-bool flag_not                      = false;
-bool flag_null                     = false;
-bool flag_null_data                = false;
-bool flag_only_line_number         = false;
-bool flag_only_matching            = false;
-bool flag_query                    = false;
-bool flag_quiet                    = false;
-bool flag_sort_rev                 = false;
-bool flag_split                    = false;
-bool flag_stdin                    = false;
-bool flag_tty_term                 = false;
-bool flag_usage_warnings           = false;
-bool flag_word_regexp              = false;
-bool flag_xml                      = false;
-bool flag_with_hex                 = false;
-bool flag_with_filename            = false;
-Flag flag_binary;
-Flag flag_binary_without_match;
-Flag flag_break;
-Flag flag_byte_offset;
-Flag flag_column_number;
-Flag flag_empty;
-Flag flag_dotall;
-Flag flag_free_space;
-Flag flag_heading;
-Flag flag_ignore_case;
-Flag flag_initial_tab;
-Flag flag_line_number;
-Flag flag_smart_case;
-Flag flag_text;
-Flag flag_tree;
-Flag flag_ungroup;
-Sort flag_sort_key                 = Sort::NA;
-Action flag_devices_action         = Action::UNSP;
-Action flag_directories_action     = Action::UNSP;
-Mode flag_mode                     = Mode::UNSP;
-size_t flag_after_context          = 0;
-size_t flag_before_context         = 0;
-size_t flag_delay                  = DEFAULT_QUERY_DELAY;
-size_t flag_exclude_iglob_size     = 0;
-size_t flag_exclude_iglob_dir_size = 0;
-size_t flag_fuzzy                  = 0;
-size_t flag_hex_after              = 0;
-size_t flag_hex_before             = 0;
-size_t flag_hex_columns            = 16;
-size_t flag_include_iglob_size     = 0;
-size_t flag_include_iglob_dir_size = 0;
-size_t flag_jobs                   = 0;
-size_t flag_max_count              = 0;
-size_t flag_max_depth              = 0;
-size_t flag_max_files              = 0;
-size_t flag_max_line               = 0;
-size_t flag_max_size               = 0;
-size_t flag_max_mmap               = DEFAULT_MAX_MMAP_SIZE;
-size_t flag_max_queue              = DEFAULT_MAX_JOB_QUEUE_SIZE;
-size_t flag_min_count              = 0;
-size_t flag_min_depth              = 0;
-size_t flag_min_line               = 0;
-size_t flag_min_size               = 0;
-size_t flag_min_magic              = 1;
-size_t flag_min_steal              = MIN_STEAL;
-size_t flag_not_magic              = 0;
-size_t flag_tabs                   = DEFAULT_TABS;
-size_t flag_width                  = 0;
-size_t flag_zmax                   = 1;
-const char *flag_binary_files      = "binary";
-const char *flag_color             = DEFAULT_COLOR;
-const char *flag_color_query       = NULL;
-const char *flag_colors            = NULL;
-const char *flag_config            = NULL;
-const char *flag_devices           = NULL;
-const char *flag_directories       = NULL;
-const char *flag_encoding          = NULL;
-const char *flag_format            = NULL;
-const char *flag_format_begin      = NULL;
-const char *flag_format_close      = NULL;
-const char *flag_format_end        = NULL;
-const char *flag_format_open       = NULL;
-const char *flag_group_separator   = "--";
-const char *flag_hexdump           = NULL;
-const char *flag_hyperlink         = NULL;
-const char *flag_index             = NULL;
-const char *flag_label             = Static::LABEL_STANDARD_INPUT;
-const char *flag_pager             = NULL;
-const char *flag_pretty            = DEFAULT_PRETTY;
-const char *flag_replace           = NULL;
-const char *flag_save_config       = NULL;
-const char *flag_separator         = NULL;
-const char *flag_separator_dash    = "-";
-const char *flag_separator_bar     = "|";
-const char *flag_sort              = NULL;
-const char *flag_stats             = NULL;
-const char *flag_tag               = NULL;
-const char *flag_view              = "";
-std::string              flag_filter;
-std::string              flag_hyperlink_prefix;
-std::string              flag_hyperlink_host;
-std::string              flag_hyperlink_path;
-std::string              flag_regexp;
-std::set<std::string>    flag_config_files;
-std::set<std::string>    flag_ignore_files;
-std::vector<std::string> flag_file;
-std::vector<std::string> flag_file_type;
-std::vector<std::string> flag_file_extension;
-std::vector<std::string> flag_file_magic;
-std::vector<std::string> flag_filter_magic_label;
-std::vector<std::string> flag_from;
-std::vector<std::string> flag_glob;
-std::vector<std::string> flag_iglob;
-std::vector<std::string> flag_include;
-std::vector<std::string> flag_include_dir;
-std::vector<std::string> flag_include_from;
-std::vector<std::string> flag_include_fs;
-std::vector<std::string> flag_exclude;
-std::vector<std::string> flag_exclude_dir;
-std::vector<std::string> flag_exclude_from;
-std::vector<std::string> flag_exclude_fs;
-std::vector<std::string> flag_all_include;
-std::vector<std::string> flag_all_include_dir;
-std::vector<std::string> flag_all_exclude;
-std::vector<std::string> flag_all_exclude_dir;
-reflex::Input::file_encoding_type flag_encoding_type = reflex::Input::file_encoding::plain;
+// The option state (flag_*, color_*, match_*) is owned by Rust (rust/src_core/src/settings.rs, see flag.hpp);
+// only the defaults that depend on the build configuration are assigned here, before main().
+static const struct SettingsDefaults {
+  SettingsDefaults()
+  {
+    flag_confirm = DEFAULT_CONFIRM;
+    flag_hidden = DEFAULT_HIDDEN;
+    flag_delay = DEFAULT_QUERY_DELAY;
+    flag_max_mmap = DEFAULT_MAX_MMAP_SIZE;
+    flag_max_queue = DEFAULT_MAX_JOB_QUEUE_SIZE;
+    flag_min_steal = MIN_STEAL;
+    flag_tabs = DEFAULT_TABS;
+    flag_color = DEFAULT_COLOR;
+    flag_label = Static::LABEL_STANDARD_INPUT;
+    flag_pretty = DEFAULT_PRETTY;
+  }
+} settings_defaults;
 
 // store string arguments and the UTF-8 arguments decoded from wargv[] in strings to re-populate argv[] with pointers
 std::list<std::string> arg_strings;

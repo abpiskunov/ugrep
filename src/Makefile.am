@@ -55,6 +55,7 @@ ugrep_SOURCES = \
 	query.cpp \
 	screen.hpp \
 	screen.cpp \
+	settings.cpp \
 	stats.hpp \
 	stats.cpp \
 	tui_entry.hpp \

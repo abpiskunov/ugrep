@@ -1,0 +1,16 @@
+schema: cpp-rust-unit/1
+unit: settings
+component: src_core
+functions: []
+cpp_files: [src/flag.hpp, src/settings.cpp, src/ugrep.cpp, src/ugrep.hpp]
+rust_files: rust/src_core/src/settings.rs
+rust_crate_name: src_core
+harness_crate_name: src_core-harness
+depends_on: []
+status: ported
+notes:
+  - 'S1 (D-S1-supersede): flag_*, color_* and match_* scalars, enums and C string pointers (156 fields) are one #[repr(C)] Settings in rust/src_core/src/settings.rs, exported as `ugrep_settings` (rust/src_core/src/ffi/settings.rs holds the only unsafe). src/flag.hpp mirrors the struct and keeps the historical names as macros (`#define flag_count (ugrep_settings.flag_count)`), so each use is a plain load or store, no call per access.'
+  - 'Member choices. POD in Rust: bool, size_t (usize), Flag tri-state (i32, -1 undefined), Sort/Action/Mode (i32), reflex file_encoding_type (u16), char[COLORLEN], const char* (C strings that point to literals or argv). Opaque C++ (stay in src/settings.cpp, declared extern in flag.hpp): flag_filter, flag_hyperlink_*, flag_regexp (std::string), flag_config_files, flag_ignore_files (std::set), the flag_* std::vector<std::string> options (27 objects). They move when their option code is ported (S2). `struct Static` stays C++: its members are reflex patterns/matchers, CNF, mutex, atomic, FILE* and struct stat.'
+  - 'Defaults that depend on the build (DEFAULT_CONFIRM, _HIDDEN, _QUERY_DELAY, _MAX_MMAP_SIZE, _MAX_JOB_QUEUE_SIZE, MIN_STEAL, _TABS, _COLOR, _PRETTY, and flag_label = Static::LABEL_STANDARD_INPUT) are assigned by a pre-main initializer in ugrep.cpp (SettingsDefaults); every other default is the Rust static initializer.'
+  - 'Layout check: settings.cpp compares sizeof and offsetof of every field with ugrep_settings_size/count/offset from Rust at startup and aborts on a mismatch; static_asserts pin Flag/Sort/Action/Mode to 32 bits and file_encoding_type to 16 bits; Rust tests check offsets and defaults.'
+  - 'Gates: cleanup src_core/src_leaves/src_indexer PASS, baseline src_tui PASS (see the task test_report). The plan amendment (settings-layout check, settings.obj retained, target-state comments) is NOT applied here: policy-scan reports judge_and_judged for a plan edit next to implementation. It is saved as validation-plan.amendment.patch in the by-task folder for a Plan amendment task.'

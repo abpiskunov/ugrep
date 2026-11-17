@@ -7,6 +7,11 @@
 // public so the signatures that are not called yet (stubs until the Port tasks) are part of the crate interface
 pub mod signatures;
 
+// the Rust-owned option state read by the remaining C++ (src/flag.hpp)
+pub mod settings;
+#[path = "ffi/settings.rs"]
+pub mod settings_ffi;
+
 use signatures as sig;
 
 #[cxx::bridge(namespace = "ugrep_rust")]
