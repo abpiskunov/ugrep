@@ -73,8 +73,12 @@ fn decode_flags(s: &[u8]) -> IndexerFlags {
             _ => panic!("unknown flag {}", String::from_utf8_lossy(k)),
         }
     }
+    // every name ends with '\n'; only that final one is a terminator, so an empty name stays
     let list = files.strip_prefix(b"ignore_files=").unwrap_or(b"");
-    f.ignore_files = list.split(|&c| c == b'\n').filter(|x| !x.is_empty()).map(|x| x.to_vec()).collect();
+    let list = list.strip_suffix(b"\n").unwrap_or(list);
+    if !files.is_empty() && files.len() > b"ignore_files=".len() {
+        f.ignore_files = list.split(|&c| c == b'\n').map(|x| x.to_vec()).collect();
+    }
     f
 }
 
@@ -126,6 +130,96 @@ impl ToNeutral for Text {
 
 const ALL: [&str; 4] = ["src_indexer.options", "src_indexer.indexer", "src_indexer.deleter", "src_indexer.index"];
 
+fn from_hex(h: &str) -> Vec<u8> {
+    (0..h.len() / 2).map(|i| u8::from_str_radix(&h[2 * i..2 * i + 2], 16).unwrap()).collect()
+}
+
+/// The file system of the recorded cases: `run-cases` writes the `files` of a case into a fresh directory and runs the
+/// binary there. Each case is replayed in a fresh temp directory with the same files, as the current directory, so
+/// `indexer(NULL)` walks only that tree. `cases.jsonl` is `CPP2RUST_INDEXER_CASES` or else
+/// `<directory of the recorded trace>/../cases.jsonl`.
+struct CaseFs {
+    cases_path: std::path::PathBuf,
+    cases: Option<std::collections::HashMap<String, Vec<(String, Vec<u8>)>>>,
+    case: String,
+    base: std::path::PathBuf,
+}
+
+impl CaseFs {
+    fn new(recorded: &std::path::Path) -> CaseFs {
+        let cases_path = std::env::var_os("CPP2RUST_INDEXER_CASES").map(std::path::PathBuf::from).unwrap_or_else(|| {
+            recorded.parent().unwrap_or(std::path::Path::new(".")).join("..").join("cases.jsonl")
+        });
+        let base = std::env::temp_dir().join(format!("src_indexer_replay_{}", std::process::id()));
+        CaseFs { cases_path, cases: None, case: String::new(), base }
+    }
+
+    fn load(path: &std::path::Path) -> std::collections::HashMap<String, Vec<(String, Vec<u8>)>> {
+        let text = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("src_indexer cases {}: {e} (set CPP2RUST_INDEXER_CASES)", path.display()));
+        text.lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| {
+                let c: Value = serde_json::from_str(l).unwrap();
+                let mut files: Vec<(String, Vec<u8>)> = c
+                    .get("files")
+                    .and_then(Value::as_object)
+                    .map(|o| {
+                        o.iter()
+                            .map(|(k, v)| {
+                                let data = match v.get("hex").and_then(Value::as_str) {
+                                    Some(h) => from_hex(h),
+                                    None => v.as_str().unwrap_or("").as_bytes().to_vec(),
+                                };
+                                (k.clone(), data)
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                // sorted key order: the seeded `._UG#_Store` files sort after the files they cover
+                files.sort();
+                (c["id"].as_str().unwrap().to_string(), files)
+            })
+            .collect()
+    }
+
+    /// Makes `case` the current case: a fresh directory holding its files becomes the current directory.
+    fn enter(&mut self, case: &str) {
+        if self.case == case {
+            return;
+        }
+        self.leave();
+        self.case = case.to_string();
+        let path = &self.cases_path;
+        let cases = self.cases.get_or_insert_with(|| CaseFs::load(path));
+        let files = cases.get(case).unwrap_or_else(|| panic!("no src_indexer case {case} in {}", self.cases_path.display()));
+        let cwd = self.base.join("w");
+        for (rel, data) in files {
+            let p = cwd.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, data).unwrap();
+        }
+        std::fs::create_dir_all(&cwd).unwrap();
+        std::env::set_current_dir(&cwd).unwrap();
+    }
+
+    fn leave(&mut self) {
+        if self.base.exists() {
+            let _ = std::env::set_current_dir(std::env::temp_dir());
+            let _ = std::fs::remove_dir_all(&self.base);
+        }
+    }
+}
+
+/// What a dispatched call produced at its `Phase::Call`, emitted at its `Phase::Ret`.
+enum Pending {
+    /// the function ended the process: the recording has no state or ret
+    Exited,
+    Text(Bytes),
+    Null(usize),
+    Index { state: String, ok: bool, handle: usize },
+}
+
 fn main() {
     let a: Vec<String> = std::env::args().collect();
     if a.len() < 3 {
@@ -133,18 +227,35 @@ fn main() {
         std::process::exit(2);
     }
     let only: Vec<&str> = if a.len() > 3 { a[3..].iter().flat_map(|s| s.split(',')).collect() } else { ALL.to_vec() };
+    let mut fs = CaseFs::new(a[1].as_ref());
+    // results of the calls between their Phase::Call and Phase::Ret; the recorded nesting is last in, first out
+    let mut pending: Vec<Pending> = Vec::new();
     let n = replay::replay_trace(a[1].as_ref(), a[2].as_ref(), &only, |phase, func, args, _replay, tap| {
         if phase == replay::Phase::Ret {
+            match pending.pop().expect("Ret without Call") {
+                Pending::Exited => {}
+                Pending::Text(flags) => {
+                    tap.state(func, &Text(flags));
+                    tap.ret(func, &Null);
+                }
+                Pending::Null(warnings) => {
+                    tap.state(func, &warnings);
+                    tap.ret(func, &Null);
+                }
+                Pending::Index { state, ok, handle } => {
+                    tap.state(func, &Text(state.into_bytes()));
+                    tap.ret(func, &ok);
+                    if handle != 0 {
+                        indexer_core::stream_drop(handle as u64);
+                    }
+                }
+            }
             return;
         }
+        fs.enter(tap.case());
         let args = args.as_array().unwrap();
         // functions that end the process (`Exit::exited`) record a call and nothing else
-        let finish = |tap: &mut tap::Tap, exit: Exit| {
-            if !exit.exited {
-                tap.state(func, &exit.warnings);
-                tap.ret(func, &Null);
-            }
-        };
+        let finish = |exit: Exit| if exit.exited { Pending::Exited } else { Pending::Null(exit.warnings) };
         match func {
             "src_indexer.options" => {
                 let (fl, argc) = (bytes(&args[0]), args[1].as_i64().unwrap());
@@ -154,10 +265,7 @@ fn main() {
                 let argv_n: Vec<&[u8]> = argv.iter().map(|x| x.as_slice()).collect();
                 tap.call(func, &[&Text(fl.clone()), &(argc as i32), &argv_n, &arg_path.as_deref(), &warnings]);
                 let r = indexer_cli::options(&decode_flags(&fl), &argv, arg_path.as_deref(), warnings);
-                if !r.exit.exited {
-                    tap.state(func, &Text(encode_flags(&r.flags)));
-                    tap.ret(func, &Null);
-                }
+                pending.push(if r.exit.exited { Pending::Exited } else { Pending::Text(encode_flags(&r.flags)) });
             }
             "src_indexer.indexer" | "src_indexer.deleter" => {
                 let (fl, path) = (bytes(&args[0]), opt_bytes(&args[1]));
@@ -169,7 +277,7 @@ fn main() {
                 } else {
                     indexer_walk::deleter(&flags, path.as_deref(), warnings)
                 };
-                finish(tap, r);
+                pending.push(finish(r));
             }
             "src_indexer.index" => {
                 let (fl, path, archive) = (bytes(&args[0]), bytes(&args[1]), args[2].as_bool().unwrap());
@@ -185,15 +293,12 @@ fn main() {
                     r.binary as u8,
                     r.size
                 );
-                tap.state(func, &Text(state.into_bytes()));
-                tap.ret(func, &r.ok);
-                if r.handle != 0 {
-                    indexer_core::stream_drop(r.handle);
-                }
+                pending.push(Pending::Index { state, ok: r.ok, handle: r.handle as usize });
             }
             other => panic!("unknown seam function {other}"),
         }
     })
     .unwrap();
+    fs.leave();
     eprintln!("replayed {n} calls");
 }

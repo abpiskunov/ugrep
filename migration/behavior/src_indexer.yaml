@@ -12,7 +12,7 @@ observation:
   src_indexer.options:
     channels: [state]
     compared: [state]
-    excluded: [{channel: state, reason: "argv[0] (absolute path of the executable) in the call arguments is machine specific; masked by the proposed mask in migration/masks/src_indexer.proposed.json"}]
+    excluded: [{channel: state, reason: "argv[0] (absolute path of the executable) in the call arguments is machine specific; masked by the proposed mask in migration/masks/src_indexer.proposed.json"}, {channel: arg_path, reason: "not observed at the seam; covered by the surface cases"}]
   src_indexer.indexer:
     channels: [state]
     compared: [state]
