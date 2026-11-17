@@ -592,6 +592,7 @@ struct Stream {
 #endif
 };
 
+#ifdef CPP_RUST_IMPL_SRC_INDEXER
 // the Rust handle slot of a stream, used by the facade in src/ugrep-indexer_facade.cpp
 uint64_t& stream_rust_handle(Stream& stream)
 {
@@ -603,6 +604,7 @@ std::string& stream_partname(Stream& stream)
 {
   return stream.partname;
 }
+#endif
 
 // display the version info and exit
 void version()

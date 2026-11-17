@@ -1,0 +1,268 @@
+# Behavior catalog of component src_indexer (src/ugrep-indexer.cpp, the facade src/ugrep-indexer_facade.cpp).
+# Every entry was observed by running the C++ (Base-Release|x64, MSVC, LC_ALL=C TZ=UTC); the cases are in
+# migration/corpus/src_indexer/cases.jsonl (surface), the seam trace in seam/all.trace.jsonl and the bytes of every
+# index file left behind in index-bytes/index.bytes.jsonl (full hex; header 55 47 23 03 = "UG#\x03").
+# Entries with status hypothesis and suspicious true are for the Triage task.
+# The program writes its own text with CRLF on Windows (stdout and stderr lines end with \r\n).
+schema: cpp-rust-behavior/1
+component: src_indexer
+stop: {quiet_rounds: 2}
+
+observation:
+  src_indexer.options:
+    channels: [state]
+    compared: [state]
+    excluded: [{channel: state, reason: "argv[0] (absolute path of the executable) in the call arguments is machine specific; normalized to <ugrep-indexer> by sort_trace.py"}, {channel: arg_path, reason: "not observed at the seam; covered by the surface cases"}]
+  src_indexer.indexer:
+    channels: [state]
+    compared: [state]
+    excluded: []
+  src_indexer.index:
+    channels: [state, return]
+    compared: [state, return]
+    excluded: []
+  src_indexer.deleter:
+    channels: [state]
+    compared: [state]
+    excluded: []
+
+behaviors:
+  - id: B-src_indexer-001
+    statement: "`ugrep-indexer [PATH]` indexes the tree below PATH (default `.`): it writes one index file named `._UG#_Store` in every directory that has indexed files and exits 0; with no files in the directory nothing is written"
+    kind: normal
+    status: observed
+    evidence: ["case:indexer-dir", "case:indexer-recursive", "case:indexer-g-default-nested", "case:indexer-g-default-path-arg", "case:indexer-no-args-empty-dir"]
+    origin: capture
+  - id: B-src_indexer-002
+    statement: "every index file starts with the 4 magic bytes `UG#\\x03` (55 47 23 03), then `00`, the accuracy byte (default 4) and a table section; the whole file is byte for byte the same on every run (stable over repeated recordings), e.g. `._UG#_Store` of a one-file tree is 142 bytes"
+    kind: normal
+    status: observed
+    evidence: ["case:indexer-g-default-nested", "case:indexer-g-accuracy-0", "case:indexer-g-accuracy-9", "case:indexer-g-hidden-tree"]
+    origin: capture
+  - id: B-src_indexer-003
+    statement: "`-v` prints a header with the accuracy and its noise range (`> index accuracy: 4 (42%~49% noise)`), the decompress/ignore-binary/ignore-files/index-hidden settings, then one line per indexed file `SIZE PERCENT NAME` (the noise of its table) and totals; paths use the Windows `\\\\` separator"
+    kind: normal
+    status: observed
+    evidence: ["case:indexer-verbose", "case:indexer-g-default-nested", "case:indexer-g-default-mixed-content"]
+    origin: capture
+  - id: B-src_indexer-004
+    statement: "accuracy `-0` to `-9` (and `--accuracy=N`, default 4) selects the Bloom filter size: a higher accuracy gives a lower noise percentage in the `-v` header (`-1` 65%~73%, `-4` 42%~49%, `-5` 34%~42%, `-7` 18%~26%) and a different table size; the accuracy is stored in the index header"
+    kind: normal
+    status: observed
+    evidence: ["case:indexer-small-files", "case:indexer-levels", "case:indexer-level9", "case:indexer-g-accuracy-0", "case:indexer-g-accuracy-2", "case:indexer-g-accuracy-7", "case:indexer-g-accuracy-9"]
+    origin: capture
+  - id: B-src_indexer-005
+    statement: "`--accuracy=10` is not rejected: the run indexes at accuracy 1 (`> index accuracy: 1 (65%~73% noise)`) and exits 0, no message"
+    kind: edge-case
+    status: hypothesis
+    suspicious: true
+    why: "a value out of 0..9 is neither an error nor clamped to 9; the recorded accuracy is 1, the first digit of 10. Intended, bug-preserve or bug-fix?"
+    evidence: ["case:indexer-g-accuracy-bad"]
+    origin: capture
+  - id: B-src_indexer-006
+    statement: "a run over a fresh index reports `0 new files indexed`, `0 modified files indexed` and exits 0; a new file counts as `1 new files indexed`; a changed `-7` accuracy without `-f` is not applied (`0 new files indexed`); `-f` (`--force`) re-indexes everything (`5 new files indexed`); the resulting index bytes are recorded for every case"
+    kind: normal
+    status: observed
+    evidence: ["case:indexer-force", "case:indexer-g-update-fresh", "case:indexer-g-update-fresh-new-file", "case:indexer-g-update-fresh-accuracy-change", "case:indexer-g-force-fresh", "case:indexer-g-force-accuracy-change"]
+    origin: capture
+  - id: B-src_indexer-007
+    statement: "an update run (`-v`) over a fresh index whose source file was deleted prints `0 deleted files removed from indexes`, leaves the index file unchanged and exits 0"
+    kind: normal
+    status: observed
+    evidence: ["case:indexer-g-update-fresh-deleted-file"]
+    origin: capture
+  - id: B-src_indexer-008
+    statement: "`-c` (`--check`) writes nothing and prints the check totals (files indexed in N directories, directories not indexed, new/modified files not indexed, deleted files needlessly indexed, binary files indexed) with or without `-v`; `-v` adds `Checked: indexes are fresh and up to date` when fresh; exit 0 when everything is indexed and up to date, 1 when an index is missing; `-q` prints nothing"
+    kind: normal
+    status: observed
+    evidence: ["case:indexer-g-check-fresh", "case:indexer-g-check-fresh-verbose", "case:indexer-g-check-unindexed", "case:indexer-g-check-unindexed-verbose", "case:indexer-g-check-quiet", "case:indexer-g-check-fresh-extra-file"]
+    origin: capture
+  - id: B-src_indexer-009
+    statement: "`-c` ends the process inside `indexer()` with the check exit code: the seam trace has the `src_indexer.indexer` call and no state or return event"
+    kind: normal
+    status: observed
+    evidence: ["case:indexer-g-check-fresh", "case:indexer-g-check-unindexed"]
+    origin: capture
+  - id: B-src_indexer-010
+    statement: "`-d` (`--delete`) removes every `._UG#_Store` below PATH, also an index file that is not a valid index (garbage content), and leaves the other files untouched; `-v` lists each as `D SIZE .\\\\._UG#_Store` and the totals `N indexes removed from M directories`; with nothing to delete it prints `0 indexes removed from 5 directories` with `-v` and exits 0"
+    kind: normal
+    status: observed
+    evidence: ["case:indexer-delete", "case:indexer-g-delete-seeded", "case:indexer-g-delete-seeded-quiet", "case:indexer-g-delete-subdir", "case:indexer-g-delete-long", "case:indexer-g-delete-none", "case:indexer-g-delete-garbage-store"]
+    origin: capture
+  - id: B-src_indexer-011
+    statement: "an existing `._UG#_Store` that is not an index (no `UG#` magic) is replaced by a valid index when indexing (`-v` lists the file as indexed) and `-c` counts its directory as not indexed (`1 directories not indexed`, exit 1); the recording of the garbage file reads `not an index`"
+    kind: edge-case
+    status: observed
+    evidence: ["case:indexer-g-store-garbage", "case:indexer-g-store-garbage-check"]
+    origin: capture
+  - id: B-src_indexer-012
+    statement: "`-I` (`--ignore-binary`) does not index files that are binary (a NUL byte or an invalid UTF-8 sequence): `-v` lists them with an `I` marker and size 0 (`I 0 0% bin.dat`), the index file has no table for them, and `> ignore binary:  yes` is printed in the header"
+    kind: normal
+    status: observed
+    evidence: ["case:indexer-binary", "case:indexer-ignore-binary", "case:indexer-g-ignore-binary-mixed", "case:indexer-g-ignore-binary-long", "case:indexer-g-update-fresh-ignore-binary"]
+    origin: capture
+  - id: B-src_indexer-013
+    statement: "the binary test accepts valid 2-, 3- and 4-byte UTF-8 sequences and rejects an overlong lead (C0 80), a bad continuation, a 5-byte lead and a sequence cut off at the end of the file; with `-I` only the valid file is indexed"
+    kind: edge-case
+    status: observed
+    evidence: ["case:indexer-g-utf8-truncated-tail", "case:indexer-g-utf8-invalid-lead", "case:indexer-g-utf8-valid-sequences"]
+    origin: capture
+  - id: B-src_indexer-014
+    statement: "hidden files and directories (names starting with `.`) are skipped by default and indexed with `-.` (`--hidden`)"
+    kind: normal
+    status: observed
+    evidence: ["case:indexer-hidden", "case:indexer-no-hidden", "case:indexer-g-hidden-tree", "case:indexer-g-hidden-default", "case:indexer-g-opt-hidden-long"]
+    origin: capture
+  - id: B-src_indexer-015
+    statement: "`-X` (`--ignore-files`) reads `.gitignore` in every directory and skips the files and directories its globs match; `--ignore-files=FILE` reads FILE instead, repeats add files, a `!` glob re-includes, and a glob ending in `/` matches directories only; the matching runs through `src_leaves.glob_match`"
+    kind: normal
+    status: observed
+    evidence: ["case:indexer-ignore-files", "case:indexer-g-ignore-files-default", "case:indexer-g-ignore-files-custom", "case:indexer-g-ignore-files-two", "case:indexer-g-ignore-files-off", "case:indexer-g-opt-ignore-files-plain", "case:indexer-g-opt-short-ignore-files-dirs", "case:indexer-g-opt-ignore-files-negate"]
+    origin: capture
+  - id: B-src_indexer-016
+    statement: "`-q` (`--quiet`) and `--silent` print nothing; `-s` (`--no-messages`) only suppresses the warnings and keeps the totals; a missing PATH is only a warning on stdout (`warning: cannot open directory nodir`) and the run exits 0; a PATH that is a file prints that warning and `error: cannot create index file in a.txt: No such file or directory` and exits 0"
+    kind: normal
+    status: observed
+    evidence: ["case:indexer-quiet", "case:indexer-nonexistent", "case:indexer-g-nonexistent-silent", "case:indexer-g-default-nested-quiet", "case:indexer-g-opt-no-messages-v", "case:indexer-g-opt-silent", "case:indexer-g-opt-no-messages-long", "case:indexer-g-default-file-arg", "case:indexer-incremental-index-size"]
+    origin: capture
+  - id: B-src_indexer-017
+    statement: "`--` ends the options and short options combine (`-vf5`); a long option must be spelled out: a prefix (`--ig`) is `invalid option --ig` with the usage text"
+    kind: edge-case
+    status: observed
+    evidence: ["case:indexer-g-opt-dash-dash", "case:indexer-g-opt-combined", "case:indexer-g-opt-ambiguous", "case:indexer-g-default-long-options"]
+    origin: capture
+  - id: B-src_indexer-018
+    statement: "`--version` and `-V` print the version line, `--help` and `-?` print the usage text; both end the process (the seam trace has the `src_indexer.options` call and no return event)"
+    kind: normal
+    status: observed
+    evidence: ["case:indexer-version", "case:indexer-help", "case:indexer-g-opt-version-short", "case:indexer-g-opt-help-short"]
+    origin: capture
+  - id: B-src_indexer-019
+    statement: "an unknown option, a long option without its value (`--accuracy`) or a prefix of an option prints `ugrep-indexer: invalid option --NAME` (`-Z` for a short one) on stderr and the usage text on stdout"
+    kind: error
+    status: observed
+    evidence: ["case:indexer-bad-option", "case:indexer-g-opt-invalid-short", "case:indexer-g-opt-missing-value"]
+    origin: capture
+  - id: B-src_indexer-020
+    statement: "`-z` (`--decompress`) needs zlib: in the recorded build (no HAVE_LIBZ) `-z` prints `ugrep-indexer: Option -z (--decompress) is not available` on stderr and the usage text on stdout and exits 0; `--zmax=N` alone is accepted and has no effect without `-z`"
+    kind: edge-case
+    status: observed
+    evidence: ["case:indexer-zip", "case:indexer-g-decompress-unavailable", "case:indexer-g-decompress-zmax", "case:indexer-g-zmax-alone"]
+    origin: capture
+  - id: B-src_indexer-021
+    statement: "`--zmax=0`, `--zmax=abc` and `--zmax=100` print `invalid argument --zmax=0` / `invalid argument --zmax=abc` / `option --zmax argument exceeds upper limit` on stderr and then the usage text on stdout"
+    kind: error
+    status: observed
+    evidence: ["case:indexer-g-zmax-bad", "case:indexer-g-zmax-bad-high", "case:indexer-g-opt-zmax-not-number"]
+    origin: capture
+  - id: B-src_indexer-022
+    statement: "a second PATH argument prints `ugrep-indexer: argument PATH already specified as d1` on stderr and the usage text on stdout"
+    kind: error
+    status: observed
+    evidence: ["case:indexer-multiple-dirs"]
+    origin: capture
+  - id: B-src_indexer-023
+    statement: "`.ugrep-indexer` in the working directory (else in HOME) is read first: each line is an option without the leading `--` (`accuracy=7`, `verbose`, `hidden`, `force`, `check`, `delete`, `ignore-binary`, `ignore-files`, `ignore-files=NAME`, `no-messages`, `quiet`, `dereference-files`, `silent`); blank lines and `#` comments are skipped and CRLF line ends are trimmed; command line options override it"
+    kind: normal
+    status: observed
+    evidence: ["case:indexer-g-config-accuracy", "case:indexer-g-config-verbose", "case:indexer-g-config-quiet", "case:indexer-g-config-comments-blank", "case:indexer-g-config-cli-overrides", "case:indexer-g-config-hidden", "case:indexer-g-config-ignore-binary", "case:indexer-g-config-ignore-files", "case:indexer-g-config-ignore-files-named", "case:indexer-g-config-force", "case:indexer-g-config-check", "case:indexer-g-config-delete", "case:indexer-g-config-crlf", "case:indexer-g-config-no-messages", "case:indexer-g-config-dereference"]
+    origin: capture
+  - id: B-src_indexer-024
+    statement: "an unknown option line in `.ugrep-indexer` prints `ugrep-indexer: .ugrep-indexer configuration file: invalid option --X` on stderr (one line per bad line) and exits 1 before anything is indexed; `decompress` in the file prints `configuration file: Option -z (--decompress) is not available` and exits 1; `help` in the file prints the usage text and exits 0"
+    kind: error
+    status: observed
+    evidence: ["case:indexer-g-config-bad-option", "case:indexer-g-config-two-errors", "case:indexer-g-config-help", "case:indexer-g-decompress-config"]
+    origin: capture
+  - id: B-src_indexer-025
+    statement: "a `.ugrep-indexer` file in a subdirectory (when PATH is that subdirectory) is not read; only the working directory and HOME are searched"
+    kind: edge-case
+    status: observed
+    evidence: ["case:indexer-g-config-in-subdir-ignored"]
+    origin: capture
+  - id: B-src_indexer-026
+    statement: "`-S` (`--dereference-files`) is accepted and indexes the files; symbolic links cannot be created on the recording host, so only the flag is observed"
+    kind: normal
+    status: observed
+    evidence: ["case:indexer-g-opt-dereference", "case:indexer-g-opt-dereference-long"]
+    origin: capture
+  - id: B-src_indexer-027
+    statement: "large files (about 20 KiB), files without a trailing newline, empty-line-only files and non-ASCII file names are indexed; the table bytes of each are deterministic"
+    kind: edge-case
+    status: observed
+    evidence: ["case:indexer-g-large-file", "case:indexer-g-no-trailing-newline", "case:indexer-g-default-nonascii-name", "case:indexer-g-default-mixed-content"]
+    origin: capture
+  - id: B-src_indexer-028
+    statement: "`--exclude=GLOB` is not an option of the indexer: `invalid option --exclude=*.log` on stderr and the usage text"
+    kind: error
+    status: observed
+    evidence: ["case:indexer-exclude"]
+    origin: capture
+  - id: B-src_indexer-029
+    statement: "`-s .` over one file prints the totals only (`1 files indexed in 1 directories`, `1 new files indexed`) and writes the same index as without `-s`"
+    kind: normal
+    status: observed
+    evidence: ["case:indexer-incremental-index-size"]
+    origin: capture
+  - id: B-src_indexer-030
+    statement: "the seam: `options` parses the flags and returns them all; `indexer` and `deleter` walk the tree and return only the warnings counter; `index` is called once per file and returns the table (size, FNV of the table, noise, compressed, archive, binary, size), so the Rust unit is replayed with these four functions"
+    kind: normal
+    status: observed
+    evidence: ["case:indexer-dir", "case:indexer-delete", "case:indexer-g-default-nested"]
+    origin: capture
+  - id: B-src_indexer-031
+    statement: "usage errors (`--bogus`, `--accuracy` without a value, `--zmax=0`, `--zmax=100`, `-z`, a second PATH, `--help`) all exit 0 because the usage function ends the process with exit 0, although they are errors"
+    kind: error
+    status: hypothesis
+    suspicious: true
+    why: "an invalid command line exits with status 0; scripts cannot tell a usage error from success. Keep (bug-preserve) or change to a non-zero status (bug-fix)?"
+    evidence: ["case:indexer-bad-option", "case:indexer-g-opt-missing-value", "case:indexer-g-zmax-bad", "case:indexer-g-decompress-unavailable"]
+    origin: capture
+  - id: B-src_indexer-032
+    statement: "a configuration file with `accuracy=11` is accepted without a message and indexes at accuracy 1, the same as `--accuracy=10` on the command line"
+    kind: edge-case
+    status: hypothesis
+    suspicious: true
+    why: "same first-digit reading as B-src_indexer-005; no range check anywhere"
+    evidence: ["case:indexer-g-config-bad-value", "case:indexer-g-accuracy-bad"]
+    origin: capture
+  - id: B-src_indexer-033
+    statement: "`-c` on a directory with no files to index exits 1 and `-c` on a fresh index of the same files exits 0"
+    kind: edge-case
+    status: hypothesis
+    suspicious: true
+    why: "an empty tree has nothing to index yet counts as not indexed; unclear if exit 1 is intended"
+    evidence: ["case:indexer-g-check-empty-dir", "case:indexer-g-check-fresh"]
+    origin: capture
+  - id: B-src_indexer-034
+    statement: "`-c` does not report a source file deleted after indexing when the index is otherwise fresh (`0 deleted files are needlessly indexed`, exit 0), whereas an update run drops the entry"
+    kind: edge-case
+    status: hypothesis
+    suspicious: true
+    why: "the check totals contain a `deleted files needlessly indexed` line that stays 0 in the recorded fresh case; a stale index reports it, so the check is inconsistent; the stale cases are racy on one filesystem tick and are not recorded"
+    evidence: ["case:indexer-g-check-fresh-deleted-file", "case:indexer-g-update-fresh-deleted-file"]
+    origin: capture
+  - id: B-src_indexer-035
+    statement: "`-z`, the archive and decompress path of `index()` (zlib, bzip2, xz, tar, zip) and `-S` on symbolic links are not reachable in the recorded build"
+    kind: edge-case
+    status: hypothesis
+    suspicious: true
+    why: "the recorded build has no HAVE_LIBZ, so the decompression and archive behavior of the indexer cannot be recorded; a Rust port of `index()` decides whether to port it unobserved"
+    evidence: ["case:indexer-zip", "case:indexer-g-decompress-unavailable"]
+    origin: capture
+
+openQuestions: []
+
+uncovered:
+  - {region: "src/ugrep-indexer.cpp stream_rust_handle, stream_partname", reason: unreachable, note: "accessors used only when CPP_RUST_IMPL_SRC_INDEXER=rust; the cpp build never calls them"}
+  - {region: "src/ugrep-indexer.cpp decompression and archive code (Stream zlib/bzip2/lzma/zstd/lz4/brotli/tar/zip paths, cannot_decompress, Zthread, index_cpp and cat archive branches)", reason: platform-only, note: "build-config limitation: the recorded build has no HAVE_LIBZ, so -z exits with usage and these paths cannot run"}
+  - {region: "src/ugrep-indexer.cpp fopenw_s and the UTF-8/wide-string helpers on non-Windows branches, POSIX-only code", reason: platform-only, note: "recorded on Windows x64 only"}
+  - {region: "src/ugrep-indexer.cpp symbolic link and reparse point handling for -S", reason: platform-only, note: "symbolic links cannot be created by the case runner on the recording host"}
+  - {region: "src/ugrep-indexer.cpp error branches for an unreadable file, an index file that cannot be written, removed or updated", reason: excluded, note: "needs permission or sharing faults; not deterministic through the surface; a fault-injection follow-up could reach them"}
+  - {region: "src/ugrep-indexer.cpp stale-index update paths (modified file, extra file, deleted file against a stale index, check of a stale index)", reason: excluded, note: "the stale/fresh decision compares file times; seeded stale cases flipped between runs within one filesystem tick (flaky in the repeated recording) and were dropped; the fresh counterparts are recorded"}
+
+discovery:
+  rounds:
+    - {round: 1, source: surface-proposed, new_cases: 87, new_coverage: 89.9, new_behaviors: 30, note: "generated trees: default, --check, -d, -I, -X, .ugrep-indexer config, accuracy, hidden; seeded index files made by the C++ itself; index bytes recorded for 210 index files; recorded 3x, flaky 0 (23 earlier cases unchanged)"}
+    - {round: 2, source: coverage-admitted, new_cases: 18, new_coverage: 0.9, new_behaviors: 3, note: "option spellings, negated ignore globs, UTF-8 edge cases, config forms; 7 stale-index cases and 5 more seeded stale cases found racy in 8 repeated recordings and dropped, 116 cases kept with 0 flaky"}
+    - {round: 3, source: coverage-admitted, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "coverage run over the 116 cases: the remaining uncovered regions are accounted for in uncovered"}
+    - {round: 4, source: llm-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "proposed more option and config spellings: none reached a new region"}

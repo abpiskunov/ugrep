@@ -278,6 +278,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "src_indexer-harness"
+version = "7.8.5"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "src_leaves"
 version = "7.8.5"
 dependencies = [

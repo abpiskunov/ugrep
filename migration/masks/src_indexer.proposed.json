@@ -1,0 +1,17 @@
+{
+ "masks": [
+  {
+   "action": "ignore",
+   "approved": null,
+   "fn": "src_indexer.options",
+   "kind": "call",
+   "path": "args.2.0",
+   "reason": "argv[0] is the absolute path of the executable (the tap build under msvc/bin/Base-Release-x64-tap): differs between checkouts and CI runners, not behavior",
+   "seen": 100
+  }
+ ],
+ "note": "Proposals only. The indexer has no --stats and prints no timings (checked: 110 case runs x 3 repeats of the 110 surface cases are byte-identical on stdout, stderr, exit and index bytes), so no D3 mask is needed for output or index files; the only noise is argv[0] in the seam trace.",
+ "rewrites": [],
+ "schema": "cpp2rust-masks/1",
+ "unstable_sequences": []
+}
