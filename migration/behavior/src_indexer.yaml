@@ -54,7 +54,8 @@ behaviors:
   - id: B-src_indexer-005
     statement: "`--accuracy=10` is not rejected: the run indexes at accuracy 1 (`> index accuracy: 1 (65%~73% noise)`) and exits 0, no message"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-indexer-1
     suspicious: true
     why: "a value out of 0..9 is neither an error nor clamped to 9; the recorded accuracy is 1, the first digit of 10. Intended, bug-preserve or bug-fix?"
     evidence: ["case:indexer-g-accuracy-bad"]
@@ -212,7 +213,8 @@ behaviors:
   - id: B-src_indexer-031
     statement: "usage errors (`--bogus`, `--accuracy` without a value, `--zmax=0`, `--zmax=100`, `-z`, a second PATH, `--help`) all exit 0 because the usage function ends the process with exit 0, although they are errors"
     kind: error
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-indexer-2
     suspicious: true
     why: "an invalid command line exits with status 0; scripts cannot tell a usage error from success. Keep (bug-preserve) or change to a non-zero status (bug-fix)?"
     evidence: ["case:indexer-bad-option", "case:indexer-g-opt-missing-value", "case:indexer-g-zmax-bad", "case:indexer-g-decompress-unavailable"]
@@ -220,7 +222,8 @@ behaviors:
   - id: B-src_indexer-032
     statement: "a configuration file with `accuracy=11` is accepted without a message and indexes at accuracy 1, the same as `--accuracy=10` on the command line"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-indexer-1
     suspicious: true
     why: "same first-digit reading as B-src_indexer-005; no range check anywhere"
     evidence: ["case:indexer-g-config-bad-value", "case:indexer-g-accuracy-bad"]
@@ -228,7 +231,8 @@ behaviors:
   - id: B-src_indexer-033
     statement: "`-c` on a directory with no files to index exits 1 and `-c` on a fresh index of the same files exits 0"
     kind: edge-case
-    status: hypothesis
+    status: intended
+    decision: Q-indexer-3
     suspicious: true
     why: "an empty tree has nothing to index yet counts as not indexed; unclear if exit 1 is intended"
     evidence: ["case:indexer-g-check-empty-dir", "case:indexer-g-check-fresh"]
@@ -236,7 +240,8 @@ behaviors:
   - id: B-src_indexer-034
     statement: "`-c` does not report a source file deleted after indexing when the index is otherwise fresh (`0 deleted files are needlessly indexed`, exit 0), whereas an update run drops the entry"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-indexer-4
     suspicious: true
     why: "the check totals contain a `deleted files needlessly indexed` line that stays 0 in the recorded fresh case; a stale index reports it, so the check is inconsistent; the stale cases are racy on one filesystem tick and are not recorded"
     evidence: ["case:indexer-g-check-fresh-deleted-file", "case:indexer-g-update-fresh-deleted-file"]
@@ -244,7 +249,8 @@ behaviors:
   - id: B-src_indexer-035
     statement: "`-z`, the archive and decompress path of `index()` (zlib, bzip2, xz, tar, zip) and `-S` on symbolic links are not reachable in the recorded build"
     kind: edge-case
-    status: hypothesis
+    status: dont-care
+    decision: Q-indexer-5
     suspicious: true
     why: "the recorded build has no HAVE_LIBZ, so the decompression and archive behavior of the indexer cannot be recorded; a Rust port of `index()` decides whether to port it unobserved"
     evidence: ["case:indexer-zip", "case:indexer-g-decompress-unavailable"]
