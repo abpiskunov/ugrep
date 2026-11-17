@@ -983,3 +983,453 @@
 {"case":"zs-opt-glob-filter-archive-name@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
 {"case":"zs-opt-glob-filter-archive-name@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"d/a.gz":{"mode":null,"sha256":"66c0fc170e01b45412bad57bf26e1c59a82f24f8a771c7b80eb36a5ac5922520","size":67,"type":"file"},"d/b.gz":{"mode":null,"sha256":"370d4f4c0fe66c2116213f30944d3d37ae178dcb92849aa1ad9d40fdb8c337b6","size":51,"type":"file"}},"thread":0}
 {"case":"zs-opt-glob-filter-archive-name@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-basic@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-basic@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["alpha foo one\n","foo gamma foo\n","last foo line\n"]},"seq":1,"thread":0}
+{"case":"zs-br-basic@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-basic@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"f71f78a007b71b144256dacb0a431f078030cfcb899eac39d20800fcb025b7f6","size":53,"type":"file"}},"thread":0}
+{"case":"zs-br-basic@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-c","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-count@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-count@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["3\r\n"]},"seq":1,"thread":0}
+{"case":"zs-br-count@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-count@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"f71f78a007b71b144256dacb0a431f078030cfcb899eac39d20800fcb025b7f6","size":53,"type":"file"}},"thread":0}
+{"case":"zs-br-count@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-l","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-files-with-matches@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-files-with-matches@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["a.br\r\n"]},"seq":1,"thread":0}
+{"case":"zs-br-files-with-matches@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-files-with-matches@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"f71f78a007b71b144256dacb0a431f078030cfcb899eac39d20800fcb025b7f6","size":53,"type":"file"}},"thread":0}
+{"case":"zs-br-files-with-matches@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-n","-o","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-line-numbers@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-line-numbers@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["1:foo\r\n","3:foo\r\n","3:foo\r\n","5:foo\r\n"]},"seq":1,"thread":0}
+{"case":"zs-br-line-numbers@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-line-numbers@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"f71f78a007b71b144256dacb0a431f078030cfcb899eac39d20800fcb025b7f6","size":53,"type":"file"}},"thread":0}
+{"case":"zs-br-line-numbers@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","zzz","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-no-match@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-no-match@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-br-no-match@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-no-match@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"f71f78a007b71b144256dacb0a431f078030cfcb899eac39d20800fcb025b7f6","size":53,"type":"file"}},"thread":0}
+{"case":"zs-br-no-match@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-without-z@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-without-z@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-br-without-z@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-without-z@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"f71f78a007b71b144256dacb0a431f078030cfcb899eac39d20800fcb025b7f6","size":53,"type":"file"}},"thread":0}
+{"case":"zs-br-without-z@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","-C1","gamma","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-context@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-context@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["beta two\n","foo gamma foo\n","delta\n"]},"seq":1,"thread":0}
+{"case":"zs-br-context@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-context@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"f71f78a007b71b144256dacb0a431f078030cfcb899eac39d20800fcb025b7f6","size":53,"type":"file"}},"thread":0}
+{"case":"zs-br-context@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-v","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-invert@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-invert@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["beta two\n","delta\n"]},"seq":1,"thread":0}
+{"case":"zs-br-invert@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-invert@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"f71f78a007b71b144256dacb0a431f078030cfcb899eac39d20800fcb025b7f6","size":53,"type":"file"}},"thread":0}
+{"case":"zs-br-invert@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","data"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-no-extension@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-no-extension@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-br-no-extension@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-no-extension@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"data":{"mode":null,"sha256":"f71f78a007b71b144256dacb0a431f078030cfcb899eac39d20800fcb025b7f6","size":53,"type":"file"}},"thread":0}
+{"case":"zs-br-no-extension@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.gz"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-wrong-extension-gz@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-wrong-extension-gz@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-br-wrong-extension-gz@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-wrong-extension-gz@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.gz":{"mode":null,"sha256":"f71f78a007b71b144256dacb0a431f078030cfcb899eac39d20800fcb025b7f6","size":53,"type":"file"}},"thread":0}
+{"case":"zs-br-wrong-extension-gz@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.txt"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-wrong-extension-txt@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-wrong-extension-txt@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-br-wrong-extension-txt@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-wrong-extension-txt@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.txt":{"mode":null,"sha256":"f71f78a007b71b144256dacb0a431f078030cfcb899eac39d20800fcb025b7f6","size":53,"type":"file"}},"thread":0}
+{"case":"zs-br-wrong-extension-txt@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-multi-stream@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-multi-stream@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["alpha foo one\n","foo gamma foo\n","last foo line\n"]},"seq":1,"thread":0}
+{"case":"zs-br-multi-stream@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-multi-stream@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"b2fa9db8024382ac2e7fb1431413df5707c4d16d76c8d9d3768d62bdb35d79a7","size":82,"type":"file"}},"thread":0}
+{"case":"zs-br-multi-stream@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-three-streams-empty-middle@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-three-streams-empty-middle@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["alpha foo one\n","foo gamma foo\n","last foo line\n"]},"seq":1,"thread":0}
+{"case":"zs-br-three-streams-empty-middle@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-three-streams-empty-middle@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"cdc70fa03a3c95ae03b36834b1a78cdcaeda5423f65a58847b714742b807fc45","size":83,"type":"file"}},"thread":0}
+{"case":"zs-br-three-streams-empty-middle@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-empty-stream@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-empty-stream@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-br-empty-stream@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-empty-stream@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"67586e98fad27da0b9968bc039a1ef34c939b9b8e523a8bef89d478608c5ecf6","size":1,"type":"file"}},"thread":0}
+{"case":"zs-br-empty-stream@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-zero-length-file@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-zero-length-file@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-br-zero-length-file@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-zero-length-file@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","size":0,"type":"file"}},"thread":0}
+{"case":"zs-br-zero-length-file@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-single-zero-byte@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-single-zero-byte@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-br-single-zero-byte@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-single-zero-byte@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d","size":1,"type":"file"}},"thread":0}
+{"case":"zs-br-single-zero-byte@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","-c","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-large@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-large@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["10\r\n"]},"seq":1,"thread":0}
+{"case":"zs-br-large@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-large@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"55c7b5da82a70e904013bd17f1fd5c28191bd69e8f06d83543040e4bfbf5262f","size":47919,"type":"file"}},"thread":0}
+{"case":"zs-br-large@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-n","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-large-lines@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-large-lines@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["1:line 0 53dc167e foo\n","998:line 997 58da371b foo\n","1995:line 1994 3cdf8c04 foo\n","2992:line 2991 7b3f3909 foo\n","3989:line 3988 66b0beba foo\n","4986:line 4985 2b87d767 foo\n","5983:line 5982 5a73a020 foo\n","6980:line 6979 36dcddb5 foo\n","7977:line 7976 4387edb6 foo\n","8974:line 8973 66c8b373 foo\n"]},"seq":1,"thread":0}
+{"case":"zs-br-large-lines@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-large-lines@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"55c7b5da82a70e904013bd17f1fd5c28191bd69e8f06d83543040e4bfbf5262f","size":47919,"type":"file"}},"thread":0}
+{"case":"zs-br-large-lines@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-c","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-large-multi-stream@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-large-multi-stream@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["10\r\n"]},"seq":1,"thread":0}
+{"case":"zs-br-large-multi-stream@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-large-multi-stream@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"cd9893f1a2fe6411f9294cc2ed3b868416ac91dc412e0c8054dfbf98a4a5955a","size":95838,"type":"file"}},"thread":0}
+{"case":"zs-br-large-multi-stream@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-trunc-half@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-trunc-half@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-br-trunc-half@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-trunc-half@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"fd3ba5eabdd983c90015fb72b44c2d138dbcb7c0f43d0bf6c2780c5bb7d3e9f0","size":26,"type":"file"}},"thread":0}
+{"case":"zs-br-trunc-half@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-trunc-one-byte@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-trunc-one-byte@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-br-trunc-one-byte@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-trunc-one-byte@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"77adfc95029e73b173f60e556f915b0cd8850848111358b1c370fb7c154e61fd","size":1,"type":"file"}},"thread":0}
+{"case":"zs-br-trunc-one-byte@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-trunc-last-byte@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-trunc-last-byte@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["alpha foo one\n","foo gamma foo\n","last foo lin\r\n"]},"seq":1,"thread":0}
+{"case":"zs-br-trunc-last-byte@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-trunc-last-byte@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"b7bc33a1faa190ce7a7212df04948097c6864b1e85ed8beed83c07d92e4f2fb7","size":52,"type":"file"}},"thread":0}
+{"case":"zs-br-trunc-last-byte@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-c","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-trunc-large@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-trunc-large@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["10\r\n"]},"seq":1,"thread":0}
+{"case":"zs-br-trunc-large@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-trunc-large@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"55c7b5da82a70e904013bd17f1fd5c28191bd69e8f06d83543040e4bfbf5262f","size":47919,"type":"file"}},"thread":0}
+{"case":"zs-br-trunc-large@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-trunc-second-stream@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-trunc-second-stream@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["alpha foo one\n","foo gamma foo\n","last foo line\n"]},"seq":1,"thread":0}
+{"case":"zs-br-trunc-second-stream@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-trunc-second-stream@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"1fd15c5cff0d16fd9e87409dc3f59e777c8bb1e99f91bbd9f86c9ddb69aea4f4","size":58,"type":"file"}},"thread":0}
+{"case":"zs-br-trunc-second-stream@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-corrupt-body@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-corrupt-body@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-br-corrupt-body@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-corrupt-body@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"0f8677b1e85fd82fedf7acd95b8462186852eb1ca4f805ec1e22f8b7d2649ec0","size":53,"type":"file"}},"thread":0}
+{"case":"zs-br-corrupt-body@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-corrupt-header@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-corrupt-header@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-br-corrupt-header@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: cannot decompress a.br: an error was detected in the brotli compressed data\r\n"]},"seq":2,"thread":0}
+{"case":"zs-br-corrupt-header@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"8204c31d4a97ad9f49baf677154aae9a2d119ee60418a10c951562ed5c532d7b","size":53,"type":"file"}},"thread":0}
+{"case":"zs-br-corrupt-header@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","-c","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-corrupt-large@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-corrupt-large@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["0\r\n"]},"seq":1,"thread":0}
+{"case":"zs-br-corrupt-large@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: cannot decompress a.br: an error was detected in the brotli compressed data\r\n"]},"seq":2,"thread":0}
+{"case":"zs-br-corrupt-large@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"42479bc868fc88900a6a89649f26025686c3586b880a39ef45ba920e5aac42c3","size":47919,"type":"file"}},"thread":0}
+{"case":"zs-br-corrupt-large@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-bad-text@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-bad-text@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-br-bad-text@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: cannot decompress a.br: an error was detected in the brotli compressed data\r\n"]},"seq":2,"thread":0}
+{"case":"zs-br-bad-text@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"de0ff2877dbbe5cf9d192b0bc64314635c4bd05410f2767b282ea9bb6ddb8be0","size":57,"type":"file"}},"thread":0}
+{"case":"zs-br-bad-text@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-bad-ff@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-bad-ff@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-br-bad-ff@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: cannot decompress a.br: an error was detected in the brotli compressed data\r\n"]},"seq":2,"thread":0}
+{"case":"zs-br-bad-ff@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051","size":32,"type":"file"}},"thread":0}
+{"case":"zs-br-bad-ff@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-trailing-garbage@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-trailing-garbage@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["alpha foo one\n","foo gamma foo\n","last foo line\n"]},"seq":1,"thread":0}
+{"case":"zs-br-trailing-garbage@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-trailing-garbage@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"f35c874bc3175f80f47efb5de95cef1ce72e5f51143f75a7fa1bf3201f95c077","size":72,"type":"file"}},"thread":0}
+{"case":"zs-br-trailing-garbage@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-trailing-zeros@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-trailing-zeros@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["alpha foo one\n","foo gamma foo\n","last foo line\n"]},"seq":1,"thread":0}
+{"case":"zs-br-trailing-zeros@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-trailing-zeros@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"222da288c918d50de6055b97150d55208ca4348f4de6376114968c657cbf73c3","size":60,"type":"file"}},"thread":0}
+{"case":"zs-br-trailing-zeros@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-J1","--sort=name","foo","a.br","b.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-two-files@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-two-files@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["a.br:alpha foo one\n","a.br:foo gamma foo\n","a.br:last foo line\n","b.br:second foo member\n"]},"seq":1,"thread":0}
+{"case":"zs-br-two-files@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-two-files@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"f71f78a007b71b144256dacb0a431f078030cfcb899eac39d20800fcb025b7f6","size":53,"type":"file"},"b.br":{"mode":null,"sha256":"2f150a4ff6eec3cb809545a552194b5728def032526ebac3a51062b642cb9ecb","size":29,"type":"file"}},"thread":0}
+{"case":"zs-br-two-files@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-J1","--sort=name","foo","a.br","b.txt"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-mixed-plain-and-br@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-mixed-plain-and-br@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["a.br:alpha foo one\n","a.br:foo gamma foo\n","a.br:last foo line\n","b.txt:second foo member\n"]},"seq":1,"thread":0}
+{"case":"zs-br-mixed-plain-and-br@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-mixed-plain-and-br@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"f71f78a007b71b144256dacb0a431f078030cfcb899eac39d20800fcb025b7f6","size":53,"type":"file"},"b.txt":{"mode":null,"sha256":"6908645ea0880d4d49a60cef09c55b019cb223895960ce71efea652ccd88d14d","size":31,"type":"file"}},"thread":0}
+{"case":"zs-br-mixed-plain-and-br@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-r","-J1","--sort=name","foo","d"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-recursive@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-recursive@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["d\\a.br:alpha foo one\n","d\\a.br:foo gamma foo\n","d\\a.br:last foo line\n","d\\b.txt:second foo member\n","d\\c.br:second foo member\n"]},"seq":1,"thread":0}
+{"case":"zs-br-recursive@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-recursive@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"d/a.br":{"mode":null,"sha256":"f71f78a007b71b144256dacb0a431f078030cfcb899eac39d20800fcb025b7f6","size":53,"type":"file"},"d/b.txt":{"mode":null,"sha256":"6908645ea0880d4d49a60cef09c55b019cb223895960ce71efea652ccd88d14d","size":31,"type":"file"},"d/c.br":{"mode":null,"sha256":"2f150a4ff6eec3cb809545a552194b5728def032526ebac3a51062b642cb9ecb","size":29,"type":"file"}},"thread":0}
+{"case":"zs-br-recursive@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-J1","--sort=name","foo","a.br","b.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-good-then-corrupt-file@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-good-then-corrupt-file@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["a.br:alpha foo one\n","a.br:foo gamma foo\n","a.br:last foo line\n"]},"seq":1,"thread":0}
+{"case":"zs-br-good-then-corrupt-file@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: cannot decompress b.br: an error was detected in the brotli compressed data\r\n"]},"seq":2,"thread":0}
+{"case":"zs-br-good-then-corrupt-file@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"f71f78a007b71b144256dacb0a431f078030cfcb899eac39d20800fcb025b7f6","size":53,"type":"file"},"b.br":{"mode":null,"sha256":"a80cef0a31b498dbde21f954e16a51155f2c4f79c0956480fc0c993bbdff9c6d","size":29,"type":"file"}},"thread":0}
+{"case":"zs-br-good-then-corrupt-file@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-binary-after-decompress@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-binary-after-decompress@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["Binary file a.br matches\r\n"]},"seq":1,"thread":0}
+{"case":"zs-br-binary-after-decompress@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-binary-after-decompress@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"29751e931bff97ba4b400c439e3935314fabd29e9e006e7a19a634c155b30ce7","size":12,"type":"file"}},"thread":0}
+{"case":"zs-br-binary-after-decompress@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-a","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-text-binary@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-text-binary@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["foo\u0000bin\n"]},"seq":1,"thread":0}
+{"case":"zs-br-text-binary@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-text-binary@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"29751e931bff97ba4b400c439e3935314fabd29e9e006e7a19a634c155b30ce7","size":12,"type":"file"}},"thread":0}
+{"case":"zs-br-text-binary@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","--zmax=0","foo","a.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-zmax0@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-zmax0@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-br-zmax0@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: invalid argument --zmax=0\r\n","For more help, run `ugrep --help' or `ugrep --help --zmax'\r\n"]},"seq":2,"thread":0}
+{"case":"zs-br-zmax0@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"f71f78a007b71b144256dacb0a431f078030cfcb899eac39d20800fcb025b7f6","size":53,"type":"file"}},"thread":0}
+{"case":"zs-br-zmax0@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":2},"seq":4,"thread":0}
+{"args":{"argv":["-z","-J1","foo","a.tbr"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-ext-tbr@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-ext-tbr@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-br-ext-tbr@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-ext-tbr@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.tbr":{"mode":null,"sha256":"a39a4c97007432d698dccaeafbe28af32706f3a4432d22adeda650826f41988d","size":113,"type":"file"}},"thread":0}
+{"case":"zs-br-ext-tbr@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","-J1","foo","a.tar.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-tar-br-basic@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-tar-br-basic@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["{one.txt}:alpha foo one\n","{one.txt}:foo gamma foo\n","{one.txt}:last foo line\n","{two.txt}:second foo member\n"]},"seq":1,"thread":0}
+{"case":"zs-tar-br-basic@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-tar-br-basic@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.tar.br":{"mode":null,"sha256":"ecf3405f8af279f8dbbeb53292c8e336e59aabf786d300138093cdb33a431b91","size":150,"type":"file"}},"thread":0}
+{"case":"zs-tar-br-basic@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-J1","foo","a.tar.br"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-tar-br-trunc@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-tar-br-trunc@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-tar-br-trunc@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-tar-br-trunc@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.tar.br":{"mode":null,"sha256":"b0380683dc057027387342ec64fe9b256e08fed12ba6919810b15d53117ee0b4","size":60,"type":"file"}},"thread":0}
+{"case":"zs-tar-br-trunc@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","-c","-J1","--sort=name","foo","a.br","b.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-br-in-all-codecs-count@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-br-in-all-codecs-count@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["a.br:3\r\n","b.bz3:1\r\n"]},"seq":1,"thread":0}
+{"case":"zs-br-in-all-codecs-count@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-br-in-all-codecs-count@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.br":{"mode":null,"sha256":"f71f78a007b71b144256dacb0a431f078030cfcb899eac39d20800fcb025b7f6","size":53,"type":"file"},"b.bz3":{"mode":null,"sha256":"bf277af634091533eb567869f4ac05b71da49b37ff2b0d439dfd5a19cfd8cb0c","size":56,"type":"file"}},"thread":0}
+{"case":"zs-br-in-all-codecs-count@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-basic@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-basic@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["alpha foo one\n","foo gamma foo\n","last foo line\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-basic@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-basic@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"a023272c558bca7bf8f4ee981d8cd0dc98c8cdbadbdaf0268492d5eaa8c23bbe","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-basic@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-c","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-count@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-count@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["3\r\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-count@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-count@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"a023272c558bca7bf8f4ee981d8cd0dc98c8cdbadbdaf0268492d5eaa8c23bbe","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-count@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-l","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-files-with-matches@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-files-with-matches@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["a.bz3\r\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-files-with-matches@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-files-with-matches@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"a023272c558bca7bf8f4ee981d8cd0dc98c8cdbadbdaf0268492d5eaa8c23bbe","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-files-with-matches@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-n","-o","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-line-numbers@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-line-numbers@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["1:foo\r\n","3:foo\r\n","3:foo\r\n","5:foo\r\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-line-numbers@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-line-numbers@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"a023272c558bca7bf8f4ee981d8cd0dc98c8cdbadbdaf0268492d5eaa8c23bbe","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-line-numbers@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","zzz","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-no-match@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-no-match@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-bz3-no-match@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-no-match@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"a023272c558bca7bf8f4ee981d8cd0dc98c8cdbadbdaf0268492d5eaa8c23bbe","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-no-match@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-without-z@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-without-z@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["Binary file a.bz3 matches\r\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-without-z@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-without-z@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"a023272c558bca7bf8f4ee981d8cd0dc98c8cdbadbdaf0268492d5eaa8c23bbe","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-without-z@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-C1","gamma","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-context@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-context@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["beta two\n","foo gamma foo\n","delta\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-context@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-context@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"a023272c558bca7bf8f4ee981d8cd0dc98c8cdbadbdaf0268492d5eaa8c23bbe","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-context@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-v","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-invert@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-invert@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["beta two\n","delta\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-invert@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-invert@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"a023272c558bca7bf8f4ee981d8cd0dc98c8cdbadbdaf0268492d5eaa8c23bbe","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-invert@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","data"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-no-extension@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-no-extension@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["Binary file data matches\r\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-no-extension@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-no-extension@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"data":{"mode":null,"sha256":"a023272c558bca7bf8f4ee981d8cd0dc98c8cdbadbdaf0268492d5eaa8c23bbe","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-no-extension@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.gz"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-wrong-extension-gz@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-wrong-extension-gz@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["Binary file a.gz matches\r\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-wrong-extension-gz@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-wrong-extension-gz@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.gz":{"mode":null,"sha256":"a023272c558bca7bf8f4ee981d8cd0dc98c8cdbadbdaf0268492d5eaa8c23bbe","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-wrong-extension-gz@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.txt"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-wrong-extension-txt@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-wrong-extension-txt@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["Binary file a.txt matches\r\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-wrong-extension-txt@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-wrong-extension-txt@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.txt":{"mode":null,"sha256":"a023272c558bca7bf8f4ee981d8cd0dc98c8cdbadbdaf0268492d5eaa8c23bbe","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-wrong-extension-txt@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-c","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-multi-block@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-multi-block@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["10\r\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-multi-block@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-multi-block@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"9adb434775415f0f85484df7a303396f3f25e572420851ccf2c8868eeb0db93b","size":55491,"type":"file"}},"thread":0}
+{"case":"zs-bz3-multi-block@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-n","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-multi-block-lines@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-multi-block-lines@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["1:line 0 53dc167e foo\n","998:line 997 58da371b foo\n","1995:line 1994 3cdf8c04 foo\n","2992:line 2991 7b3f3909 foo\n","3989:line 3988 66b0beba foo\n","4986:line 4985 2b87d767 foo\n","5983:line 5982 5a73a020 foo\n","6980:line 6979 36dcddb5 foo\n","7977:line 7976 4387edb6 foo\n","8974:line 8973 66c8b373 foo\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-multi-block-lines@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-multi-block-lines@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"9adb434775415f0f85484df7a303396f3f25e572420851ccf2c8868eeb0db93b","size":55491,"type":"file"}},"thread":0}
+{"case":"zs-bz3-multi-block-lines@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-c","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-block-size-2-blocks@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-block-size-2-blocks@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["10\r\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-block-size-2-blocks@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-block-size-2-blocks@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"32fe2ea87f8904ae04d5fac12169459ad72d81abec657bda6704c20950406f0b","size":55543,"type":"file"}},"thread":0}
+{"case":"zs-bz3-block-size-2-blocks@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-c","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-block-size-1-block@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-block-size-1-block@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["10\r\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-block-size-1-block@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-block-size-1-block@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"fa7be32abec6b4a829b6e2898e9266929cb3e9ed178bcc2ede18f84fc36df6e8","size":55443,"type":"file"}},"thread":0}
+{"case":"zs-bz3-block-size-1-block@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-c","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-block-boundary@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-block-boundary@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["8\r\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-block-boundary@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-block-boundary@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"6d766dd53261d52ab43211961747cb3eb9fa09d345be874eafb7a5f671d6e4d3","size":43535,"type":"file"}},"thread":0}
+{"case":"zs-bz3-block-boundary@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-c","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-tiny-last-block@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-tiny-last-block@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["4\r\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-tiny-last-block@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-tiny-last-block@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"2df0a70e31040444dd7f28dc05ac07e18c9ff3011bd1c90bbac2de21887dae0b","size":22102,"type":"file"}},"thread":0}
+{"case":"zs-bz3-tiny-last-block@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-concatenated-files@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-concatenated-files@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["alpha foo one\n","foo gamma foo\n","last foo line\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-concatenated-files@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: cannot decompress a.bz3: an error was detected in the bzip3 compressed data\r\n"]},"seq":2,"thread":0}
+{"case":"zs-bz3-concatenated-files@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"5777eb5bd69712b0609c09d05c0ead9b251a6a3d985bc9ff9f1c1fea808cf3d0","size":138,"type":"file"}},"thread":0}
+{"case":"zs-bz3-concatenated-files@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-header-only@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-header-only@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-bz3-header-only@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-header-only@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"eef29b11f33fe1a3d8619d5fb4e5212887755b533ecf9dce45e508fdd195fd89","size":9,"type":"file"}},"thread":0}
+{"case":"zs-bz3-header-only@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-trunc-block-header@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-trunc-block-header@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-bz3-trunc-block-header@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-trunc-block-header@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"5cdd61deb7d1c46ae2394485d9853b01d757f427847cdfaa4f2913ad66b06945","size":13,"type":"file"}},"thread":0}
+{"case":"zs-bz3-trunc-block-header@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-trunc-half@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-trunc-half@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-bz3-trunc-half@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: cannot decompress a.bz3: an error was detected in the bzip3 compressed data\r\n"]},"seq":2,"thread":0}
+{"case":"zs-bz3-trunc-half@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"ba57ee924f11aa524d558b36d9f2b864662c7a6ffdbe3dafb496118cf7a3b44d","size":41,"type":"file"}},"thread":0}
+{"case":"zs-bz3-trunc-half@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-trunc-last-byte@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-trunc-last-byte@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-bz3-trunc-last-byte@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: cannot decompress a.bz3: an error was detected in the bzip3 compressed data\r\n"]},"seq":2,"thread":0}
+{"case":"zs-bz3-trunc-last-byte@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"f3e262120ca2df3cecc94cf9cbfc7cf960ab0603d995741b5b84e67f03a963af","size":81,"type":"file"}},"thread":0}
+{"case":"zs-bz3-trunc-last-byte@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","-c","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-trunc-large@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-trunc-large@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["10\r\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-trunc-large@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-trunc-large@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"9adb434775415f0f85484df7a303396f3f25e572420851ccf2c8868eeb0db93b","size":55491,"type":"file"}},"thread":0}
+{"case":"zs-bz3-trunc-large@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-c","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-trunc-second-block@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-trunc-second-block@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["10\r\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-trunc-second-block@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-trunc-second-block@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"9adb434775415f0f85484df7a303396f3f25e572420851ccf2c8868eeb0db93b","size":55491,"type":"file"}},"thread":0}
+{"case":"zs-bz3-trunc-second-block@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-corrupt-body@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-corrupt-body@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-bz3-corrupt-body@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: cannot decompress a.bz3: an error was detected in the bzip3 compressed data\r\n"]},"seq":2,"thread":0}
+{"case":"zs-bz3-corrupt-body@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"6d116a22717c164aae525720448693ecacd339cde64f3898e5aa45c021635210","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-corrupt-body@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","-c","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-corrupt-large@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-corrupt-large@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["4\r\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-corrupt-large@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: cannot decompress a.bz3: an error was detected in the bzip3 compressed data\r\n"]},"seq":2,"thread":0}
+{"case":"zs-bz3-corrupt-large@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"b16f55661986e9e99c4c7d503fd8599ff9dbffe6a6b76cab28fc2bdd2e920720","size":55491,"type":"file"}},"thread":0}
+{"case":"zs-bz3-corrupt-large@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-block-size-too-small@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-block-size-too-small@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-bz3-block-size-too-small@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: cannot decompress a.bz3: an error was detected in the bzip3 compressed data\r\n","ugrep: warning: bz3_new failed a.bz3  \r\n"]},"seq":2,"thread":0}
+{"case":"zs-bz3-block-size-too-small@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"9702de4c6178542d9cb0f33d62bafe0180b739704e7a19ed952de0364afaa4b4","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-block-size-too-small@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":2},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-block-size-zero@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-block-size-zero@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-bz3-block-size-zero@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: cannot decompress a.bz3: an error was detected in the bzip3 compressed data\r\n","ugrep: warning: bz3_new failed a.bz3  \r\n"]},"seq":2,"thread":0}
+{"case":"zs-bz3-block-size-zero@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"2a20dad2e271d039c673efacb9ae70ac3319a865e3e838ee18d95e08d7663de4","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-block-size-zero@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":2},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-block-size-too-large@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-block-size-too-large@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-bz3-block-size-too-large@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: cannot decompress a.bz3: an error was detected in the bzip3 compressed data\r\n","ugrep: warning: bz3_new failed a.bz3  \r\n"]},"seq":2,"thread":0}
+{"case":"zs-bz3-block-size-too-large@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"5b0164fcc4e853eb4d5f593ba8ed11107a980a792ab6416564efa3e5e4d855db","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-block-size-too-large@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":2},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-block-size-min-accepted@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-block-size-min-accepted@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["alpha foo one\n","foo gamma foo\n","last foo line\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-block-size-min-accepted@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-block-size-min-accepted@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"a023272c558bca7bf8f4ee981d8cd0dc98c8cdbadbdaf0268492d5eaa8c23bbe","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-block-size-min-accepted@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-compressed-size-over-max@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-compressed-size-over-max@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-bz3-compressed-size-over-max@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: cannot decompress a.bz3: an error was detected in the bzip3 compressed data\r\n"]},"seq":2,"thread":0}
+{"case":"zs-bz3-compressed-size-over-max@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"a0603b10f93776208cd7b52282da0e88e796808eaea6d24385fec3057f59d0cc","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-compressed-size-over-max@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-original-size-over-max@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-original-size-over-max@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-bz3-original-size-over-max@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: cannot decompress a.bz3: an error was detected in the bzip3 compressed data\r\n"]},"seq":2,"thread":0}
+{"case":"zs-bz3-original-size-over-max@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"2354d34945639cf015ba953f7a4ce0546b84a95338d33eee19f4906602046564","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-original-size-over-max@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-original-size-zero@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-original-size-zero@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-bz3-original-size-zero@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-original-size-zero@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"4a57d5f2b7a0ae610235ca4105f232c6268e41a14e0531f10d8b6b23b3295285","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-original-size-zero@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-original-size-smaller@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-original-size-smaller@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["alpha foo one\n","foo gamma foo\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-original-size-smaller@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-original-size-smaller@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"2145253f56f864c816e98b617c7d9a79b3aaf91493d4933ac5255502b53b7d37","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-original-size-smaller@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-original-size-larger@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-original-size-larger@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["Binary file a.bz3 matches\r\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-original-size-larger@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-original-size-larger@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"922c82feddf0e158837ffb6ccb87c7a4c8cd1821a8ea7d73d6e038f9b1291ac6","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-original-size-larger@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-bad-text@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-bad-text@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-bz3-bad-text@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: cannot decompress a.bz3: an error was detected in the bzip3 compressed data\r\n","ugrep: cannot decompress a.bz3: an error was detected in the bzip3 compressed data\r\n","ugrep: warning: bz3_new failed a.bz3  \r\n"]},"seq":2,"thread":0}
+{"case":"zs-bz3-bad-text@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"de0ff2877dbbe5cf9d192b0bc64314635c4bd05410f2767b282ea9bb6ddb8be0","size":57,"type":"file"}},"thread":0}
+{"case":"zs-bz3-bad-text@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":2},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-trailing-garbage@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-trailing-garbage@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["alpha foo one\n","foo gamma foo\n","last foo line\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-trailing-garbage@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: cannot decompress a.bz3: an error was detected in the bzip3 compressed data\r\n"]},"seq":2,"thread":0}
+{"case":"zs-bz3-trailing-garbage@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"cc112f7ad2745a0b9de320878ec16cfa56e82924c1fb964b38f980951912fe2f","size":101,"type":"file"}},"thread":0}
+{"case":"zs-bz3-trailing-garbage@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-trailing-zeros@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-trailing-zeros@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["alpha foo one\n","foo gamma foo\n","last foo line\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-trailing-zeros@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-trailing-zeros@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"3b9db98f01119d96be76c932dd23b876967e4b32b24bba68268192e5e443b40d","size":89,"type":"file"}},"thread":0}
+{"case":"zs-bz3-trailing-zeros@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-trailing-seven-bytes@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-trailing-seven-bytes@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["alpha foo one\n","foo gamma foo\n","last foo line\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-trailing-seven-bytes@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-trailing-seven-bytes@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"85bc1bc2adc9acf09eac64b115d1cc9a4b7f20a056f2cd90c81fd3afb3f9a4f2","size":89,"type":"file"}},"thread":0}
+{"case":"zs-bz3-trailing-seven-bytes@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-J1","--sort=name","foo","a.bz3","b.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-two-files@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-two-files@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["a.bz3:alpha foo one\n","a.bz3:foo gamma foo\n","a.bz3:last foo line\n","b.bz3:second foo member\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-two-files@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-two-files@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"a023272c558bca7bf8f4ee981d8cd0dc98c8cdbadbdaf0268492d5eaa8c23bbe","size":82,"type":"file"},"b.bz3":{"mode":null,"sha256":"bf277af634091533eb567869f4ac05b71da49b37ff2b0d439dfd5a19cfd8cb0c","size":56,"type":"file"}},"thread":0}
+{"case":"zs-bz3-two-files@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-J1","--sort=name","foo","a.bz3","b.txt"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-mixed-plain-and-bz3@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-mixed-plain-and-bz3@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["a.bz3:alpha foo one\n","a.bz3:foo gamma foo\n","a.bz3:last foo line\n","b.txt:second foo member\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-mixed-plain-and-bz3@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-mixed-plain-and-bz3@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"a023272c558bca7bf8f4ee981d8cd0dc98c8cdbadbdaf0268492d5eaa8c23bbe","size":82,"type":"file"},"b.txt":{"mode":null,"sha256":"6908645ea0880d4d49a60cef09c55b019cb223895960ce71efea652ccd88d14d","size":31,"type":"file"}},"thread":0}
+{"case":"zs-bz3-mixed-plain-and-bz3@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-r","-J1","--sort=name","foo","d"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-recursive@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-recursive@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["d\\a.bz3:alpha foo one\n","d\\a.bz3:foo gamma foo\n","d\\a.bz3:last foo line\n","d\\b.txt:second foo member\n","d\\c.bz3:second foo member\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-recursive@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-recursive@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"d/a.bz3":{"mode":null,"sha256":"a023272c558bca7bf8f4ee981d8cd0dc98c8cdbadbdaf0268492d5eaa8c23bbe","size":82,"type":"file"},"d/b.txt":{"mode":null,"sha256":"6908645ea0880d4d49a60cef09c55b019cb223895960ce71efea652ccd88d14d","size":31,"type":"file"},"d/c.bz3":{"mode":null,"sha256":"bf277af634091533eb567869f4ac05b71da49b37ff2b0d439dfd5a19cfd8cb0c","size":56,"type":"file"}},"thread":0}
+{"case":"zs-bz3-recursive@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-binary-after-decompress@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-binary-after-decompress@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["Binary file a.bz3 matches\r\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-binary-after-decompress@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-binary-after-decompress@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"838ed6d91c5477b8e5644c9ac26d774dce42a528844ac19039e9a0799e2a2195","size":33,"type":"file"}},"thread":0}
+{"case":"zs-bz3-binary-after-decompress@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-a","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-text-binary@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-text-binary@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["foo\u0000bin\n"]},"seq":1,"thread":0}
+{"case":"zs-bz3-text-binary@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-text-binary@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"838ed6d91c5477b8e5644c9ac26d774dce42a528844ac19039e9a0799e2a2195","size":33,"type":"file"}},"thread":0}
+{"case":"zs-bz3-text-binary@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","--zmax=0","foo","a.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-zmax0@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-zmax0@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-bz3-zmax0@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: invalid argument --zmax=0\r\n","For more help, run `ugrep --help' or `ugrep --help --zmax'\r\n"]},"seq":2,"thread":0}
+{"case":"zs-bz3-zmax0@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.bz3":{"mode":null,"sha256":"a023272c558bca7bf8f4ee981d8cd0dc98c8cdbadbdaf0268492d5eaa8c23bbe","size":82,"type":"file"}},"thread":0}
+{"case":"zs-bz3-zmax0@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":2},"seq":4,"thread":0}
+{"args":{"argv":["-z","-J1","foo","a.tbz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-bz3-ext-tbz3@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-bz3-ext-tbz3@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-bz3-ext-tbz3@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-bz3-ext-tbz3@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.tbz3":{"mode":null,"sha256":"09f6170905388be1ce1c1b864e1498d3becd4836530e60e49138a85300edc46d","size":144,"type":"file"}},"thread":0}
+{"case":"zs-bz3-ext-tbz3@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
+{"args":{"argv":["-z","-J1","foo","a.tar.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-tar-bz3-basic@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-tar-bz3-basic@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["{one.txt}:alpha foo one\n","{one.txt}:foo gamma foo\n","{one.txt}:last foo line\n","{two.txt}:second foo member\n"]},"seq":1,"thread":0}
+{"case":"zs-tar-bz3-basic@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
+{"case":"zs-tar-bz3-basic@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.tar.bz3":{"mode":null,"sha256":"08c4ea27f431c780a34ab984ee77b8eb7de5f4cbec815877fee77b9e7b38995f","size":200,"type":"file"}},"thread":0}
+{"case":"zs-tar-bz3-basic@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
+{"args":{"argv":["-z","-J1","foo","a.tar.bz3"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"zs-tar-bz3-trunc@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"case":"zs-tar-bz3-trunc@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
+{"case":"zs-tar-bz3-trunc@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: cannot decompress a.tar.bz3: an error was detected in the bzip3 compressed data\r\n"]},"seq":2,"thread":0}
+{"case":"zs-tar-bz3-trunc@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.tar.bz3":{"mode":null,"sha256":"466d1a2bc1dc658b6cd516ddac050865f6f9a408aa44fde02771496fda7856cd","size":60,"type":"file"}},"thread":0}
+{"case":"zs-tar-bz3-trunc@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":1},"seq":4,"thread":0}
