@@ -24,6 +24,7 @@ third_party:
 # compile database). src_core and src_tui are one include cycle through ugrep.hpp; their Prepare seam cuts it.
 components:
   src_leaves:
+    cleaned: true   # D-behavior-cleaned: no C++ seam or coverage left after Cleanup; catalog changes use the *-cleaned behavior gates
     level: 0
     cpp_sources: "src/glob.cpp src/zopen.c"
     cpp_headers: "src/glob.hpp src/zopen.h src/zstream.hpp src/flag.hpp src/zopen_facade.cpp src/zopen_seam.h src/zstream.cpp src/zstream_seam.h"   # seam facades: C++ the baseline must cover, not yet forbidden by linked-check
@@ -43,6 +44,7 @@ components:
     coverage_functions: 100
     coverage_lines: 85
   src_core:
+    cleaned: true   # D-behavior-cleaned: no C++ seam or coverage left after Cleanup; catalog changes use the *-cleaned behavior gates
     level: 2
     cpp_sources: "src/ugrep.cpp src/output.cpp src/stats.cpp src/cnf.cpp"
     cpp_headers: "src/ugrep.hpp src/output.hpp src/stats.hpp src/cnf.hpp src/mmap.hpp"
@@ -79,6 +81,7 @@ components:
     coverage_functions: 100
     coverage_lines: 85
   src_indexer:
+    cleaned: true   # D-behavior-cleaned: no C++ seam or coverage left after Cleanup; catalog changes use the *-cleaned behavior gates
     level: 3
     cpp_sources: "src/ugrep-indexer.cpp"
     cpp_headers: "src/zthread.hpp"
@@ -234,6 +237,39 @@ gates:
           {tools} policy-scan --base {base} --plan migration/validation-plan.yaml
           --forbid-todo {rust_crate}/src --out {out}/policy.json
       # Sanitizers on Windows (/fsanitize=address with the Rust side) are opt-in; the first Port decides.
+
+  # A component marked `cleaned: true` has no C++ left to record a seam from or to measure coverage of
+  # (D-behavior-cleaned). gate-check --changed holds its catalog, corpus and mask changes to these gates
+  # instead of behavior-proposed/behavior-ready. New behavior is recorded from a reference build outside the
+  # product (e.g. migration/harness/zstream/build-codec-ref.ps1) and proven against Rust by the unit gate's
+  # seam replay and the cleanup gate's surface cases.
+  behavior-proposed-cleaned:
+    scope: component
+    checks:
+      - name: harness-builds
+        run: "cargo build --profile harness --locked --manifest-path {harness_crate}/Cargo.toml"
+      - name: catalog
+        run: >-
+          {tools} catalog-lint --catalog migration/behavior/{component}.yaml
+          --plan migration/validation-plan.yaml --out {out}/catalog.json
+        expect:
+          - {json: "{out}/catalog.json", field: error_count, op: "==", value: 0}
+          - {json: "{out}/catalog.json", field: unreasoned_uncovered, op: "==", value: 0}
+
+  behavior-ready-cleaned:
+    scope: component
+    checks:
+      - name: harness-builds
+        run: "cargo build --profile harness --locked --manifest-path {harness_crate}/Cargo.toml"
+      - name: catalog
+        run: >-
+          {tools} catalog-lint --catalog migration/behavior/{component}.yaml
+          --plan migration/validation-plan.yaml --out {out}/catalog.json
+        expect:
+          - {json: "{out}/catalog.json", field: error_count, op: "==", value: 0}
+          - {json: "{out}/catalog.json", field: saturated, op: "==", value: true}
+          - {json: "{out}/catalog.json", field: open_questions, op: "==", value: 0}
+          - {json: "{out}/catalog.json", field: unreasoned_uncovered, op: "==", value: 0}
 
   # After Cleanup (Q-cleanup-1, D-cleanup-gate) a switched component has no C++ variant and no tap: the default build
   # is the product. This gate replaces `switch` for src_leaves, src_core and src_indexer. The deleted C++ stays
