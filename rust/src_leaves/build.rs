@@ -11,7 +11,8 @@ use std::path::PathBuf;
 //   migration/harness/zstream/fetch-codecs.ps1 (/MT, x64) in `<repo>\..\codec-build\lib` (CPP2RUST_CODEC_LIB names another
 //   directory). They are linked as non-bundled static libraries, so they never end up inside the umbrella staticlib.
 // A missing library is a build error.
-const LIBS: [&str; 6] = ["zlib", "bz2", "lzma", "lz4", "zstd", "viiz"];
+// brotlidec stands for the brotli decoder (the Rust code calls only it; brotlicommon is linked with it); bzip3 is the bz3_* API.
+const LIBS: [&str; 9] = ["zlib", "bz2", "lzma", "lz4", "zstd", "viiz", "brotlidec", "brotlicommon", "bzip3"];
 
 fn main() {
     println!("cargo:rerun-if-changed=src/lib.rs");
@@ -20,6 +21,9 @@ fn main() {
     println!("cargo:rerun-if-env-changed=CPP2RUST_CODECS_FROM_LINKER");
     println!("cargo:rerun-if-env-changed=CPP2RUST_CODEC_LIBS");
     println!("cargo:rustc-check-cfg=cfg(ugrep_no_codecs)");
+    println!("cargo:rustc-check-cfg=cfg(ugrep_build_links)");
+    // ffi/codecs.rs adds link attributes only where this script does not run (the replay harness)
+    println!("cargo:rustc-cfg=ugrep_build_links");
     for lib in LIBS {
         println!("cargo:rustc-check-cfg=cfg(ugrep_no_{lib})");
     }
