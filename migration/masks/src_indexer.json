@@ -1,1 +1,1 @@
-{"schema":"cpp2rust-masks/1","masks":[],"rewrites":[]}
+{"schema":"cpp2rust-masks/1","masks":[{"fn":"src_indexer.options","kind":"call","path":"args.2.0","action":"ignore","reason":"argv[0] is the absolute path of the executable: differs between checkouts and CI runners, not behavior","approved":"Q-indexer-masks"}],"rewrites":[]}
