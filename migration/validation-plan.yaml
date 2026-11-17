@@ -229,3 +229,9 @@ gates:
           --forbid-todo {rust_crate}/src --out {out}/policy.json
       # Sanitizers on Windows (/fsanitize=address with the Rust side) are opt-in; the first Port decides. After
       # Cleanup deleted the C++ and the tap: add `--no-tap {rust_crate}/src src` to the policy check.
+
+# Cleanup checks (Q-cleanup-1, end state hybrid-with-retained-cpp). Cleanup deletes only ported bodies/files: src/glob.cpp,
+# src/zopen.c, CNF::*_cpp, Stats::report_cpp, index/indexer/deleter_cpp and their facades/taps. Retained and required linked:
+# ugrep.cpp/output.cpp remainder, indexer_cli, RE-flex (lib/, include/reflex), third-party libs, TUI shell (query/screen/vkey).
+# The cleanup form of the switch gate keeps each component's linked_args forbid list (deleted symbols), adds --require for the
+# retained objects, and adds `--no-tap {rust_crate}/src src` to the policy check.
