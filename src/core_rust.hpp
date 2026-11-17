@@ -1,13 +1,10 @@
 // C++ side of the src_core seam: conversions between the C++ types of src/cnf.hpp, src/stats.hpp and the flag_*
-// globals, and the cxx bridge types of rust/src_core/src/lib.rs. Included only when CPP_RUST_IMPL_SRC_CORE is
-// defined (msvc/rust.targets, /p:CPP_RUST_IMPL_SRC_CORE=rust). See rust/src_core/SEAM.md.
+// globals, and the cxx bridge types of rust/src_core/src/lib.rs. See rust/src_core/SEAM.md.
 //
 // The flag_* globals stay owned by C++: every crossing takes a read-only snapshot (cnf_flags, stats_input) and
 // Rust never writes a flag; what a function writes comes back in its result.
 #ifndef CORE_RUST_HPP
 #define CORE_RUST_HPP
-
-#ifdef CPP_RUST_IMPL_SRC_CORE
 
 #include "ugrep.hpp"
 #include "cnf.hpp"
@@ -192,6 +189,5 @@ inline void write_to(FILE *output, const rust::Vec<uint8_t>& text)
 
 } // namespace core_rust
 
-#endif // CPP_RUST_IMPL_SRC_CORE
 
 #endif

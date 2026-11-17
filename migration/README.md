@@ -74,3 +74,5 @@ Masks are empty; D3 masks are added only when a Behavior task proves noise.
 
 **Limits.** `tests/verify.sh` is not usable as a judge on Windows (see `environment.json`); the baseline gate is the
 build plus the recorded surface. The Base configs do not link the third-party decompression libraries.
+
+**Cleanup (done).** The ported C++ bodies, taps and the cpp/rust build switch are deleted (see decisions.md D-cleanup): the Rust umbrella is always linked. SEAM.md files describing the cpp/tap switch are historical.

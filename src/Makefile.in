@@ -373,7 +373,6 @@ ugrep_SOURCES = \
 	ugrep.cpp \
 	cnf.hpp \
 	core_rust.hpp \
-	core_tap.hpp \
 	cnf.cpp \
 	flag.hpp \
 	glob.hpp \
@@ -412,7 +411,6 @@ ugrep_indexer_SOURCES = \
 	ugrep-indexer_facade.cpp \
 	ugrep-indexer_seam.h \
 	indexer_rust.hpp \
-	indexer_tap.hpp \
 	glob.hpp \
 	glob.cpp \
 	zopen.h \

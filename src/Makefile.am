@@ -30,11 +30,10 @@ ugrep_SOURCES = \
 	ugrep.cpp \
 	cnf.hpp \
 	core_rust.hpp \
-	core_tap.hpp \
 	cnf.cpp \
 	flag.hpp \
 	glob.hpp \
-	glob.cpp \
+	glob_facade.cpp \
 	mmap.hpp \
 	output.hpp \
 	output.cpp \
@@ -49,7 +48,8 @@ ugrep_SOURCES = \
 	vkey.cpp \
 	zstream.hpp \
 	zopen.h \
-	zopen.c
+	zopen_facade.cpp \
+	zopen_seam.h
 ugrep_LDADD = \
 	$(PTHREAD_LIBS) \
 	$(top_builddir)/lib/libreflex.a
@@ -66,11 +66,11 @@ ugrep_indexer_SOURCES  = \
 	ugrep-indexer_facade.cpp \
 	ugrep-indexer_seam.h \
 	indexer_rust.hpp \
-	indexer_tap.hpp \
 	glob.hpp \
-	glob.cpp \
+	glob_facade.cpp \
 	zopen.h \
-	zopen.c \
+	zopen_facade.cpp \
+	zopen_seam.h \
 	zstream.hpp \
 	zthread.hpp
 ugrep_indexer_LDADD = \

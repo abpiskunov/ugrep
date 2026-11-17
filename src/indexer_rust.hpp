@@ -1,13 +1,10 @@
 // C++ side of the src_indexer seam: conversions between the flag_* globals of src/ugrep-indexer.cpp and the cxx bridge
-// types of rust/src_indexer/src/lib.rs. Included only when CPP_RUST_IMPL_SRC_INDEXER is defined (msvc/rust.targets,
-// /p:CPP_RUST_IMPL_SRC_INDEXER=rust). See rust/src_indexer/SEAM.md.
+// types of rust/src_indexer/src/lib.rs. See rust/src_indexer/SEAM.md.
 //
 // The flag_* globals stay owned by C++: every crossing takes a read-only snapshot (indexer_rust::flags) and Rust never
 // writes a flag; what a function changes comes back in its result (indexer_rust::apply).
 #ifndef INDEXER_RUST_HPP
 #define INDEXER_RUST_HPP
-
-#ifdef CPP_RUST_IMPL_SRC_INDEXER
 
 #include "ugrep-indexer_seam.h"
 #include "src_indexer/src/lib.rs.h"
@@ -80,7 +77,5 @@ inline void apply(const ugrep_rust::IndexerFlags& f)
 }
 
 } // namespace indexer_rust
-
-#endif // CPP_RUST_IMPL_SRC_INDEXER
 
 #endif

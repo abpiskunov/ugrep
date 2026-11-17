@@ -35,183 +35,13 @@
 */
 
 #include "stats.hpp"
-#include "core_tap.hpp"
 #include "core_rust.hpp"
 #include <cstdlib>
 #include <cstdio>
 
-// report the statistics (legacy C++ body behind the src_core seam facade below)
-void Stats::report_cpp(FILE *output)
-{
-  size_t sf = searched_files();
-  size_t sd = searched_dirs();
-  size_t si = searched_indexed();
-  size_t ss = searched_skipped();
-  size_t sc = searched_changed();
-  size_t sa = searched_added();
-  size_t sl = searched_lines();
-  size_t ff = found_files();
-  size_t fp = found_parts();
-  size_t fm = found_matches();
-  size_t ws = Static::warnings;
-
-  fprintf(output, NEWLINESTR "Searched %zu file%s", sf, (sf == 1 ? "" : "s"));
-  if (sd > 0)
-    fprintf(output, " in %zu director%s", sd, (sd == 1 ? "y" : "ies"));
-  if (!flag_query && flag_pager == NULL)
-    fprintf(output, " in %.3g seconds", 0.001 * reflex::timer_elapsed(timer));
-  if (Static::threads > 1)
-    fprintf(output, " with %zu threads", Static::threads);
-  fprintf(output, ": %zu matching (%.4g%%)", ff, 100.0 * ff / sf);
-  if (fp > ff)
-    fprintf(output, " + %zu in archives", fp - ff);
-  fprintf(output, NEWLINESTR);
-
-  if (fm > 0 && !flag_quiet && !flag_files_with_matches && !flag_files_without_match)
-  {
-    if (flag_ungroup || (flag_count && flag_only_matching) || (!flag_count && flag_format != NULL))
-      fprintf(output, "Searched %zu line%s: found %zu match%s (ungrouped)" NEWLINESTR, sl, (sl == 1 ? "" : "s"), fm, (fm == 1 ? "" : "es"));
-    else
-      fprintf(output, "Searched %zu line%s: %zu matching (%.4g%%)" NEWLINESTR, sl, (sl == 1 ? "" : "s"), fm, 100.0 * fm / sl);
-  }
-
-  if (flag_index && indexed > 0)
-  {
-    fprintf(output, "Skipped %zu file%s of %zu (%.4g%%) not matching %zu indexes\n", ss, (ss == 1 ? "" : "s"), sf - ff, 100.0 * ss / (sf - ff), si);
-    if (sc > 0 || sa > 0)
-    {
-      fprintf(output, "Detected outdated or missing index files, run ugrep-indexer to re-index:\n");
-      if (sc > 1)
-        fprintf(output, "  searched %zu changed files\n", sc);
-      else if (sc == 1)
-        fprintf(output, "  searched 1 changed file\n");
-      if (sa > 1)
-        fprintf(output, "  searched %zu new files\n", sa);
-      else if (sa == 1)
-        fprintf(output, "  searched 1 new file\n");
-    }
-  }
-
-  if (Static::warnings > 0)
-    fprintf(output, "Received %zu warning%s" NEWLINESTR, ws, ws == 1 ? "" : "s");
-
-  fprintf(output, "The following pathname selections and search constraints were applied:" NEWLINESTR);
-  if (flag_config != NULL)
-  {
-    fprintf(output, "  --config=%s" NEWLINESTR, flag_config);
-    for (const auto& i : flag_config_files)
-      fprintf(output, "    using %s" NEWLINESTR, i.c_str());
-  }
-  if (flag_fuzzy > 0)
-    fprintf(output, "  --fuzzy" NEWLINESTR);
-  if (flag_bool)
-    fprintf(output, "  --bool %s" NEWLINESTR, (flag_files ? "--files" : "--lines"));
-  if (flag_mode == Mode::BRE)
-    fprintf(output, "  --basic-regexp" NEWLINESTR);
-  else if (flag_mode == Mode::FIXED)
-    fprintf(output, "  --fixed-strings" NEWLINESTR);
-  else if (flag_mode == Mode::PERL)
-    fprintf(output, "  --perl-regexp" NEWLINESTR);
-  else
-    fprintf(output, "  --extended-regexp" NEWLINESTR);
-  if (flag_decompress)
-    fprintf(output, "  --decompress --zmax=%zu" NEWLINESTR, flag_zmax);
-  if (flag_min_depth > 0 && flag_max_depth > 0)
-    fprintf(output, "  --depth=%zu,%zu" NEWLINESTR, flag_min_depth, flag_max_depth);
-  else if (flag_min_depth > 0)
-    fprintf(output, "  --depth=%zu," NEWLINESTR, flag_min_depth);
-  else if (flag_max_depth > 0)
-    fprintf(output, "  --depth=%zu" NEWLINESTR, flag_max_depth);
-  if (flag_dereference)
-    fprintf(output, "  --dereference" NEWLINESTR);
-  else if (flag_no_dereference)
-    fprintf(output, "  --no-dereference" NEWLINESTR);
-  switch (flag_devices_action)
-  {
-    case Action::SKIP:
-      fprintf(output, "  --devices=skip" NEWLINESTR);
-      break;
-    case Action::READ:
-      fprintf(output, "  --devices=read" NEWLINESTR);
-      break;
-    default:
-      break;
-  }
-  switch (flag_directories_action)
-  {
-    case Action::SKIP:
-      fprintf(output, "  --directories=skip" NEWLINESTR);
-      break;
-    case Action::READ:
-      fprintf(output, "  --directories=read" NEWLINESTR);
-      break;
-    case Action::RECURSE:
-      fprintf(output, "  --directories=recurse" NEWLINESTR);
-      break;
-    default:
-      break;
-  }
-  if (flag_glob_ignore_case)
-    fprintf(output, "  --glob-ignore-case" NEWLINESTR);
-#ifdef WITH_HIDDEN
-  if (flag_hidden)
-    fprintf(output, "  --hidden (default)" NEWLINESTR);
-  else
-    fprintf(output, "  --no-hidden" NEWLINESTR);
-#else
-  if (flag_hidden)
-    fprintf(output, "  --hidden" NEWLINESTR);
-  else
-    fprintf(output, "  --no-hidden (default)" NEWLINESTR);
-#endif
-  for (const auto& i : flag_ignore_files)
-    fprintf(output, "  --ignore-files=\"%s\"" NEWLINESTR, i.c_str());
-  if (flag_index != NULL)
-    fprintf(output, "  --index" NEWLINESTR);
-  if (flag_min_count > 0)
-    fprintf(output, "  --min-count=%zu" NEWLINESTR, flag_min_count);
-  if (flag_max_count > 0)
-    fprintf(output, "  --max-count=%zu" NEWLINESTR, flag_max_count);
-  if (flag_max_files > 0)
-    fprintf(output, "  --max-files=%zu" NEWLINESTR, flag_max_files);
-  if (flag_min_line > 0)
-    fprintf(output, "  --min-line=%zu" NEWLINESTR, flag_min_line);
-  if (flag_max_line > 0)
-    fprintf(output, "  --max-line=%zu" NEWLINESTR, flag_max_line);
-  if (flag_sort != NULL)
-    fprintf(output, "  --sort=%s" NEWLINESTR, flag_sort);
-  if (flag_min_size > 0)
-    fprintf(output, "  --min-size=%zu" NEWLINESTR, flag_min_size);
-  if (flag_max_size > 0)
-    fprintf(output, "  --max-size=%zu" NEWLINESTR, flag_max_size);
-  for (const auto& i : ignore)
-    fprintf(output, "    %s exclusions were applied to %s and its subdirectories" NEWLINESTR, i.c_str(), i.substr(0, i.find_last_of(PATHSEPCHR)).c_str());
-  for (const auto& i : flag_file_magic)
-  {
-    if (!i.empty() && (i.front() == '!' || i.front() == '^'))
-      fprintf(output, "  --file-magic=\"!%s\" (negated)" NEWLINESTR, i.c_str() + 1);
-    else
-      fprintf(output, "  --file-magic=\"%s\"" NEWLINESTR, i.c_str());
-  }
-  for (const auto& i : flag_include_fs)
-    fprintf(output, "  --include-fs=\"%s\"" NEWLINESTR, i.c_str());
-  for (const auto& i : flag_exclude_fs)
-    fprintf(output, "  --exclude-fs=\"%s\"" NEWLINESTR, i.c_str());
-  for (const auto& i : flag_all_include)
-    fprintf(output, "  --include=\"%s\"%s%s" NEWLINESTR, i.c_str(), i.front() == '!' ? " (negated)" : "", &i < &flag_all_include.front() + flag_include_iglob_size ? " (ignore case)" : "");
-  for (const auto& i : flag_all_exclude)
-    fprintf(output, "  --exclude=\"%s\"%s%s" NEWLINESTR, i.c_str(), i.front() == '!' ? " (negated)" : "", &i < &flag_all_exclude.front() + flag_exclude_iglob_size ? " (ignore case)" : "");
-  for (const auto& i : flag_all_include_dir)
-    fprintf(output, "  --include-dir=\"%s\"%s%s" NEWLINESTR, i.c_str(), i.front() == '!' ? " (negated)" : "", &i < &flag_all_include_dir.front() + flag_include_iglob_dir_size ? " (ignore case)" : "");
-  for (const auto& i : flag_all_exclude_dir)
-    fprintf(output, "  --exclude-dir=\"%s\"%s%s" NEWLINESTR, i.c_str(), i.front() == '!' ? " (negated)" : "", &i < &flag_all_exclude_dir.front() + flag_exclude_iglob_dir_size ? " (ignore case)" : "");
-}
-
-// report the statistics: src_core seam facade, dispatches to report_cpp() or to Rust (SEAM.md)
+// report the statistics (implemented in Rust, rust/src_core)
 void Stats::report(FILE *output)
 {
-  TAP_CALL("src_core.stats_report", core_tap::stats_flags(), searched_files(), searched_dirs(), searched_indexed(), searched_skipped(), searched_changed(), searched_added(), searched_lines(), found_files(), found_parts(), found_matches(), Static::warnings.load(), Static::threads, [&] { reflex::timer_type t = timer; return reflex::timer_elapsed(t); }(), core_tap::join(std::vector<std::string>(ignore.begin(), ignore.end())));
-#ifdef CPP_RUST_IMPL_SRC_CORE
   ugrep_rust::StatsInput in = core_rust::stats_input();
   in.searched_files = searched_files();
   in.searched_dirs = searched_dirs();
@@ -229,15 +59,6 @@ void Stats::report(FILE *output)
   in.ignore = core_rust::to_bytes_vec(ignore);
   rust::Vec<uint8_t> text = ugrep_rust::stats_report(in);
   core_rust::write_to(output, text);
-  TAP_RET(core_rust::to_string(text));
-#elif defined(CPP2RUST_TAP)
-  std::string text = core_tap::capture([](FILE *f) { report_cpp(f); });
-  if (!text.empty())
-    fwrite(text.data(), 1, text.size(), output);
-  TAP_RET(text);
-#else
-  report_cpp(output);
-#endif
 }
 
 reflex::timer_type       Stats::timer;
