@@ -1,6 +1,19 @@
+# Rust umbrella static library (rust/rust_umbrella), built by cargo; the cxx bridge headers it generates are included
+# by the facades. The codecs feature (configure) makes the Rust zstream call the codec libraries on the link line.
+RUST_CARGO_DIR = $(abs_top_builddir)/build/cargo
+RUST_UMBRELLA = $(RUST_CARGO_DIR)/@RUST_TRIPLE@/release/librust_umbrella.a
+RUST_INCLUDES = -I$(RUST_CARGO_DIR)/@RUST_TRIPLE@/cxxbridge
+BUILT_SOURCES = rust-umbrella
+.PHONY: rust-umbrella
+rust-umbrella:
+	cd $(abs_top_srcdir)/rust && CPP2RUST_CODECS_FROM_LINKER=1 $(CARGO) build --release --locked -p rust_umbrella @RUST_FEATURES@ @RUST_TARGET@ --target-dir $(RUST_CARGO_DIR)
+$(RUST_UMBRELLA): rust-umbrella
+clean-local:
+	rm -rf $(RUST_CARGO_DIR)
 bin_PROGRAMS = ugrep ugrep-indexer
 ugrep_CPPFLAGS = \
 	-I$(top_srcdir)/include \
+	$(RUST_INCLUDES) \
 	$(EXTRA_CFLAGS) \
 	$(SIMD_FLAGS) \
 	$(PTHREAD_CFLAGS) \
@@ -51,10 +64,13 @@ ugrep_SOURCES = \
 	zopen_facade.cpp \
 	zopen_seam.h
 ugrep_LDADD = \
-	$(PTHREAD_LIBS) \
-	$(top_builddir)/lib/libreflex.a
+	$(top_builddir)/lib/libreflex.a \
+	$(RUST_UMBRELLA) \
+	$(PTHREAD_LIBS) -ldl -lm
+ugrep_DEPENDENCIES = $(top_builddir)/lib/libreflex.a $(RUST_UMBRELLA)
 ugrep_indexer_CPPFLAGS = \
 	-I$(top_srcdir)/include \
+	$(RUST_INCLUDES) \
 	$(EXTRA_CFLAGS) \
 	$(PTHREAD_CFLAGS) \
 	-DPLATFORM=\"$(PLATFORM)\"
@@ -74,4 +90,6 @@ ugrep_indexer_SOURCES  = \
 	zstream.hpp \
 	zthread.hpp
 ugrep_indexer_LDADD = \
-	$(PTHREAD_LIBS)
+	$(RUST_UMBRELLA) \
+	$(PTHREAD_LIBS) -ldl -lm
+ugrep_indexer_DEPENDENCIES = $(RUST_UMBRELLA)

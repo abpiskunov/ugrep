@@ -381,6 +381,43 @@ fi
 AM_CONDITIONAL([ENABLE_7ZIP],[test "x$with_7zip" = "xyes"])
 
 ################################################################################
+# Rust: src/ components ported to Rust are built by cargo into one static library (rust/rust_umbrella)
+################################################################################
+
+AC_CHECK_PROG([CARGO], [cargo], [cargo])
+if test "x$CARGO" = "x"; then
+  AC_MSG_ERROR([cargo not found: ugrep requires the Rust toolchain (see rust-toolchain.toml)])
+fi
+# the Rust zstream calls every codec library, so the codecs feature is enabled only when all of them are linked
+rust_codecs=yes
+for lib in z bz2 lzma lz4 zstd viiz; do
+  case " $LIBS " in
+    *" -l$lib "*) ;;
+    *) rust_codecs=no ;;
+  esac
+done
+RUST_FEATURES=""
+if test "x$rust_codecs" = "xyes"; then
+  RUST_FEATURES="--features codecs"
+fi
+AC_MSG_CHECKING([whether the Rust zstream calls the codec libraries])
+AC_MSG_RESULT([$rust_codecs])
+RUST_TARGET=""
+RUST_TRIPLE=""
+if test "x$cross_compiling" = "xyes"; then
+  case "$host_cpu" in
+    aarch64*) rust_triple="aarch64-unknown-linux-gnu" ;;
+    x86_64*) rust_triple="x86_64-unknown-linux-gnu" ;;
+    *) AC_MSG_ERROR([no Rust target known for host $host]) ;;
+  esac
+  RUST_TRIPLE="$rust_triple"
+  RUST_TARGET="--target $rust_triple"
+fi
+AC_SUBST([RUST_FEATURES])
+AC_SUBST([RUST_TARGET])
+AC_SUBST([RUST_TRIPLE])
+
+################################################################################
 # Completions
 ################################################################################
 
