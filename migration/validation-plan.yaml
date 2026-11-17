@@ -87,8 +87,8 @@ components:
     product_bin_cpp: msvc/bin/Base-Release-x64/ugrep-indexer.exe
     product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep-indexer.exe
     link_map: msvc/bin/Base-Release-x64-rust/ugrep-indexer.map
-    rust_archive: "rust_umbrella:"   # MSVC maps name archive members <lib stem>:<object>
-    linked_args: '--forbid-sources "src/ugrep-indexer.cpp"'
+    rust_archive: "rust_umbrella:src_indexer"   # D-src_indexer-linked: the src_indexer crate itself
+    linked_args: '--forbid "[?](index|indexer|deleter)_cpp@@"'   # D-src_indexer-linked: the replaced C++ bodies; indexer_cli (options/usage/load_config/main) is retained C++
     coverage_functions: 100
     coverage_lines: 85
 
