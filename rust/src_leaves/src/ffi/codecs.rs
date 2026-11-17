@@ -97,7 +97,7 @@ pub struct ZlibStream {
     reserved: c_ulong,
 }
 
-#[cfg(not(ugrep_no_codecs))]
+#[cfg(not(ugrep_no_zlib))]
 extern "C" {
     fn inflateInit2_(strm: *mut ZlibStream, window_bits: c_int, version: *const c_char, size: c_int) -> c_int;
     fn inflate(strm: *mut ZlibStream, flush: c_int) -> c_int;
@@ -165,7 +165,7 @@ pub struct BzStream {
     opaque: *mut c_void,
 }
 
-#[cfg(not(ugrep_no_codecs))]
+#[cfg(not(ugrep_no_bz2))]
 extern "C" {
     fn BZ2_bzDecompressInit(strm: *mut BzStream, verbosity: c_int, small: c_int) -> c_int;
     fn BZ2_bzDecompress(strm: *mut BzStream) -> c_int;
@@ -223,7 +223,7 @@ pub struct LzmaStream {
     reserved_enum2: c_int,
 }
 
-#[cfg(not(ugrep_no_codecs))]
+#[cfg(not(ugrep_no_lzma))]
 extern "C" {
     fn lzma_auto_decoder(strm: *mut LzmaStream, memlimit: u64, flags: u32) -> c_int;
     fn lzma_code(strm: *mut LzmaStream, action: c_int) -> c_int;
@@ -255,7 +255,7 @@ impl LzmaStream {
 
 // ---- lz4 ----
 
-#[cfg(not(ugrep_no_codecs))]
+#[cfg(not(ugrep_no_lz4))]
 extern "C" {
     fn LZ4_createStreamDecode() -> *mut c_void;
     fn LZ4_freeStreamDecode(strm: *mut c_void) -> c_int;
@@ -316,7 +316,7 @@ struct ZstdOutBuffer {
     pos: usize,
 }
 
-#[cfg(not(ugrep_no_codecs))]
+#[cfg(not(ugrep_no_zstd))]
 extern "C" {
     fn ZSTD_createDStream() -> *mut c_void;
     fn ZSTD_freeDStream(zds: *mut c_void) -> usize;
@@ -385,7 +385,7 @@ type SSize = c_int; // viizip.h: `typedef int ssize_t` on Windows
 #[cfg(not(windows))]
 type SSize = isize;
 
-#[cfg(not(ugrep_no_codecs))]
+#[cfg(not(ugrep_no_viiz))]
 extern "C" {
     fn viinew(file: *mut c_void) -> *mut c_void;
     fn viifree(vii: *mut c_void);
@@ -429,60 +429,62 @@ impl Drop for Viizip {
 
 // ---- build without the codec libraries ----
 //
-// Without the `codecs` feature (product configurations that define no HAVE_LIB*, as Base-Release) no codec symbol is
+// Without the `codecs` feature (or for a library missing from CPP2RUST_CODEC_LIBS, cfg ugrep_no_<lib>) (product configurations that define no HAVE_LIB*, as Base-Release) no codec symbol is
 // declared or referenced: each `x_*` wrapper below reports failure instead of calling the C library, so the Rust
 // zstream cannot shadow or depend on the codecs the C++ build links.
+// A library left out of CPP2RUST_CODEC_LIBS (build.rs) is stubbed the same way through cfg `ugrep_no_<lib>`.
 
 macro_rules! codec_fn {
-    ($name:ident, $c:ident, ($($a:ident: $t:ty),*) -> $r:ty, $fail:expr) => {
-        #[cfg(not(ugrep_no_codecs))]
+    ($lib:ident, $name:ident, $c:ident, ($($a:ident: $t:ty),*) -> $r:ty, $fail:expr) => {
+        #[cfg(not($lib))]
         unsafe fn $name($($a: $t),*) -> $r {
             $c($($a),*)
         }
-        #[cfg(ugrep_no_codecs)]
+        #[cfg($lib)]
         unsafe fn $name($(_: $t),*) -> $r {
             $fail
         }
     };
 }
 
-codec_fn!(x_inflate_init2, inflateInit2_, (s: *mut ZlibStream, w: c_int, v: *const c_char, n: c_int) -> c_int, -6);
-codec_fn!(x_inflate, inflate, (s: *mut ZlibStream, f: c_int) -> c_int, -2);
-codec_fn!(x_inflate_end, inflateEnd, (s: *mut ZlibStream) -> c_int, -2);
-codec_fn!(x_inflate_reset, inflateReset, (s: *mut ZlibStream) -> c_int, -2);
-codec_fn!(x_bz_init, BZ2_bzDecompressInit, (s: *mut BzStream, v: c_int, m: c_int) -> c_int, -2);
-codec_fn!(x_bz_decompress, BZ2_bzDecompress, (s: *mut BzStream) -> c_int, -2);
-codec_fn!(x_bz_end, BZ2_bzDecompressEnd, (s: *mut BzStream) -> c_int, -2);
-codec_fn!(x_lzma_auto_decoder, lzma_auto_decoder, (s: *mut LzmaStream, m: u64, f: u32) -> c_int, 11);
-codec_fn!(x_lzma_code, lzma_code, (s: *mut LzmaStream, a: c_int) -> c_int, 11);
-codec_fn!(x_lz4_create, LZ4_createStreamDecode, () -> *mut c_void, core::ptr::null_mut());
-codec_fn!(x_lz4_free, LZ4_freeStreamDecode, (s: *mut c_void) -> c_int, 0);
+codec_fn!(ugrep_no_zlib, x_inflate_init2, inflateInit2_, (s: *mut ZlibStream, w: c_int, v: *const c_char, n: c_int) -> c_int, -6);
+codec_fn!(ugrep_no_zlib, x_inflate, inflate, (s: *mut ZlibStream, f: c_int) -> c_int, -2);
+codec_fn!(ugrep_no_zlib, x_inflate_end, inflateEnd, (s: *mut ZlibStream) -> c_int, -2);
+codec_fn!(ugrep_no_zlib, x_inflate_reset, inflateReset, (s: *mut ZlibStream) -> c_int, -2);
+codec_fn!(ugrep_no_bz2, x_bz_init, BZ2_bzDecompressInit, (s: *mut BzStream, v: c_int, m: c_int) -> c_int, -2);
+codec_fn!(ugrep_no_bz2, x_bz_decompress, BZ2_bzDecompress, (s: *mut BzStream) -> c_int, -2);
+codec_fn!(ugrep_no_bz2, x_bz_end, BZ2_bzDecompressEnd, (s: *mut BzStream) -> c_int, -2);
+codec_fn!(ugrep_no_lzma, x_lzma_auto_decoder, lzma_auto_decoder, (s: *mut LzmaStream, m: u64, f: u32) -> c_int, 11);
+codec_fn!(ugrep_no_lzma, x_lzma_code, lzma_code, (s: *mut LzmaStream, a: c_int) -> c_int, 11);
+codec_fn!(ugrep_no_lz4, x_lz4_create, LZ4_createStreamDecode, () -> *mut c_void, core::ptr::null_mut());
+codec_fn!(ugrep_no_lz4, x_lz4_free, LZ4_freeStreamDecode, (s: *mut c_void) -> c_int, 0);
 codec_fn!(
+    ugrep_no_lz4,
     x_lz4_decompress,
     LZ4_decompress_safe_continue,
     (s: *mut c_void, src: *const c_char, dst: *mut c_char, n: c_int, cap: c_int) -> c_int,
     -1
 );
-codec_fn!(x_zstd_create, ZSTD_createDStream, () -> *mut c_void, core::ptr::null_mut());
-codec_fn!(x_zstd_free, ZSTD_freeDStream, (s: *mut c_void) -> usize, 0);
-codec_fn!(x_zstd_init, ZSTD_initDStream, (s: *mut c_void) -> usize, 0);
-codec_fn!(x_zstd_decompress, ZSTD_decompressStream, (s: *mut c_void, o: *mut ZstdOutBuffer, i: *mut ZstdInBuffer) -> usize, usize::MAX);
-codec_fn!(x_zstd_is_error, ZSTD_isError, (c: usize) -> u32, 1);
-codec_fn!(x_zstd_in_size, ZSTD_DStreamInSize, () -> usize, 0);
-codec_fn!(x_viinew, viinew, (f: *mut c_void) -> *mut c_void, core::ptr::null_mut());
-codec_fn!(x_viiget, viiget, (v: *mut c_void, n: *mut c_char, m: usize, t: *mut i64, u: *mut u64) -> c_int, -1);
-codec_fn!(x_viidec, viidec, (v: *mut c_void, b: *mut u8, l: usize) -> SSize, -1);
+codec_fn!(ugrep_no_zstd, x_zstd_create, ZSTD_createDStream, () -> *mut c_void, core::ptr::null_mut());
+codec_fn!(ugrep_no_zstd, x_zstd_free, ZSTD_freeDStream, (s: *mut c_void) -> usize, 0);
+codec_fn!(ugrep_no_zstd, x_zstd_init, ZSTD_initDStream, (s: *mut c_void) -> usize, 0);
+codec_fn!(ugrep_no_zstd, x_zstd_decompress, ZSTD_decompressStream, (s: *mut c_void, o: *mut ZstdOutBuffer, i: *mut ZstdInBuffer) -> usize, usize::MAX);
+codec_fn!(ugrep_no_zstd, x_zstd_is_error, ZSTD_isError, (c: usize) -> u32, 1);
+codec_fn!(ugrep_no_zstd, x_zstd_in_size, ZSTD_DStreamInSize, () -> usize, 0);
+codec_fn!(ugrep_no_viiz, x_viinew, viinew, (f: *mut c_void) -> *mut c_void, core::ptr::null_mut());
+codec_fn!(ugrep_no_viiz, x_viiget, viiget, (v: *mut c_void, n: *mut c_char, m: usize, t: *mut i64, u: *mut u64) -> c_int, -1);
+codec_fn!(ugrep_no_viiz, x_viidec, viidec, (v: *mut c_void, b: *mut u8, l: usize) -> SSize, -1);
 
-#[cfg(not(ugrep_no_codecs))]
+#[cfg(not(ugrep_no_lzma))]
 unsafe fn x_lzma_end(s: *mut LzmaStream) {
     lzma_end(s)
 }
-#[cfg(ugrep_no_codecs)]
+#[cfg(ugrep_no_lzma)]
 unsafe fn x_lzma_end(_: *mut LzmaStream) {}
 
-#[cfg(not(ugrep_no_codecs))]
+#[cfg(not(ugrep_no_viiz))]
 unsafe fn x_viifree(v: *mut c_void) {
     viifree(v)
 }
-#[cfg(ugrep_no_codecs)]
+#[cfg(ugrep_no_viiz)]
 unsafe fn x_viifree(_: *mut c_void) {}

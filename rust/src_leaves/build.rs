@@ -18,7 +18,11 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=CPP2RUST_CODEC_LIB");
     println!("cargo:rerun-if-env-changed=CPP2RUST_CODECS_FROM_LINKER");
+    println!("cargo:rerun-if-env-changed=CPP2RUST_CODEC_LIBS");
     println!("cargo:rustc-check-cfg=cfg(ugrep_no_codecs)");
+    for lib in LIBS {
+        println!("cargo:rustc-check-cfg=cfg(ugrep_no_{lib})");
+    }
     let target_msvc = std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc");
     cxx_build::bridge("src/lib.rs").std("c++14").compile("src_leaves_bridge");
 
@@ -27,6 +31,15 @@ fn main() {
         return;
     }
     if std::env::var_os("CPP2RUST_CODECS_FROM_LINKER").is_some() {
+        // Only the libraries named in CPP2RUST_CODEC_LIBS (comma separated) are called; the others are stubbed, like the
+        // C++ without their HAVE_LIB* macro. Unset means all of them.
+        if let Ok(list) = std::env::var("CPP2RUST_CODEC_LIBS") {
+            for lib in LIBS {
+                if !list.split(',').any(|l| l.trim() == lib) {
+                    println!("cargo:rustc-cfg=ugrep_no_{lib}");
+                }
+            }
+        }
         return;
     }
     let dir = match std::env::var_os("CPP2RUST_CODEC_LIB") {

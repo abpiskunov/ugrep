@@ -388,20 +388,24 @@ AC_CHECK_PROG([CARGO], [cargo], [cargo])
 if test "x$CARGO" = "x"; then
   AC_MSG_ERROR([cargo not found: ugrep requires the Rust toolchain (see rust-toolchain.toml)])
 fi
-# the Rust zstream calls every codec library, so the codecs feature is enabled only when all of them are linked
-rust_codecs=yes
+# the Rust zstream calls only the codec libraries on the link line; the others are stubbed (like the C++ without HAVE_LIB*)
+rust_codec_libs=""
 for lib in z bz2 lzma lz4 zstd viiz; do
   case " $LIBS " in
-    *" -l$lib "*) ;;
-    *) rust_codecs=no ;;
+    *" -l$lib "*)
+      name=$lib
+      if test "x$lib" = "xz"; then name=zlib; fi
+      rust_codec_libs="${rust_codec_libs:+$rust_codec_libs,}$name"
+      ;;
   esac
 done
 RUST_FEATURES=""
-if test "x$rust_codecs" = "xyes"; then
+if test "x$rust_codec_libs" != "x"; then
   RUST_FEATURES="--features codecs"
 fi
-AC_MSG_CHECKING([whether the Rust zstream calls the codec libraries])
-AC_MSG_RESULT([$rust_codecs])
+RUST_CODEC_LIBS="$rust_codec_libs"
+AC_MSG_CHECKING([which codec libraries the Rust zstream calls])
+AC_MSG_RESULT([${rust_codec_libs:-none}])
 RUST_TARGET=""
 RUST_TRIPLE=""
 if test "x$cross_compiling" = "xyes"; then
@@ -414,6 +418,7 @@ if test "x$cross_compiling" = "xyes"; then
   RUST_TARGET="--target $rust_triple"
 fi
 AC_SUBST([RUST_FEATURES])
+AC_SUBST([RUST_CODEC_LIBS])
 AC_SUBST([RUST_TARGET])
 AC_SUBST([RUST_TRIPLE])
 
