@@ -633,6 +633,29 @@ void usage(const char *message, const char *arg = NULL)
   }
 }
 
+#ifdef HAVE_LIBZ
+
+// decompression diagnostics reported by the zstream adapter (src/zstream.cpp)
+void cannot_decompress(const char *pathname, const char *message)
+{
+  ++warnings;
+  if (flag_no_messages)
+    return;
+  printf("ugrep-indexer: warning: cannot decompress %s: %s\n", pathname, message != NULL ? message : "");
+  fflush(stdout);
+}
+
+void warning(const char *message, const char *arg)
+{
+  ++warnings;
+  if (flag_no_messages)
+    return;
+  printf("ugrep-indexer: warning: %s%s%s\n", message, arg != NULL ? " " : "", arg != NULL ? arg : "");
+  fflush(stdout);
+}
+
+#endif
+
 // convert unsigned decimal to non-negative size_t, produce error when conversion fails
 size_t strtonum(const char *string, const char *message)
 {
