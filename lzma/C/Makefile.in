@@ -93,9 +93,7 @@ host_triplet = @host@
 subdir = lzma/C
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/ax_boost_regex.m4 \
-	$(top_srcdir)/m4/ax_check_brotlilib.m4 \
 	$(top_srcdir)/m4/ax_check_bz2lib.m4 \
-	$(top_srcdir)/m4/ax_check_bzip3lib.m4 \
 	$(top_srcdir)/m4/ax_check_lz4lib.m4 \
 	$(top_srcdir)/m4/ax_check_lzmalib.m4 \
 	$(top_srcdir)/m4/ax_check_pcre2.m4 \
@@ -217,6 +215,7 @@ AWK = @AWK@
 BASH_COMPLETION_CFLAGS = @BASH_COMPLETION_CFLAGS@
 BASH_COMPLETION_DIR = @BASH_COMPLETION_DIR@
 BASH_COMPLETION_LIBS = @BASH_COMPLETION_LIBS@
+CARGO = @CARGO@
 CC = @CC@
 CCDEPMODE = @CCDEPMODE@
 CFLAGS = @CFLAGS@
@@ -271,6 +270,10 @@ PTHREAD_CFLAGS = @PTHREAD_CFLAGS@
 PTHREAD_CXX = @PTHREAD_CXX@
 PTHREAD_LIBS = @PTHREAD_LIBS@
 RANLIB = @RANLIB@
+RUST_CODEC_LIBS = @RUST_CODEC_LIBS@
+RUST_FEATURES = @RUST_FEATURES@
+RUST_TARGET = @RUST_TARGET@
+RUST_TRIPLE = @RUST_TRIPLE@
 SED = @SED@
 SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
