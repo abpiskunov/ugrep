@@ -12,7 +12,7 @@ observation:
   src_indexer.options:
     channels: [state]
     compared: [state]
-    excluded: [{channel: state, reason: "argv[0] (absolute path of the executable) in the call arguments is machine specific; masked by the proposed mask in migration/masks/src_indexer.proposed.json"}, {channel: arg_path, reason: "not observed at the seam; covered by the surface cases"}]
+    excluded: [{channel: state, reason: "argv[0] (absolute path of the executable) in the call arguments is machine specific; normalized to <ugrep-indexer> by sort_trace.py"}, {channel: arg_path, reason: "not observed at the seam; covered by the surface cases"}]
   src_indexer.indexer:
     channels: [state]
     compared: [state]
@@ -117,7 +117,7 @@ behaviors:
     statement: "`-X` (`--ignore-files`) reads `.gitignore` in every directory and skips the files and directories its globs match; `--ignore-files=FILE` reads FILE instead, repeats add files, a `!` glob re-includes, and a glob ending in `/` matches directories only; the matching runs through `src_leaves.glob_match`"
     kind: normal
     status: observed
-    evidence: ["case:indexer-ignore-files", "case:indexer-g-ignore-files-default", "case:indexer-g-ignore-files-custom", "case:indexer-g-ignore-files-two", "case:indexer-g-ignore-files-off", "case:indexer-g-ignore-files-check", "case:indexer-g-opt-ignore-files-plain", "case:indexer-g-opt-short-ignore-files-dirs", "case:indexer-g-opt-ignore-files-negate"]
+    evidence: ["case:indexer-ignore-files", "case:indexer-g-ignore-files-default", "case:indexer-g-ignore-files-custom", "case:indexer-g-ignore-files-two", "case:indexer-g-ignore-files-off", "case:indexer-g-opt-ignore-files-plain", "case:indexer-g-opt-short-ignore-files-dirs", "case:indexer-g-opt-ignore-files-negate"]
     origin: capture
   - id: B-src_indexer-016
     statement: "`-q` (`--quiet`) and `--silent` print nothing; `-s` (`--no-messages`) only suppresses the warnings and keeps the totals; a missing PATH is only a warning on stdout (`warning: cannot open directory nodir`) and the run exits 0; a PATH that is a file prints that warning and `error: cannot create index file in a.txt: No such file or directory` and exits 0"
