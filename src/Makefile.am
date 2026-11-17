@@ -46,6 +46,7 @@ ugrep_SOURCES = \
 	cnf.cpp \
 	flag.hpp \
 	glob.hpp \
+	glob_rust.hpp \
 	glob_facade.cpp \
 	mmap.hpp \
 	output.hpp \
@@ -59,7 +60,10 @@ ugrep_SOURCES = \
 	tui_entry.hpp \
 	vkey.hpp \
 	vkey.cpp \
+	ugrep.hpp \
 	zstream.hpp \
+	zstream_seam.h \
+	zthread.hpp \
 	zopen.h \
 	zopen_facade.cpp \
 	zopen_seam.h
@@ -83,13 +87,18 @@ ugrep_indexer_SOURCES  = \
 	ugrep-indexer_seam.h \
 	indexer_rust.hpp \
 	glob.hpp \
+	glob_rust.hpp \
 	glob_facade.cpp \
 	zopen.h \
 	zopen_facade.cpp \
 	zopen_seam.h \
 	zstream.hpp \
+	zstream_seam.h \
 	zthread.hpp
 ugrep_indexer_LDADD = \
 	$(RUST_UMBRELLA) \
 	$(PTHREAD_LIBS) -ldl -lm
 ugrep_indexer_DEPENDENCIES = $(RUST_UMBRELLA)
+
+# zstream.cpp is included by zstream.hpp, not compiled on its own
+EXTRA_DIST = zstream.cpp

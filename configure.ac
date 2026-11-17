@@ -346,19 +346,15 @@ AX_CHECK_LZ4LIB([], [echo "optional liblz4 not found: install if you want ugrep 
 
 AX_CHECK_ZSTDLIB([], [echo "optional libzstd not found: install if you want ugrep option -z to search .zst files"])
 
-AX_CHECK_BROTLILIB([], [echo "optional brotli library not found: install if you want ugrep option -z to search .br files"])
-
+# the Rust zstream does not decode .br and .bz3: brotli and bzip3 are neither detected, defined nor linked
+AC_ARG_WITH(brotli,
+  [AS_HELP_STRING([--with-brotli],
+                  [not supported by the Rust build: .br files cannot be searched])],
+  [AS_IF([test "x$withval" != "xno"], [AC_MSG_WARN([--with-brotli ignored: the Rust build does not support .br files])])])
 AC_ARG_WITH(bzip3,
   [AS_HELP_STRING([--with-bzip3],
-                  [to enable bzip3 library to decompress .bz3 files])],
-  [with_bzip3_library="$withval"],
-  [with_bzip3_library=""])
-if test "x$with_bzip3_library" != "x"; then
-  if test "x$with_bzip3" = "xyes"; then
-    unset with_bzip3
-  fi
-  AX_CHECK_BZIP3LIB([], [echo "optional libbzip3 not found: install if you want ugrep option -z to search .bz3 files"])
-fi
+                  [not supported by the Rust build: .bz3 files cannot be searched])],
+  [AS_IF([test "x$withval" != "xno"], [AC_MSG_WARN([--with-bzip3 ignored: the Rust build does not support .bz3 files])])])
 
 AC_ARG_ENABLE(7zip,
   [AS_HELP_STRING([--disable-7zip],
