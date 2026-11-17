@@ -340,11 +340,11 @@ behaviors:
     note: "cases dropped from the corpus: w-then-read-on-write-handle, r-read-on-ro-file-write-op, second read after empty stream. User classified bug-fix (Rust returns -1 or 0, no crash). No recorded C++ case can exist, so the status stays hypothesis until Rust-side tests are cited (Port task); listed in the plan's compare.differences as D-zopen-1."
   # ---- zstream (src/zstream.hpp, facade src/zstream.cpp) ----
   # Codec-enabled C++ reference "CodecRef-x64" (migration/harness/zstream/build-codec-ref.ps1): HAVE_LIBZ, HAVE_LIBBZ2,
-  # HAVE_LIBLZMA, HAVE_LIBLZ4, HAVE_LIBZSTD defined; HAVE_LIBBROTLI and HAVE_LIBBZIP3 not defined; WITH_NO_7ZIP not
+  # HAVE_LIBLZMA, HAVE_LIBLZ4, HAVE_LIBZSTD, HAVE_LIBBROTLI, HAVE_LIBBZIP3 defined (the last two since D-S6-1); WITH_NO_7ZIP not
   # defined (7z built, WITH_MAX_7ZIP_SIZE 1 GiB from ugrep.cpp); WITH_ZIP_CRC32 not defined.
   # Codec status: gzip/zlib BUILT; zip BUILT (stored, deflate, bzip2 methods); bzip2 BUILT; xz/lzma BUILT;
   # lz4 BUILT; zstd BUILT; 7z BUILT (lzma/C viiz); compress .Z BUILT (zopen.c); tar/pax/cpio BUILT (-z);
-  # brotli NOT BUILT (no cases); bz3 NOT BUILT (no cases); rar NOT SUPPORTED (predicate only).
+  # brotli BUILT (D-S6-1, entries 058, 060-063); bz3 BUILT (D-S6-1, entries 059, 060, 064-068); rar NOT SUPPORTED (predicate only).
   # Surface cases: migration/corpus/src_leaves/zstream/cases.jsonl (ids gz-*, bz2-*, xz-*, lz4-*, zstd-*, Z-*, zip-*, 7z-*, tar-*, opt-*);
   # seam cases: migration/corpus/src_leaves/zstream/seam/cases.jsonl (ids zss-*).
   - id: B-src_leaves-042
@@ -462,13 +462,99 @@ behaviors:
     evidence: ["case:zss-gz-trunc", "case:zss-gz-garbage", "case:zss-gz-plain", "case:zss-bz2-trunc", "case:zss-xz-trunc", "case:zss-zip-trunc"]
     origin: capture
 
+  # ---- zstream brotli (.br) and bzip3 (.bz3), D-S6-1: reference rebuilt with HAVE_LIBBROTLI and HAVE_LIBBZIP3 (brotli 1.1.0, bzip3 1.5.1)
+  # from the parent of commit 9f87c32 (the C++ zstream body); surface cases zs-br-*, zs-bz3-*, zs-tar-br-*, zs-tar-bz3-*, appended to
+  # migration/corpus/src_leaves/zstream/cases.jsonl and recorded in surface/cases.trace.jsonl (3 repeats, flaky 0, second run byte-identical).
+  - id: B-src_leaves-058
+    statement: "ugrep -z decompresses a .br file (a brotli stream, no magic bytes), searching the decompressed text; -c, -l, -n -o, -C, -v, binary detection after decompression (-a), several files, -r and a tar inside (.tar.br) behave as on plain text; a stream larger than the 64 KiB buffers decodes completely; an empty brotli stream and a zero-length .br file give no output and exit 1; a file whose name is not .br, or -z not given, is not decoded"
+    kind: normal
+    status: observed
+    evidence: ["case:zs-br-basic", "case:zs-br-count", "case:zs-br-files-with-matches", "case:zs-br-line-numbers", "case:zs-br-no-match", "case:zs-br-context", "case:zs-br-invert", "case:zs-br-large", "case:zs-br-large-lines", "case:zs-br-two-files", "case:zs-br-mixed-plain-and-br", "case:zs-br-recursive", "case:zs-br-binary-after-decompress", "case:zs-br-text-binary", "case:zs-br-empty-stream", "case:zs-br-zero-length-file", "case:zs-br-without-z", "case:zs-br-no-extension", "case:zs-br-wrong-extension-gz", "case:zs-br-wrong-extension-txt", "case:zs-tar-br-basic", "case:zs-br-in-all-codecs-count"]
+    origin: capture
+  - id: B-src_leaves-059
+    statement: "ugrep -z decompresses a .bz3 file (\"BZ3v1\", u32 block size 65 KiB..511 MiB, then blocks of u32 compressed size, u32 original size, data), searching the decompressed text; -c, -l, -n -o, -C, -v, -a, several files, -r and a tar inside (.tar.bz3) behave as on plain text; multi-block files (block size 65 KiB, 128 KiB, 1 MiB; block boundary; short last block) decode completely; a header-only file (no blocks) gives no output and exit 1; without -z, or with another extension, the bytes are searched undecoded"
+    kind: normal
+    status: observed
+    evidence: ["case:zs-bz3-basic", "case:zs-bz3-count", "case:zs-bz3-files-with-matches", "case:zs-bz3-line-numbers", "case:zs-bz3-no-match", "case:zs-bz3-context", "case:zs-bz3-invert", "case:zs-bz3-multi-block", "case:zs-bz3-multi-block-lines", "case:zs-bz3-block-size-2-blocks", "case:zs-bz3-block-size-1-block", "case:zs-bz3-block-boundary", "case:zs-bz3-tiny-last-block", "case:zs-bz3-block-size-min-accepted", "case:zs-bz3-header-only", "case:zs-bz3-two-files", "case:zs-bz3-mixed-plain-and-bz3", "case:zs-bz3-recursive", "case:zs-bz3-binary-after-decompress", "case:zs-bz3-text-binary", "case:zs-bz3-without-z", "case:zs-bz3-no-extension", "case:zs-bz3-wrong-extension-gz", "case:zs-bz3-wrong-extension-txt", "case:zs-tar-bz3-basic"]
+    origin: capture
+  - id: B-src_leaves-060
+    statement: "zstream .br/.bz3 options: --zmax=0 is rejected by the option parser (exit 2) as for other codecs; the compressed-tar extensions .tbr and .tbz3 are not recognised (the file is not decoded and is searched as plain bytes: exit 1, no output)"
+    kind: edge-case
+    status: observed
+    evidence: ["case:zs-br-zmax0", "case:zs-bz3-zmax0", "case:zs-br-ext-tbr", "case:zs-bz3-ext-tbz3"]
+    origin: capture
+  - id: B-src_leaves-061
+    statement: "concatenated brotli streams: only the first stream is decoded; the following streams, trailing garbage and trailing zero bytes are ignored without a message (exit 0)"
+    kind: edge-case
+    status: hypothesis
+    suspicious: true
+    why: "data after the first brotli stream is silently dropped, unlike gzip/bzip2/xz/lz4/zstd multi-member input which decode all members; Triage decides intended, bug-preserve or bug-fix"
+    evidence: ["case:zs-br-multi-stream", "case:zs-br-three-streams-empty-middle", "case:zs-br-large-multi-stream", "case:zs-br-trailing-garbage", "case:zs-br-trailing-zeros", "case:zs-br-trunc-second-stream"]
+    origin: capture
+  - id: B-src_leaves-062
+    statement: "truncated brotli input is not reported: cutting the last byte still yields the decoded text up to the cut (the last line short), cutting the file in half or to one byte gives no output and exit 1 without any message, a cut inside a large stream gives the partial count"
+    kind: error
+    status: hypothesis
+    suspicious: true
+    why: "a damaged .br reads as shorter data or as no data, with exit 0 or 1 and no diagnostic; Triage decides"
+    evidence: ["case:zs-br-trunc-half", "case:zs-br-trunc-one-byte", "case:zs-br-trunc-last-byte", "case:zs-br-trunc-large", "case:zs-tar-br-trunc"]
+    origin: capture
+  - id: B-src_leaves-063
+    statement: "corrupt brotli input: the message 'cannot decompress <file>: an error was detected in the brotli compressed data' is written when the decoder fails at the first call (bad first byte, text, 0xff bytes) and after partial output of a large stream (count 0, exit 1 message), but a flipped byte inside a small stream gives no message, no output and exit 1; a good file before a corrupt one is searched normally and the message names the corrupt file (exit 0)"
+    kind: error
+    status: hypothesis
+    suspicious: true
+    why: "the diagnostic is emitted for some corrupt inputs and silently omitted for others; exit status 0 with an error message; Triage decides"
+    evidence: ["case:zs-br-corrupt-body", "case:zs-br-corrupt-header", "case:zs-br-corrupt-large", "case:zs-br-bad-text", "case:zs-br-bad-ff", "case:zs-br-good-then-corrupt-file", "case:zs-br-single-zero-byte"]
+    origin: capture
+  - id: B-src_leaves-064
+    statement: "truncated bzip3 input: cut in the first block header, in the first block or in the last byte gives no output, the message 'cannot decompress <file>: an error was detected in the bzip3 compressed data' (cut in the 8-byte block header: no message) and exit 1; a cut after at least one complete block (large files) gives the decoded earlier blocks with exit 0 and no message"
+    kind: error
+    status: hypothesis
+    suspicious: true
+    why: "truncation after a complete block is silent and exit 0; truncation in a block header gives no message; Triage decides"
+    evidence: ["case:zs-bz3-trunc-block-header", "case:zs-bz3-trunc-half", "case:zs-bz3-trunc-last-byte", "case:zs-bz3-trunc-large", "case:zs-bz3-trunc-second-block", "case:zs-tar-bz3-trunc"]
+    origin: capture
+  - id: B-src_leaves-065
+    statement: "bzip3 header validation: a block size below 65 KiB (also 0) or above 511 MiB, and a file that does not start with BZ3v1 (text), write the cannot-decompress message, then continue with a null file: a second message and 'warning: bz3_new failed <file>' follow and the exit status is 2; a file whose first block is bad (corrupt body or sizes over the maximum) writes one message and exits 1"
+    kind: error
+    status: hypothesis
+    suspicious: true
+    why: "the header error path does not stop: it reports twice or three times and exits 2 instead of 1; a Rust port must either mirror this or fix it; Triage decides"
+    evidence: ["case:zs-bz3-block-size-too-small", "case:zs-bz3-block-size-zero", "case:zs-bz3-block-size-too-large", "case:zs-bz3-bad-text", "case:zs-bz3-corrupt-body", "case:zs-bz3-compressed-size-over-max", "case:zs-bz3-original-size-over-max"]
+    origin: capture
+  - id: B-src_leaves-066
+    statement: "the stored original size of a bzip3 block is trusted: smaller than the real size truncates the decoded block, larger than the real size appends zero bytes (a text file then matches as binary), zero gives no output (exit 1), all silently"
+    kind: edge-case
+    status: hypothesis
+    suspicious: true
+    why: "a size field that disagrees with the decoded data is not an error; Triage decides"
+    evidence: ["case:zs-bz3-original-size-smaller", "case:zs-bz3-original-size-larger", "case:zs-bz3-original-size-zero"]
+    origin: capture
+  - id: B-src_leaves-067
+    statement: "bzip3 data after the last complete block: fewer than 8 bytes (zero bytes, 7 bytes) are ignored silently; 8 or more bytes (garbage, or a second concatenated bzip3 file starting with BZ3v1) are parsed as a block header, give the cannot-decompress message after the text decoded so far, and the exit status stays 0"
+    kind: edge-case
+    status: hypothesis
+    suspicious: true
+    why: "an error message with exit status 0 after complete output, and concatenated .bz3 files are not supported although bzip3 itself writes one frame per file; Triage decides"
+    evidence: ["case:zs-bz3-trailing-garbage", "case:zs-bz3-trailing-zeros", "case:zs-bz3-trailing-seven-bytes", "case:zs-bz3-concatenated-files", "case:zs-bz3-corrupt-large"]
+    origin: capture
+  - id: B-src_leaves-068
+    statement: "bzip3 inputs whose header check fails with a bad magic (a flipped BZ3v1 byte, version BZ3v2) and a good file followed by such a file crash the C++ (Windows fast-fail, exit 0xC0000409) because the header error path clears the file pointer and then reads it; a zero-length .bz3 and a file shorter than 9 bytes make the header check read stale buffer bytes"
+    kind: error
+    status: hypothesis
+    suspicious: true
+    why: "undefined behaviour in the header error path; a crash cannot be recorded and a stale-buffer result is not reproducible by definition; the cases (bz3-corrupt-magic, bz3-bad-version, bz3-bad-magic-long-text, bz3-good-then-corrupt-file, bz3-zero-length-file, bz3-trunc-magic, bz3-trunc-block-size) are NOT in the corpus; Triage decides what the Rust must do"
+    evidence: ["case:zs-bz3-bad-text", "case:zs-bz3-block-size-too-small"]
+    origin: capture
+
 openQuestions: []
 
 uncovered:
   - {region: "src/zopen.c output(): fwrite failure mid-stream and on the final flush", reason: excluded, note: "needs a failing FILE; not reachable with a scratch file"}
   - {region: "src/zopen.c z_open: calloc returns NULL", reason: excluded, note: "allocation failure"}
   - {region: "src/zopen.c z_close: zmode == 'w' branch", reason: unreachable, note: "zs_mode is never set, see B-src_leaves-030"}
-  - {region: "src/zstream.hpp/cpp brotli (HAVE_LIBBROTLI) and bz3 (HAVE_LIBBZIP3) decoders", reason: excluded, note: "codecs not built in the CodecRef reference; no cases recorded"}
+  - {region: "src/zstream.cpp bz3 header error path with a bad magic or fewer than 9 bytes", reason: excluded, note: "crashes or reads a stale buffer in the C++ (B-src_leaves-068); no case can be recorded"}
   - {region: "src/zstream.cpp WITH_NO_7ZIP and WITH_ZIP_CRC32 variants", reason: excluded, note: "macros not defined in the reference build"}
   - {region: "src/zstream.cpp allocation failures and rar", reason: excluded, note: "OOM accepted (D4); rar has a predicate only"}
   - {region: "src/flag.hpp", reason: deferred, note: "later seam of src_leaves"}
@@ -485,3 +571,6 @@ discovery:
     - {round: 8, source: surface+seam-driver, new_cases: 230, new_coverage: 0, new_behaviors: 16, note: "zstream: 197 surface cases (zs via ugrep -z on CodecRef, recorded 3x, flaky 0) and 33 seam cases (zss-*, two runs byte-identical)"}
     - {round: 9, source: llm-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "zstream probes of option and extension variants all agree with entries 042-057; none admitted"}
     - {round: 10, source: llm-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "zstream probes of truncation and corruption variants all agree with entries 049-054; none admitted"}
+    - {round: 11, source: surface+exploration, new_cases: 90, new_coverage: 0, new_behaviors: 11, note: "zstream .br/.bz3 (D-S6-1): 97 probes run on the rebuilt CodecRef, 90 admitted (zs-br-*, zs-bz3-*, zs-tar-br-*, zs-tar-bz3-*), recorded 3x flaky 0 and a second run byte-identical (trace-diff divergent 0); 7 bz3 header cases excluded (crash or stale buffer, B-src_leaves-068); the 197 earlier cases re-run on the rebuilt reference: divergent 0"}
+    - {round: 12, source: llm-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "zstream .br/.bz3: all 287 cases re-run on a CodecRef-x64 rebuilt from fetch-codecs.ps1 and build-codec-ref.ps1 (flaky 0, trace-diff against the recorded trace divergent 0); no new case or behavior beyond entries 058-068"}
+    - {round: 13, source: llm-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "zstream .br/.bz3: second quiet replay run (repeat 2, flaky 0) on the rebuilt reference; no new case or behavior beyond entries 058-068"}
