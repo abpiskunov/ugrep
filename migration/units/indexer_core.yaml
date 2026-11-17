@@ -1,0 +1,15 @@
+schema: cpp-rust-unit/1
+unit: indexer_core
+component: src_indexer
+functions: [src_indexer.index]
+cpp_files: [src/ugrep-indexer.cpp, src/ugrep-indexer_facade.cpp, src/ugrep-indexer_seam.h]
+rust_files: rust/src_indexer/src/indexer_core.rs
+rust_crate_name: src_indexer
+harness_crate_name: src_indexer-harness
+depends_on: []
+status: planned
+notes:
+  - 'Scope: noise_percentage, is_binary, indexhash, the reflex::Input FILE* behavior (UTF BOM detection, UTF-16/32 to UTF-8, bytes lost on short BOM probes) and index(). Stream (open/close) is the file handle inside one call; handle is always 0 and stream_drop is a no-op.'
+  - 'Q-indexer-5: the reference build has no HAVE_LIBZ, so -z, archive parts, partname and compressed are not ported (archive is returned as given, compressed false, partname empty). Not covered by any recorded case.'
+  - 'BLOCKED on the harness (judge file, not edited): unit gate seam-replay = 69 of 70 cases match, 1 diverges (indexer-g-default-nonascii-name, pathname cafÃ©.txt). rust/src_indexer-harness/src/main.rs `bytes()` decodes a trace string with as_str().as_bytes() (UTF-8), but the tap writes every non-ASCII byte as a Latin-1 code point (tap.rs quote: \u00XX), so the pathname is double-encoded (c3 83 c2 a9), the file is not found and index returns false instead of true. Fix needed in the harness: decode each char <= 0xFF as one byte. Also the harness changes the current directory per case, so the gate must be run with an absolute --out (relative {out} breaks Tap::to_file for the second case); the CI command passes the default relative out and fails the same way.'
+  - 'Rust dependencies: std only, because the replay harness includes signatures.rs alone. Windows open matches fopenw_s (FILE_SHARE_READ, OPEN_EXISTING, sequential scan).'
