@@ -3,7 +3,7 @@
 //! Defaults to every switchable seam function. Not linked into any product binary.
 //!
 //! The recorded flag snapshots are the strings of `core_tap::cnf_flags` / `core_tap::stats_flags`
-//! (src/core_tap.hpp, deleted at Cleanup; the recordings remain); this file decodes them into the types of `signatures.rs`. The entry functions
+//! (src/core_tap.hpp); this file decodes them into the types of `signatures.rs`. The entry functions
 //! (`ugrep`, `terminal`, ...) are tapped in the C++ but not switchable, so they are not replayed.
 mod replay;
 mod tap;
