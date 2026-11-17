@@ -28,6 +28,9 @@ fn main() {
 
     if std::env::var_os("CARGO_FEATURE_CODECS").is_none() {
         println!("cargo:rustc-cfg=ugrep_no_codecs");
+        for lib in LIBS {
+            println!("cargo:rustc-cfg=ugrep_no_{lib}");
+        }
         return;
     }
     if std::env::var_os("CPP2RUST_CODECS_FROM_LINKER").is_some() {
