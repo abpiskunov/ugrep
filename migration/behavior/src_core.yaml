@@ -384,6 +384,166 @@ behaviors:
     status: observed
     evidence: ["case:cov-rand-6", "case:cov-rand2-0", "case:cov-s1-rand-13", "case:cov-s2-rand2-583"]
     origin: capture
+  - id: B-src_core-055
+    statement: "`-1` .. `-9` set the maximum directory depth (`-r -1` searches only the files of the named directory, `-2` one level below, and so on); the digits are read as one number (`-12`, `-n3` and `-2n` work, `-2n` after -2 keeps -n); `-0` is not a depth: it is --null"
+    kind: normal
+    status: observed
+    evidence: ["case:opc-depth-short-1", "case:opc-depth-short-2", "case:opc-depth-short-3", "case:opc-depth-short-9", "case:opc-depth-short-cluster", "case:opc-depth-short-after-n", "case:opc-depth-short-0", "case:opc-depth-short-ctx"]
+    origin: capture
+  - id: B-src_core-056
+    statement: "A second depth shortcut after a first (`-2 -1`) stops with exit 2 and `invalid argument -1`; `--min-depth=2 --max-depth=3` selects levels 2 and 3, `--min-depth` larger than `--max-depth` matches nothing (exit 1)"
+    kind: edge-case
+    status: observed
+    evidence: ["case:opc-depth-short-2-1", "case:opc-depth-min-max-mixed", "case:opc-depth-min-gt-max"]
+    origin: capture
+  - id: B-src_core-057
+    statement: "`--depth=` takes a number or `MIN,MAX` with both numbers present; `2,`, `1,`, `2,1`, `1,x`, `x,1`, `1,2,3`, `0x2` and `x` stop with exit 2 and `invalid argument`; the message repeats the option as `-N,M` when the first number parsed and as `--depth=ARG` otherwise; an abbreviation that is not unique (`--dep`) is an invalid option with suggestions"
+    kind: error
+    status: observed
+    evidence: ["case:opc-depth-eq-2c", "case:opc-depth-eq-1c", "case:opc-depth-eq-2c1", "case:opc-depth-eq-x", "case:opc-depth-eq-1cx", "case:opc-depth-eq-xc1", "case:opc-depth-eq-1c2c3", "case:opc-depth-eq-0x2", "case:opc-depth-prefix"]
+    origin: capture
+  - id: B-src_core-058
+    statement: "`--depth=` and `--max-depth=` with an empty value take the next command line word as the argument: the pattern is consumed and the message reads `invalid argument --depth=foo`"
+    kind: error
+    status: observed
+    suspicious: true
+    why: "an empty `=` value silently swallows the next word; the error text names the swallowed pattern, not an empty argument"
+    evidence: ["case:opc-depth-eq-empty", "case:opc-depth-max-empty-eq"]
+    origin: capture
+  - id: B-src_core-059
+    statement: "`--all-files` is not an option of this version: it is an invalid option with the suggestion list (also as a prefix and with `=1`, and in a config file); the short form `-.` (--hidden) includes hidden files, `.git` and files named in ignore files according to the order of `--ignore-files`/`--no-ignore-files`"
+    kind: error
+    status: observed
+    evidence: ["case:opc-all-files", "case:opc-all-files-prefix", "case:opc-all-files-eq", "case:opc-all-files-short", "case:opc-ignore-then-all", "case:opc-no-ignore-files", "case:opc-config-all-files", "case:opc-save-all-files"]
+    origin: capture
+  - id: B-src_core-060
+    statement: "`--and PATTERN` and `--andnot PATTERN` take the next word as a pattern when no `-e` precedes it: the words after it become files (warning `No such file or directory`, exit 2 although lines matched); `--andnot -e P` stops with `missing PATTERN for --not`; a long option abbreviation (`--an`, `--andn`, `--rege=`) is an invalid option with suggestions"
+    kind: edge-case
+    status: observed
+    evidence: ["case:opc-and-pattern-then-pattern", "case:opc-and-no-e-first", "case:opc-and-prefix", "case:opc-andnot-e", "case:opc-andnot-no-e", "case:opc-andnot-prefix", "case:opc-regexp-prefix"]
+    origin: capture
+  - id: B-src_core-061
+    statement: "`--not --not P` and `-N P --not Q` are accepted and combine as recorded; `-v` with `--not`, and `-f FILE` with `--not` or `--and`, compose the pattern file with the following terms as recorded"
+    kind: edge-case
+    status: observed
+    evidence: ["case:opc-not-twice", "case:opc-not-with-N", "case:opc-not-invert", "case:opc-not-f", "case:opc-and-f"]
+    origin: capture
+  - id: B-src_core-062
+    statement: "`-A`, `-B`, `-C` take a number as separate word, attached (`-A1`) or after `=`; `-C0` and `-A0` print no context, `-A0 -B2` is independent per side, `-nB1 -nA2` and `-nA 1` work in clusters, and `-c -C1` counts only; the shortcut `-3` is never a context: without `-r` it prints only the matching line (`-3 mid`), with `-r` it is a depth (`-2 -A0`)"
+    kind: normal
+    status: observed
+    evidence: ["case:opc-ctx-00", "case:opc-ctx-04", "case:opc-ctx-07", "case:opc-ctx-11", "case:opc-ctx-13", "case:opc-ctx-25", "case:opc-ctx-26", "case:opc-ctx-32", "case:opc-arg-short-A-cluster", "case:opc-ctx-dash-number-bare", "case:opc-ctx-dash-number-vs-depth"]
+    origin: capture
+  - id: B-src_core-063
+    statement: "A context argument that is not a whole decimal number (`1x`, `0x1`, `mid`, `B`, `1,2`, `1.5`, `x`) stops with exit 2 and `invalid argument -A=1x`; `--context` without a number takes the next word (`-n`) as its argument and reports `invalid argument --context=-n`"
+    kind: error
+    status: observed
+    evidence: ["case:opc-ctx-19", "case:opc-ctx-23", "case:opc-ctx-24", "case:opc-ctx-28", "case:opc-ctx-30", "case:opc-ctx-34", "case:opc-ctx-35", "case:opc-ctx-36", "case:opc-ctx-38"]
+    origin: capture
+  - id: B-src_core-064
+    statement: "`-A -1` is accepted and prints all following lines as context (the negative value wraps to a huge unsigned count); `--context=-1` is accepted by the parser and the search then fails with `warning: exception while searching`, exit 2"
+    kind: edge-case
+    status: observed
+    suspicious: true
+    why: "negative context is not rejected: one form wraps silently, the other throws inside the search (sibling Q-core-1 -m negative accepted)"
+    evidence: ["case:opc-ctx-17", "case:opc-ctx-37"]
+    origin: capture
+  - id: B-src_core-065
+    statement: "Unknown short options, long options with `=` on a flag (`--ignore-case=1`, `--no-filename=1`, `--no-config=1`), `--=x`, non-unique and unknown abbreviations all stop with exit 2 and `invalid option`, listing the matching long options; the first bad option is reported; `--help` then a bad option prints help for the bad word, `-V --bogus` prints the version"
+    kind: error
+    status: observed
+    evidence: ["case:opc-err-long-eq-flag", "case:opc-err-long-eq-flag-no", "case:opc-err-long-empty-name", "case:opc-err-two-errors", "case:opc-err-help-then-bad", "case:opc-err-version-then-bad", "case:opc-err-ambiguous-ig", "case:opc-err-ambiguous-in", "case:opc-err-prefix-exact-wins"]
+    origin: capture
+  - id: B-src_core-066
+    statement: "`---foo` is read as `--` followed by option `-foo`'s tail and fails with `option --config: cannot read foo`"
+    kind: edge-case
+    status: observed
+    suspicious: true
+    why: "the error names --config although no config option was given; looks like a mis-parse of the option name"
+    evidence: ["case:opc-err-triple-dash"]
+    origin: capture
+  - id: B-src_core-067
+    statement: "Missing or invalid values report exit 2: `-f ''` and `-f DIR` (`cannot read`), `-t nope` (valid arguments listed even with -q), `--max-count=` (takes the next word), `-m 0x1`, `-m 1x`, `-nm x`, `-m1n`; exit 2 wins over matched lines when a file cannot be read (`-s` hides the message only); `-r` with no pattern prints the usage hint; `-q` with a bad regex still exits 2"
+    kind: error
+    status: observed
+    evidence: ["case:opc-err-f-empty-arg", "case:opc-err-f-dir", "case:opc-err-bad-file-type-q", "case:opc-err-max-count-eq-empty", "case:opc-err-max-count-hex", "case:opc-err-max-count-trail", "case:opc-err-arg-cluster-bad-num", "case:opc-arg-short-opt-arg-flag-after", "case:opc-err-exit-2-vs-match", "case:opc-err-no-pattern-r", "case:opc-err-q-bad-regex"]
+    origin: capture
+  - id: B-src_core-068
+    statement: "Option arguments (getoptarg/getloptarg): a separate word is taken even when it starts with `-` or is `--` (`-e -n`, `--regexp --`); `--label=` empty and `=` inside the value (`--label=a=b`, `--colors=mt=1;31:sl=2`) are kept; an empty filename word is `No such file or directory`; `-nHm1` clusters an argument at the end; `-e` with non-ASCII bytes matches the same text"
+    kind: normal
+    status: observed
+    evidence: ["case:opc-arg-short-sep-dash-value", "case:opc-arg-long-sep-dd-value", "case:opc-arg-label-empty", "case:opc-arg-label-eq-in-value", "case:opc-arg-colors-eq-in-value", "case:opc-arg-sep-short-cluster-end", "case:opc-arg-short-cluster-attached-both", "case:opc-arg-no-arg-given-arg-flag", "case:opc-arg-filename-empty", "case:opc-arg-regexp-unicode"]
+    origin: capture
+  - id: B-src_core-069
+    statement: "trim_pathname_arg removes one trailing `/` of a directory argument for recursion (`d/` shows as `d/\\a.txt` on Windows, `./d/` as `./d/\\a.txt`); `d///`, `d//s`, `.//d`, `d/.`, `d/s/..` and `d/../d` keep the text as typed and are joined with the native separator; `.` and `./` search the working directory; a trailing `/` on a file (`a.txt/`) is `No such file or directory`; an empty or `~` argument is `No such file or directory`; this is the same with and without -r"
+    kind: edge-case
+    status: observed
+    evidence: ["case:opc-trim-slash", "case:opc-trim-nr-slash", "case:opc-trim-slashes", "case:opc-trim-dot", "case:opc-trim-dot-slash", "case:opc-trim-dotdot", "case:opc-trim-dot-only", "case:opc-trim-dot-slash-only", "case:opc-trim-dot-dot-slash", "case:opc-trim-double", "case:opc-trim-trail-dot", "case:opc-trim-back", "case:opc-trim-back-trail", "case:opc-trim-dot-file", "case:opc-trim-dot-dot-file", "case:opc-trim-double-dot-slash", "case:opc-trim-empty", "case:opc-trim-tilde", "case:opc-trim-file-slash", "case:opc-trim-two-dirs", "case:opc-trim-l-dir"]
+    origin: capture
+  - id: B-src_core-070
+    statement: "A directory named with several trailing slashes or `//` inside keeps them and mixes `/` with the native separator in every reported path (`d///\\a.txt`, `d//s/\\b.txt`)"
+    kind: edge-case
+    status: observed
+    suspicious: true
+    why: "only one trailing slash is trimmed; the output path spelling differs from the path of the same directory given as `d`; the native separator is Windows-only"
+    evidence: ["case:opc-trim-slashes", "case:opc-trim-double", "case:opc-trim-two-dirs"]
+    origin: capture
+  - id: B-src_core-071
+    statement: "Path arguments of file-reading options (--ignore-files=FILE, --file, --exclude-from) are trimmed like path arguments: a missing or unreadable one stops with `cannot read` and exit 2 (a directory gives `Permission denied` on Windows); a trailing `/` on --ignore-files=DIR/ still applies the ignore file"
+    kind: error
+    status: observed
+    evidence: ["case:opc-trim-files-from", "case:opc-trim-exclude-from-trail", "case:opc-trim-ignore-file", "case:opc-trim-ignore-file-dir", "case:opc-trim-glob-dir"]
+    origin: capture
+  - id: B-src_core-072
+    statement: "Config files hold one long option per line without leading dashes (`name`, `name=value`, `name value` is not accepted); `-n`, `n`, `--n`, `nH`, `max-count = 1`, tab separated values, a trailing `# comment`, CR-only lines, a BOM, a NUL byte, a line `--`, a bare word and `include other.conf` are all invalid options (exit 2, `invalid option --NAME` with suggestions); a leading `--name` or `-n` line is accepted as a flag; the 5000-character line case ends in the same error for the following `n` line"
+    kind: error
+    status: observed
+    evidence: ["case:opc-config-eq-spaces", "case:opc-config-tab", "case:opc-config-leading-ws-comment", "case:opc-config-trailing-comment", "case:opc-config-cr-only", "case:opc-config-long-line", "case:opc-config-short-opt", "case:opc-config-short-opt-cluster", "case:opc-config-dash-prefixed", "case:opc-config-dash-short", "case:opc-config-no-trailing-newline", "case:opc-config-only-comment-no-nl", "case:opc-config-dd", "case:opc-config-positional", "case:opc-config-utf8-bom", "case:opc-config-binary", "case:opc-config-include-sep", "case:opc-config-flag-eq", "case:opc-config-prefix-option", "case:opc-config-ambiguous-prefix"]
+    origin: capture
+  - id: B-src_core-073
+    statement: "Quoting in config values: `\"...\"` and `'...'` keep the text inside, a `#` inside quotes is not a comment, `\\n` is kept as two characters, an escaped quote is kept with the backslashes, `\"\"` is kept with its quotes, an empty `=` value is empty, an unbalanced quote does not change how the next lines are read"
+    kind: edge-case
+    status: observed
+    evidence: ["case:opc-config-hash-in-quotes", "case:opc-config-dq-value", "case:opc-config-sq-value", "case:opc-config-quote-escape", "case:opc-config-backslash", "case:opc-config-empty-value-eq", "case:opc-config-empty-quoted", "case:opc-config-unbalanced-quote"]
+    origin: capture
+  - id: B-src_core-074
+    statement: "`include=FILE` in a config file is the --include glob option, not a file include (the files `other.conf` and `o t.conf` are not read: exit 1, no message); `config=FILE` inside a config file is read, a chain of two `config=` lines stops with `error in config file b.conf recursion at line 1`, and `config=` of the same file reports `cannot read ug.conf: No such file or directory`"
+    kind: edge-case
+    status: observed
+    evidence: ["case:opc-config-include", "case:opc-config-include-chain", "case:opc-config-include-quoted", "case:opc-config-include-missing", "case:opc-config-include-self", "case:opc-config-config-chain", "case:opc-config-config-self"]
+    origin: capture
+  - id: B-src_core-075
+    statement: "A config file may set `no-config`, `file=FILE`, `regexp=`, `and=`, `not=`, `andnot=`, `after-context`, `before-context`, `depth=1,2`, a bare digit and `help`/`version` (printed, exit 2 for help, 0 for version); `save-config=` inside a config file is an error; an invalid `depth=x` stops with `invalid argument --depth=x`"
+    kind: normal
+    status: observed
+    evidence: ["case:opc-config-no-config-in-file", "case:opc-config-file-in-config", "case:opc-config-pattern-no-cmdline", "case:opc-config-pattern-and-cmdline", "case:opc-config-and-in-file", "case:opc-config-not-in-file", "case:opc-config-andnot-in-file", "case:opc-config-context-after", "case:opc-config-context-dash-number", "case:opc-config-depth", "case:opc-config-depth-short", "case:opc-config-depth-bad", "case:opc-config-help-in-file", "case:opc-config-version-in-file", "case:opc-config-save-config-in-file"]
+    origin: capture
+  - id: B-src_core-076
+    statement: "Which configuration is read: `--config=FILE` (a directory or missing file `cannot read FILE`), the first `--config` wins and a second one is ignored with `warning: multiple configurations specified`, `--no-config` before `--config` disables it and `--no-config` after it stops reading, `UGREP_CONFIG` is used when no --config is given, `--no-config` or `--config=FILE` beat it, and a `.ugrep` directory in place of the default file is ignored; `--no-config=1` and `--no-conf` are invalid options; `-n --config` works in a cluster"
+    kind: normal
+    status: observed
+    evidence: ["case:opc-config-dir-as-file", "case:opc-config-two-no-config-between", "case:opc-config-no-config-first", "case:opc-config-no-config-eq", "case:opc-config-no-config-prefix", "case:opc-config-home-dotugrep-dir", "case:opc-config-env-and-flag", "case:opc-config-env-and-no-config", "case:opc-config-home-and-env", "case:opc-config-config-at-end", "case:opc-config-config-flag-in-cluster"]
+    origin: capture
+  - id: B-src_core-077
+    statement: "`--save-config[=FILE]` writes a configuration file (default `.ugrep`) with a commented template and the options as given (size recorded in the surface trace's file state, one case per option family: context, depth, min/max depth, -F -w -i, group-separator forms, colors, include/exclude, binary-files, hexdump, sort, pretty, tag, with an existing file `.old` is kept and `updating`/`with options based on` is reported); options that cannot be saved (--file-type, --glob and friends) give a warning; `--save-config=-` writes the configuration to standard output"
+    kind: normal
+    status: observed
+    evidence: ["case:opc-save-named", "case:opc-save-all-kinds", "case:opc-save-with-pattern", "case:opc-save-with-e", "case:opc-save-depth", "case:opc-save-min-max", "case:opc-save-dash-number", "case:opc-save-fixed", "case:opc-save-group-sep-space", "case:opc-save-group-sep-empty", "case:opc-save-no-group-sep", "case:opc-save-colors", "case:opc-save-glob", "case:opc-save-include-exclude", "case:opc-save-binary-files", "case:opc-save-hexdump", "case:opc-save-sort", "case:opc-save-pretty", "case:opc-save-tag", "case:opc-save-no-config", "case:opc-save-with-config", "case:opc-save-overwrite", "case:opc-save-overwrite-comments", "case:opc-save-twice", "case:opc-save-stdin-dash", "case:opc-save-config-then-load"]
+    origin: capture
+  - id: B-src_core-078
+    statement: "`--save-config` without `=` takes no argument (the next word is a pattern or file and the file is `.ugrep`); `--save-config=` with an empty value saves to the file named like the next word (`-n`); `--save-config` to a path whose directory does not exist reports `cannot save configuration file`, exit 2; `--no-save-config`, `--save-c=` are invalid options; `--save-config` with `--help` prints help only"
+    kind: edge-case
+    status: observed
+    evidence: ["case:opc-save-default", "case:opc-save-sep", "case:opc-save-eq-empty", "case:opc-save-to-readonly-path", "case:opc-save-then-no-save", "case:opc-save-prefix", "case:opc-save-help"]
+    origin: capture
+  - id: B-src_core-079
+    statement: "`--save-config=DIR` with an existing directory reports `saved old configuration file to DIR.old: File exists`, `saving` and exit 0 although nothing was written"
+    kind: edge-case
+    status: observed
+    suspicious: true
+    why: "success exit status and a message about an old file although the target is a directory and no configuration was saved"
+    evidence: ["case:opc-save-to-dir"]
+    origin: capture
 
 openQuestions: []
 
@@ -406,3 +566,6 @@ discovery:
     - {round: 6, source: coverage-admitted, new_cases: 3, new_coverage: 0.1, new_behaviors: 0, note: "three more seeded rounds of about 3400 candidates (quiet8, quiet9, quiet10); 13 admitted, 10 of them flaky in the repeated recording (thread timing, rand2 group) and dropped, 3 kept (stable in 5 repeats)"}
     - {round: 7, source: coverage-admitted, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "quiet6: 3429 seeded candidates, none ran a new counter"}
     - {round: 8, source: coverage-admitted, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "quiet11 (new seeds): 3434 seeded candidates, none ran a new counter"}
+    - {round: 9, source: surface-proposed, new_cases: 232, new_coverage: 0, new_behaviors: 25, note: "options/config round: 390 candidates (depth, -1..-9, --and/--andnot/--not/--regexp, context, bad options, getoptarg, trim_pathname_arg, config files, --save-config); admitted when the C++ observations (stdout, stderr, files left behind, exit) differ from every recorded case, recorded 3x; 3 flaky candidates (stdin/option-like file names) dropped; coverage after the round (gate): functions 92.2%, lines 86.6%"}
+    - {round: 10, source: surface-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "31 candidates: the already-recorded option cases with independent flags (-r, --sort=name, -s) reordered; 0 differ from a recorded observation, 0 flaky"}
+    - {round: 11, source: surface-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "same generator with another seed: 31 candidates, 0 new observations, 0 flaky"}
