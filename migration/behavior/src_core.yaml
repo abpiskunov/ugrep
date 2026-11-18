@@ -765,7 +765,8 @@ behaviors:
   - id: B-src_core-114
     statement: "init() tests argv[1] instead of argv[i] in the early `--config` scan: `ugrep -e foo --config=FILE ...` does not load FILE although `ugrep -i -e foo --config=FILE ...` does; the same for a first argument -g, -N or --regexp"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-core-114
     evidence: ["case:core-init-cfgscan-argv1-e", "case:core-init-cfgscan-argv1-g", "case:core-init-cfgscan-argv1-N", "case:core-init-cfgscan-argv1-regexp", "case:core-init-cfgscan-e-second", "case:core-init-cfgscan-e-second-c"]
     origin: capture
     suspicious: true
@@ -773,14 +774,17 @@ behaviors:
   - id: B-src_core-115
     statement: "With the home directory variable unset (USERPROFILE on Windows, HOME elsewhere) and a `~\\` path argument (`--config=~\\h.cfg`) ugrep crashes with an access violation (0xC0000005) instead of reporting an error; with the variable set but empty it exits 2 with `cannot read`. Reproduced by hand; the case runner always sets USERPROFILE, so there is no recorded case"
     kind: edge-case
-    status: hypothesis
+    status: bug-fix
+    decision: Q-core-115
+    evidence: ["case:core-init-home-tilde-backslash"]
     origin: capture
     suspicious: true
     why: "Static::home_dir is NULL when getenv returns NULL and is dereferenced when expanding `~`: a crash, not an error"
   - id: B-src_core-116
     statement: "A colour capability that is left empty (a GREP_COLORS value that does not list mt, or `--colors=hl=b+` over such a value) still gets the reset `ESC[m` after the text, so the output has stray resets without a start sequence"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-core-116
     evidence: ["case:core-hl-flag-over-colors", "case:core-hl-env-hl-eq-first", "case:core-hl-colors-hl-env-hl-eq", "case:core-color-env-12-0", "case:core-color-env-13-0"]
     origin: capture
     suspicious: true
@@ -788,7 +792,8 @@ behaviors:
   - id: B-src_core-117
     statement: "The hyperlink path on Windows is written with backslashes (`file://HOST/C:\\dir\\a.txt`, recorded here as `file://HOST/$WORK\\w/a.txt`): mixed separators in a file URI and no percent-encoding of spaces"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-core-117
     evidence: ["case:core-hl-arg-1", "case:core-hl-arg-n-1", "case:core-hl-subdir-path", "case:core-hl-space-dir"]
     origin: capture
     suspicious: true
@@ -796,7 +801,8 @@ behaviors:
   - id: B-src_core-118
     statement: "`--from=FILE` does not trim its lines although --exclude-from, --include-from, --ignore-files and the configuration file do: padded names are warned about as missing files"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-core-118
     evidence: ["case:core-init-from-files-pad"]
     origin: capture
     suspicious: true
@@ -804,7 +810,8 @@ behaviors:
   - id: B-src_core-119
     statement: "trim_pathname_arg is applied to a directory argument (src/ugrep.cpp 6814) but strips only PATHSEPCHR, which is `\\` on Windows (13546): `sub\\` and `sub\\\\\\` print `sub\\c.txt`, `sub/\\` strips the backslash, while `sub/`, `sub///`, `sub\\/` and `./` keep their forward slashes (`sub///\\c.txt`, `sub\\/\\c.txt`, `./\\a.txt`); `.\\` is removed completely"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-core-119
     evidence: ["case:core-init-dir-arg-trailing-sep", "case:core-init-dir-arg-trailing-seps", "case:core-init-dir-arg-backslash", "case:core-init-dir-arg-trim-bs1", "case:core-init-dir-arg-trim-bs3", "case:core-init-dir-arg-trim-mix", "case:core-init-dir-arg-trim-mix2", "case:core-init-dir-arg-trim-fs1", "case:core-init-dir-arg-trim-fs3", "case:core-init-dir-arg-trim-dot-bs", "case:core-init-dir-arg-trim-dot-fs"]
     origin: capture
     suspicious: true
@@ -812,7 +819,8 @@ behaviors:
   - id: B-src_core-120
     statement: "`-Q` without a terminal writes the ANSI reset `ESC[m` into a warning on stderr that is not a terminal, because the query mode forces colour on"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-core-120
     evidence: ["case:core-init-query-flag-no-tty"]
     origin: capture
     suspicious: true
@@ -820,7 +828,8 @@ behaviors:
   - id: B-src_core-121
     statement: "A `--colors` value without `=` is read as the deprecated SGR form with easy letters, so `--colors=mt` colours the matches magenta (`ESC[35m`, `m` is magenta and `t` is ignored), `--colors=ne` gives `ESC[0m`, `--colors=hl` bold and `--colors=rv` red"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-core-121
     evidence: ["case:core-color-colors-64", "case:core-color-colors-65", "case:core-color-colors-52", "case:core-color-colors-55", "case:core-color-colors-44"]
     origin: capture
     suspicious: true
@@ -828,7 +837,8 @@ behaviors:
   - id: B-src_core-124
     statement: "For `hl=PREFIX` in GREP_COLORS or `--colors` init sets flag_hyperlink to the string plus 3 (src/ugrep.cpp 7692, 7694), the offset of the first `hl=` only when it is the first capability: `mt=1:hl=z+` gives the prefix `1` (the link starts `1://HOST/...`, with `+` ignored), `mt=1:hl=z` also `1`, `--colors=mt=1:hl=z+` also `1`, while `hl=z+:mt=1` gives `z` with `+`"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-core-124
     evidence: ["case:core-hl-env-hl-eq-first-H", "case:core-hl-env-hl-eq-late-H", "case:core-hl-env-hl-eq-late-plain-H", "case:core-hl-env-hl-eq-lead-H", "case:core-hl-colors-hl-eq-late-H", "case:core-hl-colors-hl-eq-lead-H"]
     origin: capture
     suspicious: true
@@ -836,7 +846,8 @@ behaviors:
   - id: B-src_core-125
     statement: "`--save-config` writes `hyperlink=%s` from flag_hyperlink, which can point into the GREP_COLORS copy that init frees (src/ugrep.cpp 7723 frees env_grep_colors, 4957 prints it): with GREP_COLORS=`hl=z+:mt=1` the saved file holds `hyperlink=z+:mt=1` and with `mt=1:hl=z+` it holds `hyperlink=1:hl=z+` (the rest of the string, not only the prefix; read from the file left behind in a manual run, the recorded fs state holds its hash), with `--hyperlink=z+` it holds `hyperlink=z+`"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-core-125
     evidence: ["case:core-hl-env-hl-eq-save-config", "case:core-hl-env-hl-eq-late-save-config", "case:core-hl-colors-hl-eq-save-config", "case:core-hl-flag-save-config", "case:core-hl-env-hl-bare-save-config"]
     origin: capture
     suspicious: true
@@ -844,7 +855,8 @@ behaviors:
   - id: B-src_core-126
     statement: "With GREP_COLOR=`1;33` (and GREP_COLORS unset) `--colors=4` and `--colors=mt=4` do not change the match colour: the matches stay `ESC[1;33m`, because init applies the deprecated GREP_COLOR to ms (src/ugrep.cpp 7641) and the `--colors` value without `=` or with `mt=` only sets mt (7647); `--colors=ms=4` does override it; without GREP_COLOR the same `--colors=4` gives `ESC[4m`"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-core-126
     evidence: ["case:core-color-colors-with-grep-color", "case:core-color-colors-eq-with-grep-color", "case:core-color-colors-ms-with-grep-color", "case:core-color-colors-without-grep-color", "case:core-color-colors-eq-without-grep-color", "case:core-color-colors-with-grep-color-and-colors-env"]
     origin: capture
     suspicious: true
@@ -881,3 +893,5 @@ discovery:
     - {round: 11, source: surface-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "same generator with another seed: 31 candidates, 0 new observations, 0 flaky"}
     - {round: 12, source: llm-proposed, new_cases: 562, new_coverage: 0, new_behaviors: 41, note: "init, terminal, colour, trim and hyperlink; generator migration/harness/src_core/gen_init_terminal.py; recorded 3x, flaky 0; seven suspicious behaviors for Triage"}
     - {round: 13, source: llm-proposed, new_cases: 45, new_coverage: 0, new_behaviors: 3, note: "review fixes; generator migration/harness/src_core/gen_init_review.py; hyperlinks from GREP_COLORS/--colors with -H and two files, --save-config, the home directory lookup with HOME=.home, GREP_COLOR with --colors, trailing separators; recorded 3x, flaky 0"}
+    - {round: 14, source: surface-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "144 candidates: the recorded core-* init/terminal/colour cases with their independent flags (-n -H -i -w -s -c -l -h -o -x -v -I -a) shuffled (seed 14), run on the C++ build (msvc Base-Release-x64) 3x; 0 differ from the recorded observation, 0 flaky"}
+    - {round: 15, source: surface-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "same generator with seed 15: 144 candidates, 0 differ from the recorded observation, 0 flaky"}
