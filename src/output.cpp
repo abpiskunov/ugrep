@@ -36,6 +36,10 @@
 
 #include "output.hpp"
 
+#ifdef CPP_RUST_IMPL_OUTPUT_RUST
+# include "output_rust.hpp"
+#endif
+
 // dump matching data in hex
 void Output::Dump::hex(short mode, size_t byte_offset, const char *data, size_t size)
 {
@@ -50,7 +54,7 @@ void Output::Dump::hex(short mode, size_t byte_offset, const char *data, size_t 
 }
 
 // dump one line of hex
-void Output::Dump::line()
+void Output::Dump::line_cpp()
 {
   if (flag_hex_star)
   {
@@ -212,7 +216,7 @@ void Output::Dump::line()
 }
 
 // output color when set
-void Output::color(const char *arg)
+void Output::color_cpp(const char *arg)
 {
   if (arg != NULL)
   {
@@ -241,7 +245,7 @@ void Output::color(const char *arg)
 }
 
 // output the header part of the match, preceding the matched line
-void Output::header(const char *pathname, const std::string& partname, bool& heading, size_t lineno, reflex::AbstractMatcher *matcher, size_t byte_offset, const char *separator, bool newline)
+void Output::header_cpp(const char *pathname, const std::string& partname, bool& heading, size_t lineno, reflex::AbstractMatcher *matcher, size_t byte_offset, const char *separator, bool newline)
 {
   // if hex dump line is incomplete and a header is output, then complete the hex dump first
   if (dump.incomplete() &&
@@ -403,7 +407,7 @@ void Output::header(const char *pathname, const std::string& partname, bool& hea
 }
 
 // output the short pathname header for --files_with_matches and --count
-void Output::header(const char *pathname, const std::string& partname)
+void Output::header_cpp(const char *pathname, const std::string& partname)
 {
   bool hyp = pathname != Static::LABEL_STANDARD_INPUT && color_hl != NULL; // include hyperlinks
   bool nul = flag_query; // -Q: mark pathname with three \0 markers for quick navigation
@@ -531,7 +535,7 @@ void Output::header(const char *pathname, const std::string& partname)
 }
 
 // output "Binary file ... matches"
-void Output::binary_file_matches(const char *pathname, const std::string& partname)
+void Output::binary_file_matches_cpp(const char *pathname, const std::string& partname)
 {
   if ((mode_ & BINARY) != 0)
     return;
@@ -616,7 +620,7 @@ std::pair<const char*,size_t> Output::capture(reflex::AbstractMatcher *matcher, 
 }
 
 // output format with option --format-begin and --format-end
-void Output::format(const char *format, size_t matches)
+void Output::format_cpp(const char *format, size_t matches)
 {
   const char *sep = NULL;
   size_t len = 0;
@@ -743,7 +747,7 @@ void Output::format(const char *format, size_t matches)
 }
 
 // output formatted match with options --format, --format-open, --format-close
-bool Output::format(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t *matching, reflex::AbstractMatcher *matcher, bool& heading, bool body, bool next)
+bool Output::format_cpp(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t *matching, reflex::AbstractMatcher *matcher, bool& heading, bool body, bool next)
 {
   if (!body)
     lineno_ = 0;
@@ -1522,7 +1526,7 @@ bool Output::format(const char *format, const char *pathname, const std::string&
 }
 
 // output formatted match with options -v --format
-void Output::format_invert(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t lineno, size_t offset, const char *ptr, size_t size, bool& heading, bool next)
+void Output::format_invert_cpp(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t lineno, size_t offset, const char *ptr, size_t size, bool& heading, bool next)
 {
   size_t len = 0;
   const char *sep = NULL;
@@ -1967,7 +1971,7 @@ void Output::format_invert(const char *format, const char *pathname, const std::
 }
 
 // output a quoted string with escapes for \ and "
-void Output::quote(const char *data, size_t size)
+void Output::quote_cpp(const char *data, size_t size)
 {
   const char *s = data;
   const char *e = data + size;
@@ -1991,7 +1995,7 @@ void Output::quote(const char *data, size_t size)
 }
 
 // output string in C/C++
-void Output::cpp(const char *data, size_t size)
+void Output::cpp_cpp(const char *data, size_t size)
 {
   const char *s = data;
   const char *e = data + size;
@@ -2049,7 +2053,7 @@ void Output::cpp(const char *data, size_t size)
 }
 
 // output quoted string in CSV
-void Output::csv(const char *data, size_t size)
+void Output::csv_cpp(const char *data, size_t size)
 {
   const char *s = data;
   const char *e = data + size;
@@ -2117,7 +2121,7 @@ void Output::csv(const char *data, size_t size)
 }
 
 // output in hex
-void Output::hex(const char *data, size_t size)
+void Output::hex_cpp(const char *data, size_t size)
 {
   const char *s = data;
   const char *e = data + size;
@@ -2134,7 +2138,7 @@ void Output::hex(const char *data, size_t size)
 }
 
 // output quoted string in JSON
-void Output::json(const char *data, size_t size)
+void Output::json_cpp(const char *data, size_t size)
 {
   const char *s = data;
   const char *e = data + size;
@@ -2196,7 +2200,7 @@ void Output::json(const char *data, size_t size)
 }
 
 // output in XML
-void Output::xml(const char *data, size_t size)
+void Output::xml_cpp(const char *data, size_t size)
 {
   const char *s = data;
   const char *e = data + size;
@@ -2440,3 +2444,229 @@ const char *Output::Tree::end = "~  ";
 
 std::string Output::Tree::path;
 int Output::Tree::depth;
+
+// Facade of the output seam (rust/src_core/SEAM.md, section Seam: output): CPP_RUST_IMPL_OUTPUT selects the
+// implementation at build time, cpp (default) or rust. The rust bodies produce the bytes, C++ keeps the buffer.
+
+#ifdef CPP_RUST_IMPL_OUTPUT_RUST
+
+namespace {
+
+inline ugrep_rust::OutputCtx output_ctx(size_t lineno, bool binary, bool dump_incomplete, const char *pathname)
+{
+  ugrep_rust::OutputCtx ctx;
+  ctx.lineno = lineno;
+  ctx.binary = binary;
+  ctx.dump_incomplete = dump_incomplete;
+  ctx.stdin_label = pathname != NULL && pathname == Static::LABEL_STANDARD_INPUT;
+  return ctx;
+}
+
+}
+
+void Output::Dump::line()
+{
+  ugrep_rust::OutputDumpLine r = ugrep_rust::output_dump_line(
+      rust::Slice<const int16_t>(bytes, MAX_HEX_COLUMNS),
+      rust::Slice<const int16_t>(prevb, MAX_HEX_COLUMNS),
+      pstar,
+      offset);
+  output_rust::append(out, r.bytes);
+  pstar = r.pstar;
+  if (!r.repeated)
+    for (int i = 0; i < MAX_HEX_COLUMNS; ++i)
+      prevb[i] = bytes[i];
+  for (int i = 0; i < MAX_HEX_COLUMNS; ++i)
+    bytes[i] = -1;
+}
+
+void Output::color(const char *arg)
+{
+  output_rust::append(*this, ugrep_rust::output_color(arg != NULL, output_rust::slice(arg)));
+}
+
+void Output::header(const char *pathname, const std::string& partname, bool& heading, size_t lineno, reflex::AbstractMatcher *matcher, size_t byte_offset, const char *sep, bool newline)
+{
+  output_rust::Window window;
+  output_rust::Need need;
+  need.columno = flag_column_number;
+  ugrep_rust::OutputMatch m = output_rust::snapshot(matcher, window, need);
+  ugrep_rust::OutputArgs args{};
+  args.heading = heading;
+  args.lineno = lineno;
+  args.byte_offset = byte_offset;
+  args.has_separator = sep != NULL;
+  args.newline = newline;
+  ugrep_rust::OutputHeaderResult r = ugrep_rust::output_header_line(
+      output_rust::slice(pathname),
+      output_rust::slice(partname),
+      output_rust::slice(sep),
+      output_rust::slice(window.data, window.size),
+      args,
+      m,
+      output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), pathname));
+  if (r.complete_dump)
+    dump.done();
+  heading = r.heading;
+  output_rust::append(*this, r.bytes);
+}
+
+void Output::header(const char *pathname, const std::string& partname)
+{
+  // --tree takes the Sync lock and updates the process-wide Tree::path and Tree::depth: kept in C++ under the lock
+  if (flag_tree)
+  {
+    header_cpp(pathname, partname);
+    return;
+  }
+  ugrep_rust::OutputHeaderResult r = ugrep_rust::output_header_file(
+      output_rust::slice(pathname),
+      output_rust::slice(partname),
+      output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), pathname));
+  if (r.complete_dump)
+    dump.done();
+  output_rust::append(*this, r.bytes);
+}
+
+void Output::binary_file_matches(const char *pathname, const std::string& partname)
+{
+  ugrep_rust::OutputBinaryResult r = ugrep_rust::output_binary_file_matches(
+      output_rust::slice(pathname),
+      output_rust::slice(partname),
+      output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), pathname));
+  output_rust::append(*this, r.bytes);
+  if (r.set_binary)
+    mode_ |= BINARY;
+}
+
+void Output::format(const char *format, size_t matches)
+{
+  output_rust::append(*this, ugrep_rust::output_format_count(
+      output_rust::slice(format),
+      matches,
+      output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), NULL)));
+}
+
+bool Output::format(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t *matching, reflex::AbstractMatcher *matcher, bool& heading, bool body, bool next)
+{
+  output_rust::Window window;
+  output_rust::Need need = output_rust::scan_format(format, body && lineno_ > 0);
+  ugrep_rust::OutputMatch m = output_rust::snapshot(matcher, window, need);
+  ugrep_rust::OutputArgs args{};
+  args.matches = matches;
+  args.has_matching = matching != NULL;
+  args.matching = matching != NULL ? *matching : 0;
+  args.heading = heading;
+  args.body = body;
+  args.next = next;
+  ugrep_rust::OutputFormatResult r = ugrep_rust::output_format_match(
+      output_rust::slice(format),
+      output_rust::slice(pathname),
+      output_rust::slice(partname),
+      output_rust::slice(window.data, window.size),
+      args,
+      m,
+      output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), pathname));
+  if (r.lineno_set)
+    lineno_ = r.lineno;
+  if (matching != NULL)
+    *matching = r.matching;
+  heading = r.heading;
+  output_rust::append(*this, r.bytes);
+  return r.ret;
+}
+
+void Output::format_invert(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t lineno, size_t offset, const char *ptr, size_t size, bool& heading, bool next)
+{
+  ugrep_rust::OutputArgs args{};
+  args.matches = matches;
+  args.lineno = lineno;
+  args.offset = offset;
+  args.heading = heading;
+  args.next = next;
+  ugrep_rust::OutputFormatResult r = ugrep_rust::output_format_invert(
+      output_rust::slice(format),
+      output_rust::slice(pathname),
+      output_rust::slice(partname),
+      output_rust::slice(ptr, size),
+      args,
+      output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), pathname));
+  if (r.lineno_set)
+    lineno_ = r.lineno;
+  heading = r.heading;
+  output_rust::append(*this, r.bytes);
+}
+
+void Output::quote(const char *data, size_t size)
+{
+  output_rust::append(*this, ugrep_rust::output_quote(output_rust::slice(data, size)));
+}
+
+void Output::cpp(const char *data, size_t size)
+{
+  output_rust::append(*this, ugrep_rust::output_cpp(output_rust::slice(data, size)));
+}
+
+void Output::csv(const char *data, size_t size)
+{
+  output_rust::append(*this, ugrep_rust::output_csv(output_rust::slice(data, size)));
+}
+
+void Output::hex(const char *data, size_t size)
+{
+  output_rust::append(*this, ugrep_rust::output_hex(output_rust::slice(data, size)));
+}
+
+void Output::json(const char *data, size_t size)
+{
+  output_rust::append(*this, ugrep_rust::output_json(output_rust::slice(data, size)));
+}
+
+void Output::xml(const char *data, size_t size)
+{
+  output_rust::append(*this, ugrep_rust::output_xml(output_rust::slice(data, size)));
+}
+
+#else
+
+void Output::Dump::line() { line_cpp(); }
+void Output::color(const char *arg) { color_cpp(arg); }
+
+void Output::header(const char *pathname, const std::string& partname, bool& heading, size_t lineno, reflex::AbstractMatcher *matcher, size_t byte_offset, const char *sep, bool newline)
+{
+  header_cpp(pathname, partname, heading, lineno, matcher, byte_offset, sep, newline);
+}
+
+void Output::header(const char *pathname, const std::string& partname)
+{
+  header_cpp(pathname, partname);
+}
+
+void Output::binary_file_matches(const char *pathname, const std::string& partname)
+{
+  binary_file_matches_cpp(pathname, partname);
+}
+
+void Output::format(const char *format, size_t matches)
+{
+  format_cpp(format, matches);
+}
+
+bool Output::format(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t *matching, reflex::AbstractMatcher *matcher, bool& heading, bool body, bool next)
+{
+  return format_cpp(format, pathname, partname, matches, matching, matcher, heading, body, next);
+}
+
+void Output::format_invert(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t lineno, size_t offset, const char *ptr, size_t size, bool& heading, bool next)
+{
+  format_invert_cpp(format, pathname, partname, matches, lineno, offset, ptr, size, heading, next);
+}
+
+void Output::quote(const char *data, size_t size) { quote_cpp(data, size); }
+void Output::cpp(const char *data, size_t size) { cpp_cpp(data, size); }
+void Output::csv(const char *data, size_t size) { csv_cpp(data, size); }
+void Output::hex(const char *data, size_t size) { hex_cpp(data, size); }
+void Output::json(const char *data, size_t size) { json_cpp(data, size); }
+void Output::xml(const char *data, size_t size) { xml_cpp(data, size); }
+
+#endif

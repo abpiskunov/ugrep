@@ -288,6 +288,7 @@ class Output {
 
     // dump one line of hex
     void line();
+    void line_cpp();
 
     Output& out;                    // reference to the output state of this hex dump state
     size_t  offset;                 // current byte offset in the hex dump
@@ -874,6 +875,23 @@ class Output {
   void xml(const char *data, size_t size);
 
  protected:
+
+  // the C++ bodies behind the facade functions above (see rust/src_core/SEAM.md, "Seam: output"): the facade calls
+  // these unless the build selected CPP_RUST_IMPL_OUTPUT=rust; inner calls between them go through the facade
+  // functions, which is harmless: in the rust build the _cpp bodies are not reached
+  void color_cpp(const char *arg);
+  void header_cpp(const char *pathname, const std::string& partname, bool& heading, size_t lineno, reflex::AbstractMatcher *matcher, size_t byte_offset, const char *sep, bool newline);
+  void header_cpp(const char *pathname, const std::string& partname);
+  void binary_file_matches_cpp(const char *pathname, const std::string& partname);
+  void format_cpp(const char *format, size_t matches);
+  bool format_cpp(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t *matching, reflex::AbstractMatcher *matcher, bool& heading, bool body, bool next);
+  void format_invert_cpp(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t lineno, size_t offset, const char *ptr, size_t size, bool& heading, bool next);
+  void quote_cpp(const char *data, size_t size);
+  void cpp_cpp(const char *data, size_t size);
+  void csv_cpp(const char *data, size_t size);
+  void hex_cpp(const char *data, size_t size);
+  void json_cpp(const char *data, size_t size);
+  void xml_cpp(const char *data, size_t size);
 
   // acquire lock and flush the buffers, if not held back
   void flush()

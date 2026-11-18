@@ -34,10 +34,108 @@ pub mod terminal;
 #[path = "ffi/terminal.rs"]
 pub mod terminal_ffi;
 
+// `Output` (src/output.cpp): types-and-signatures of the output seam; stubs until the Port tasks
+pub mod output;
+
 use signatures as sig;
 
 #[cxx::bridge(namespace = "ugrep_rust")]
 mod ffi {
+    /// One group capture of the matcher: `group_id()`/`group_next_id()` entry and `(*matcher)[index]`.
+    /// `offset` is relative to `OutputMatch::begin_off` (`cap.first - matcher->begin()`).
+    struct OutputCapture {
+        index: usize,
+        has_name: bool,
+        name: Vec<u8>,
+        found: bool,
+        offset: usize,
+        size: usize,
+    }
+
+    /// Plain-data snapshot of a `reflex::AbstractMatcher` match, built by C++ per call (Rust cannot own the matcher).
+    /// Offsets are relative to `window`, passed next to it. The window starts at `bol()` when `has_bol` (else at
+    /// `begin()`) and ends at `max(eol(), end())` when `has_eol` (else at `end()`). C++ sets them only when the
+    /// format or flags need the line, as the inline `mat`/`quote` overloads do, because `eol()` may refill the buffer.
+    /// `columno`, `lines`, `lineno_end`, `edits`/`distance` and `groups` are filled only when the format characters
+    /// or flags that read them are present (`%K %k`, `%L %l`, `%Z`, `%G %g %[..] %1-%9`); otherwise they are zero/empty.
+    /// `text()` is never called (it writes a NUL into the buffer); `text_off` equals `begin_off`.
+    struct OutputMatch {
+        present: bool,
+        has_bol: bool,
+        has_eol: bool,
+        first: usize,
+        last: usize,
+        size: usize,
+        wsize: usize,
+        lineno: usize,
+        lineno_end: usize,
+        columno: usize,
+        lines: usize,
+        accept: usize,
+        begin_off: usize,
+        text_off: usize,
+        end_off: usize,
+        has_fuzzy: bool,
+        edits: usize,
+        distance: usize,
+        groups: Vec<OutputCapture>,
+    }
+
+    /// Per-call state of the C++ `Output` object that the Rust function reads; `stdin_label` is the pointer test
+    /// `pathname == Static::LABEL_STANDARD_INPUT`, which cannot cross.
+    struct OutputCtx {
+        lineno: usize,
+        binary: bool,
+        dump_incomplete: bool,
+        stdin_label: bool,
+    }
+
+    /// Scalar arguments shared by the header and format functions (unused ones are zero/false).
+    struct OutputArgs {
+        matches: usize,
+        has_matching: bool,
+        matching: usize,
+        heading: bool,
+        body: bool,
+        next: bool,
+        lineno: usize,
+        offset: usize,
+        byte_offset: usize,
+        has_separator: bool,
+        newline: bool,
+    }
+
+    /// Result of `Output::header`: `complete_dump` asks the facade to call `dump.done()` before appending `bytes`.
+    struct OutputHeaderResult {
+        bytes: Vec<u8>,
+        heading: bool,
+        complete_dump: bool,
+    }
+
+    /// Result of `Output::format` and `format_invert`: `lineno_set` stores `lineno` in `Output::lineno_`.
+    struct OutputFormatResult {
+        bytes: Vec<u8>,
+        ret: bool,
+        heading: bool,
+        matching: usize,
+        lineno_set: bool,
+        lineno: usize,
+    }
+
+    /// Result of `Output::binary_file_matches`: `set_binary` sets the BINARY mode bit.
+    struct OutputBinaryResult {
+        bytes: Vec<u8>,
+        set_binary: bool,
+    }
+
+    /// Result of Output Dump line: the new pstar, and repeated for the star case (prevb kept, bytes reset);
+    /// otherwise the facade also sets prevb = bytes and resets bytes.
+    struct OutputDumpLine {
+        bytes: Vec<u8>,
+        pstar: bool,
+        repeated: bool,
+    }
+
     /// Bytes of a string, no NUL, no encoding assumed.
     struct Bytes {
         data: Vec<u8>,
@@ -181,6 +279,45 @@ mod ffi {
         fn cnf_anchor(pattern: &[u8], flags: &CnfFlags) -> CnfAnchored;
         /// Seam function `src_core.stats_report`: the text for the `FILE*` the C++ facade writes.
         fn stats_report(input: &StatsInput) -> Vec<u8>;
+
+        /// Seam functions of the output component (see SEAM.md): bytes out, appended by the C++ facade.
+        fn output_quote(data: &[u8]) -> Vec<u8>;
+        fn output_cpp(data: &[u8]) -> Vec<u8>;
+        fn output_csv(data: &[u8]) -> Vec<u8>;
+        fn output_hex(data: &[u8]) -> Vec<u8>;
+        fn output_json(data: &[u8]) -> Vec<u8>;
+        fn output_xml(data: &[u8]) -> Vec<u8>;
+        fn output_color(has_arg: bool, arg: &[u8]) -> Vec<u8>;
+        fn output_dump_line(bytes: &[i16], prevb: &[i16], pstar: bool, offset: usize) -> OutputDumpLine;
+        fn output_header_line(
+            pathname: &[u8],
+            partname: &[u8],
+            separator: &[u8],
+            window: &[u8],
+            args: &OutputArgs,
+            matcher: &OutputMatch,
+            ctx: &OutputCtx,
+        ) -> OutputHeaderResult;
+        fn output_header_file(pathname: &[u8], partname: &[u8], ctx: &OutputCtx) -> OutputHeaderResult;
+        fn output_binary_file_matches(pathname: &[u8], partname: &[u8], ctx: &OutputCtx) -> OutputBinaryResult;
+        fn output_format_count(format: &[u8], matches: usize, ctx: &OutputCtx) -> Vec<u8>;
+        fn output_format_match(
+            format: &[u8],
+            pathname: &[u8],
+            partname: &[u8],
+            window: &[u8],
+            args: &OutputArgs,
+            matcher: &OutputMatch,
+            ctx: &OutputCtx,
+        ) -> OutputFormatResult;
+        fn output_format_invert(
+            format: &[u8],
+            pathname: &[u8],
+            partname: &[u8],
+            line: &[u8],
+            args: &OutputArgs,
+            ctx: &OutputCtx,
+        ) -> OutputFormatResult;
     }
 }
 
@@ -343,4 +480,83 @@ fn core_trim(line: &[u8]) -> ffi::TrimRange {
 
 fn stats_report(input: &ffi::StatsInput) -> Vec<u8> {
     sig::stats::report(&stats_in(input))
+}
+
+fn output_quote(data: &[u8]) -> Vec<u8> {
+    output::quote(data)
+}
+
+fn output_cpp(data: &[u8]) -> Vec<u8> {
+    output::cpp(data)
+}
+
+fn output_csv(data: &[u8]) -> Vec<u8> {
+    output::csv(data)
+}
+
+fn output_hex(data: &[u8]) -> Vec<u8> {
+    output::hex(data)
+}
+
+fn output_json(data: &[u8]) -> Vec<u8> {
+    output::json(data)
+}
+
+fn output_xml(data: &[u8]) -> Vec<u8> {
+    output::xml(data)
+}
+
+fn output_color(has_arg: bool, arg: &[u8]) -> Vec<u8> {
+    output::color(has_arg, arg)
+}
+
+fn output_dump_line(bytes: &[i16], prevb: &[i16], pstar: bool, offset: usize) -> ffi::OutputDumpLine {
+    output::dump_line(bytes, prevb, pstar, offset)
+}
+
+fn output_header_line(
+    pathname: &[u8],
+    partname: &[u8],
+    separator: &[u8],
+    window: &[u8],
+    args: &ffi::OutputArgs,
+    matcher: &ffi::OutputMatch,
+    ctx: &ffi::OutputCtx,
+) -> ffi::OutputHeaderResult {
+    output::header_line(pathname, partname, separator, window, args, matcher, ctx)
+}
+
+fn output_header_file(pathname: &[u8], partname: &[u8], ctx: &ffi::OutputCtx) -> ffi::OutputHeaderResult {
+    output::header_file(pathname, partname, ctx)
+}
+
+fn output_binary_file_matches(pathname: &[u8], partname: &[u8], ctx: &ffi::OutputCtx) -> ffi::OutputBinaryResult {
+    output::binary_file_matches(pathname, partname, ctx)
+}
+
+fn output_format_count(format: &[u8], matches: usize, ctx: &ffi::OutputCtx) -> Vec<u8> {
+    output::format_count(format, matches, ctx)
+}
+
+fn output_format_match(
+    format: &[u8],
+    pathname: &[u8],
+    partname: &[u8],
+    window: &[u8],
+    args: &ffi::OutputArgs,
+    matcher: &ffi::OutputMatch,
+    ctx: &ffi::OutputCtx,
+) -> ffi::OutputFormatResult {
+    output::format_match(format, pathname, partname, window, args, matcher, ctx)
+}
+
+fn output_format_invert(
+    format: &[u8],
+    pathname: &[u8],
+    partname: &[u8],
+    line: &[u8],
+    args: &ffi::OutputArgs,
+    ctx: &ffi::OutputCtx,
+) -> ffi::OutputFormatResult {
+    output::format_invert(format, pathname, partname, line, args, ctx)
 }

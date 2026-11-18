@@ -512,6 +512,7 @@
     <ClInclude Include="..\src\glob.hpp" />
     <ClInclude Include="..\src\mmap.hpp" />
     <ClInclude Include="..\src\output.hpp" />
+    <ClInclude Include="..\src\output_rust.hpp" />
     <ClInclude Include="..\src\query.hpp" />
     <ClInclude Include="..\src\screen.hpp" />
     <ClInclude Include="..\src\stats.hpp" />

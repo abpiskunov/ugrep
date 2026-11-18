@@ -50,6 +50,7 @@ ugrep_SOURCES = \
 	glob_facade.cpp \
 	mmap.hpp \
 	output.hpp \
+	output_rust.hpp \
 	output.cpp \
 	query.hpp \
 	query.cpp \
