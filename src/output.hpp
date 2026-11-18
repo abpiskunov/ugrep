@@ -125,35 +125,36 @@ class Output {
       return new Lock(sync);
     }
 
+    // these use the lock's own retained handle, never this->handle: an ~Output flush may run after the Sync is destroyed
     void acquire(Lock *lock, size_t slot)
     {
-      lock->owned = ugrep_output_sync_acquire(handle, lock->owned, slot);
+      lock->owned = ugrep_output_sync_acquire(lock->handle, lock->owned, slot);
     }
 
     bool try_acquire(Lock *lock)
     {
-      lock->owned = ugrep_output_sync_try_acquire(handle, lock->owned);
+      lock->owned = ugrep_output_sync_try_acquire(lock->handle, lock->owned);
       return lock->owned;
     }
 
     void release(Lock *lock)
     {
-      lock->owned = ugrep_output_sync_release(handle, lock->owned);
+      lock->owned = ugrep_output_sync_release(lock->handle, lock->owned);
     }
 
     void finish(Lock *lock, size_t slot)
     {
-      lock->owned = ugrep_output_sync_finish(handle, lock->owned, slot);
+      lock->owned = ugrep_output_sync_finish(lock->handle, lock->owned, slot);
     }
 
-    void cancel()
+    void cancel(Lock *lock)
     {
-      ugrep_output_sync_cancel(handle);
+      ugrep_output_sync_cancel(lock->handle);
     }
 
-    bool cancelled()
+    bool cancelled(Lock *lock)
     {
-      return ugrep_output_sync_cancelled(handle);
+      return ugrep_output_sync_cancelled(lock->handle);
     }
 
     size_t next; // ORDERED: next slot assigned to thread
@@ -372,201 +373,6 @@ class Output {
     }
   }
 
-  // get match or context string pointer and size
-  inline const char *match_context(reflex::AbstractMatcher *matcher, bool plus, int width, size_t& n)
-  {
-    if (width == 0)
-    {
-      n = matcher->size();
-      return matcher->begin();
-    }
-    else if (width > 0)
-    {
-      if (plus) // {+width}
-      {
-        const char *e = matcher->eol();
-        const char *c = matcher->end();
-        n = utf8cut(c, e - c, width);
-        return c;
-      }
-      else // {width}
-      {
-        const char *s = matcher->begin();
-        n = utf8cut(s, matcher->size(), width);
-        return s;
-      }
-    }
-    else // {-width}
-    {
-      const char *b = matcher->bol();
-      const char *s = matcher->begin();
-      b = utf8back(b, s, -width);
-      n = s - b;
-      return b;
-    }
-  }
-
-  // output a matching line or a match if -o
-  inline void mat(reflex::AbstractMatcher *matcher, int w = 0)
-  {
-    if (flag_only_matching)
-    {
-      const char *s = matcher->begin();
-      size_t n = matcher->size();
-      if (flag_hex || (flag_with_hex && !reflex::isutf8(s, s + n)))
-      {
-        if (w > 0 && static_cast<size_t>(w) < n)
-          n = w;
-        hex(s, n);
-      }
-      else
-      {
-        if (w > 0)
-          s = match_context(matcher, false, w, n);
-        str(s, n);
-      }
-    }
-    else
-    {
-      const char *e = matcher->eol(); // warning: must call eol() before bol()
-      const char *b = matcher->bol();
-      if (flag_hex || (flag_with_hex && !reflex::isutf8(b, e)))
-      {
-        if (w > 0 && b + w < e)
-          e = b + w;
-        else if (w < 0 && e + w > b)
-          b = e + w;
-        hex(b, e - b);
-      }
-      else if (w > 0)
-      {
-        utf8strn(b, e - b, w);
-      }
-      else
-      {
-        if (w < 0)
-          b = utf8back(b, e, -w);
-        str(b, e - b);
-      }
-    }
-  }
-
-  // output a quoted matching line or a match if -o with escapes for \ and "
-  inline void quote(reflex::AbstractMatcher *matcher, int w = 0)
-  {
-    if (flag_only_matching)
-    {
-      size_t n = matcher->size();
-      const char *s = (w > 0 ? match_context(matcher, false, w, n) : matcher->begin());
-      quote(s, n);
-    }
-    else
-    {
-      const char *e = matcher->eol(); // warning: must call eol() before bol()
-      const char *b = matcher->bol();
-      if (w > 0)
-        e = utf8pos(b, e - b, w);
-      else if (w < 0)
-        b = utf8back(b, e, -w);
-      quote(b, e - b);
-    }
-  }
-
-  // output a match as a string in C/C++
-  inline void cpp(reflex::AbstractMatcher *matcher, int w = 0)
-  {
-    if (flag_only_matching)
-    {
-      cpp(matcher->begin(), matcher->size());
-    }
-    else
-    {
-      const char *e = matcher->eol(); // warning: must call eol() before bol()
-      const char *b = matcher->bol();
-      if (w > 0)
-        e = utf8pos(b, e - b, w);
-      else if (w < 0)
-        b = utf8back(b, e, -w);
-      cpp(b, e - b);
-    }
-  }
-
-  // output a match as a quoted string in CSV
-  inline void csv(reflex::AbstractMatcher *matcher, int w = 0)
-  {
-    if (flag_only_matching)
-    {
-      csv(matcher->begin(), matcher->size());
-    }
-    else
-    {
-      const char *e = matcher->eol(); // warning: must call eol() before bol()
-      const char *b = matcher->bol();
-      if (w > 0)
-        e = utf8pos(b, e - b, w);
-      else if (w < 0)
-        b = utf8back(b, e, -w);
-      csv(b, e - b);
-    }
-  }
-
-  // output a match as a quoted string in JSON
-  inline void json(reflex::AbstractMatcher *matcher, int w = 0)
-  {
-    if (flag_only_matching)
-    {
-      json(matcher->begin(), matcher->size());
-    }
-    else
-    {
-      const char *e = matcher->eol(); // warning: must call eol() before bol()
-      const char *b = matcher->bol();
-      if (w > 0)
-        e = utf8pos(b, e - b, w);
-      else if (w < 0)
-        b = utf8back(b, e, -w);
-      json(b, e - b);
-    }
-  }
-
-  // output a match in hex
-  inline void hex(reflex::AbstractMatcher *matcher, int w = 0)
-  {
-    if (flag_only_matching)
-    {
-      hex(matcher->begin(), matcher->size());
-    }
-    else
-    {
-      const char *e = matcher->eol(); // warning: must call eol() before bol()
-      const char *b = matcher->bol();
-      if (w > 0)
-        e = utf8pos(b, e - b, w);
-      else if (w < 0)
-        b = utf8back(b, e, -w);
-      hex(b, e - b);
-    }
-  }
-
-  // output a match in XML
-  inline void xml(reflex::AbstractMatcher *matcher, int w = 0)
-  {
-    if (flag_only_matching)
-    {
-      xml(matcher->begin(), matcher->size());
-    }
-    else
-    {
-      const char *e = matcher->eol(); // warning: must call eol() before bol()
-      const char *b = matcher->bol();
-      if (w > 0)
-        e = utf8pos(b, e - b, w);
-      else if (w < 0)
-        b = utf8back(b, e, -w);
-      xml(b, e - b);
-    }
-  }
-
   // output an unsigned integer i with field width w (padded with spaces)
   inline void num(size_t i, int w = 0)
   {
@@ -774,13 +580,13 @@ class Output {
     eof = true;
 
     if (sync != NULL)
-      sync->cancel();
+      sync->cancel(lock_);
   }
 
   // true if output was cancelled()
   bool cancelled()
   {
-    return sync != NULL && sync->cancelled();
+    return sync != NULL && sync->cancelled(lock_);
   }
 
   // output color when set
@@ -823,17 +629,6 @@ class Output {
   void xml(const char *data, size_t size);
 
  protected:
-
-  // the C++ bodies of the members not ported yet (next unit, output-format), called by their facade functions
-  void format_cpp(const char *format, size_t matches);
-  bool format_cpp(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t *matching, reflex::AbstractMatcher *matcher, bool& heading, bool body, bool next);
-  void format_invert_cpp(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t lineno, size_t offset, const char *ptr, size_t size, bool& heading, bool next);
-  void quote_cpp(const char *data, size_t size);
-  void cpp_cpp(const char *data, size_t size);
-  void csv_cpp(const char *data, size_t size);
-  void hex_cpp(const char *data, size_t size);
-  void json_cpp(const char *data, size_t size);
-  void xml_cpp(const char *data, size_t size);
 
   // acquire lock and flush the buffers, if not held back
   void flush()
@@ -954,9 +749,6 @@ class Output {
     buf_ = buffers_.emplace(buffers_.end());
     cur_ = buf_->data;
   }
-
-  // get a group capture's string pointer and size specified by %[ARG] as arg, if any
-  std::pair<const char*,size_t> capture(reflex::AbstractMatcher *matcher, const char *arg);
 
  public:
 

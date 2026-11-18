@@ -36,6 +36,7 @@ pub mod terminal_ffi;
 
 // `Output` (src/output.cpp): types-and-signatures of the output seam; stubs until the Port tasks
 pub mod output;
+pub mod output_format;
 #[path = "ffi/output.rs"]
 pub mod output_ffi;
 pub mod output_sync;
@@ -47,22 +48,28 @@ use signatures as sig;
 #[cxx::bridge(namespace = "ugrep_rust")]
 mod ffi {
     /// One group capture of the matcher: `group_id()`/`group_next_id()` entry and `(*matcher)[index]`.
-    /// `offset` is relative to `OutputMatch::begin_off` (`cap.first - matcher->begin()`).
+    /// `offset` is relative to the start of `window` (`cap.first` minus the window start), so a lookbehind capture
+    /// that begins before `begin()` stays representable.
+    /// `listed` is true for a group of the `group_id()`/`group_next_id()` walk; false for an index that C++ reads
+    /// directly with `(*matcher)[index]` because the format names it (`%[N]b`, `%1`), which works without the walk.
     struct OutputCapture {
         index: usize,
         has_name: bool,
         name: Vec<u8>,
         found: bool,
+        listed: bool,
         offset: usize,
         size: usize,
     }
 
     /// Plain-data snapshot of a `reflex::AbstractMatcher` match, built by C++ per call (Rust cannot own the matcher).
     /// Offsets are relative to `window`, passed next to it. The window starts at `bol()` when `has_bol` (else at
-    /// `begin()`) and ends at `max(eol(), end())` when `has_eol` (else at `end()`). C++ sets them only when the
+    /// `begin()`), or earlier when a group capture begins before that, and ends at `max(eol(), end())` when `has_eol`
+    /// (else at `end()`). `bol_off` and `eol_off` are the line bounds before that widening: the line of the match is
+    /// `window[bol_off..eol_off]`. C++ sets them only when the
     /// format or flags need the line, as the inline `mat`/`quote` overloads do, because `eol()` may refill the buffer.
     /// `columno`, `lines`, `lineno_end`, `edits`/`distance` and `groups` are filled only when the format characters
-    /// or flags that read them are present (`%K %k`, `%L %l`, `%Z`, `%G %g %[..] %1-%9`); otherwise they are zero/empty.
+    /// or flags that read them are present (`%K %k`, `%L %l`, `%Z`, and `groups` only for `%b %d %e %o %# %q %c %v %j %x %y %G %g %0-%9`, not for `%[..]` alone); otherwise they are zero/empty.
     /// `text()` is never called (it writes a NUL into the buffer); `text_off` equals `begin_off`.
     struct OutputMatch {
         present: bool,
@@ -80,6 +87,8 @@ mod ffi {
         begin_off: usize,
         text_off: usize,
         end_off: usize,
+        bol_off: usize,
+        eol_off: usize,
         has_fuzzy: bool,
         edits: usize,
         distance: usize,
@@ -606,7 +615,7 @@ fn output_truncate_lines(data: &[u8], skip: bool, cols: usize, ansi: u8) -> ffi:
     ffi::OutputTruncResult { bytes, skip: st.skip, cols: st.cols, ansi: st.ansi }
 }
 fn output_format_count(format: &[u8], matches: usize, ctx: &ffi::OutputCtx) -> Vec<u8> {
-    output::format_count(format, matches, ctx)
+    output_format::format_count(&output_ffi::format_opts(), format, matches, ctx)
 }
 
 fn output_format_match(
@@ -618,7 +627,7 @@ fn output_format_match(
     matcher: &ffi::OutputMatch,
     ctx: &ffi::OutputCtx,
 ) -> ffi::OutputFormatResult {
-    output::format_match(format, pathname, partname, window, args, matcher, ctx)
+    output_format::format_match(&output_ffi::format_opts(), format, (pathname, partname), window, args, matcher, ctx)
 }
 
 fn output_format_invert(
@@ -629,5 +638,5 @@ fn output_format_invert(
     args: &ffi::OutputArgs,
     ctx: &ffi::OutputCtx,
 ) -> ffi::OutputFormatResult {
-    output::format_invert(format, pathname, partname, line, args, ctx)
+    output_format::format_invert(&output_ffi::format_opts(), format, (pathname, partname), line, args, ctx)
 }

@@ -2,8 +2,7 @@
 //! section Seam: output.
 //!
 //! The shared structs are declared in the cxx bridge (`lib.rs`, module `ffi`) and are the types of these signatures.
-//! The bodies are stubs until the Port tasks (`panic!`; panic is abort in this workspace, so a call aborts the process). They are
-//! only reachable once the C++ facade calls them.
+//! The C++ facade (src/output.cpp) calls them; Rust is the only implementation.
 //!
 //! Shape of the seam: every function is a pure function of its inputs (except `--tree` headers, which stay in C++
 //! because they take the Sync lock and update the process-wide `Output::Tree` state). C++ keeps the `Output` object (buffer,
@@ -11,41 +10,49 @@
 //! buffer with `Output::str`. The Rust side reads the option state it already owns (`settings`, `color`).
 
 use super::ffi::{
-    OutputArgs, OutputBinaryResult, OutputCtx, OutputDumpLine, OutputFormatResult, OutputHeaderResult, OutputMatch,
+    OutputArgs, OutputBinaryResult, OutputCtx, OutputDumpLine, OutputHeaderResult, OutputMatch,
 };
 
-fn not_ported(name: &str) -> ! {
-    panic!("output seam: {name} is not ported yet")
-}
-
 /// `Output::quote(data, size)`: the text appended to the buffer.
-pub fn quote(_data: &[u8]) -> Vec<u8> {
-    not_ported("quote")
+pub fn quote(data: &[u8]) -> Vec<u8> {
+    let mut out = Out::default();
+    out.quote(data);
+    out.0
 }
 
 /// `Output::cpp(data, size)`.
-pub fn cpp(_data: &[u8]) -> Vec<u8> {
-    not_ported("cpp")
+pub fn cpp(data: &[u8]) -> Vec<u8> {
+    let mut out = Out::default();
+    out.cpp(data);
+    out.0
 }
 
 /// `Output::csv(data, size)`.
-pub fn csv(_data: &[u8]) -> Vec<u8> {
-    not_ported("csv")
+pub fn csv(data: &[u8]) -> Vec<u8> {
+    let mut out = Out::default();
+    out.csv(data);
+    out.0
 }
 
 /// `Output::hex(data, size)`.
-pub fn hex(_data: &[u8]) -> Vec<u8> {
-    not_ported("hex")
+pub fn hex(data: &[u8]) -> Vec<u8> {
+    let mut out = Out::default();
+    out.hex_bytes(data);
+    out.0
 }
 
 /// `Output::json(data, size)`.
-pub fn json(_data: &[u8]) -> Vec<u8> {
-    not_ported("json")
+pub fn json(data: &[u8]) -> Vec<u8> {
+    let mut out = Out::default();
+    out.json(data);
+    out.0
 }
 
 /// `Output::xml(data, size)`.
-pub fn xml(_data: &[u8]) -> Vec<u8> {
-    not_ported("xml")
+pub fn xml(data: &[u8]) -> Vec<u8> {
+    let mut out = Out::default();
+    out.xml(data);
+    out.0
 }
 
 /// The output state of the process: the options of `Settings` that the ported functions read, as plain values.
@@ -87,6 +94,18 @@ pub struct Opts<'a> {
     pub hex_hbr: bool,
     pub hex_columns: usize,
     pub width: usize,
+    pub separator: &'a [u8],
+    pub with_filename: bool,
+    pub brk: bool,
+    pub files_with_matches: bool,
+    pub count: bool,
+    pub invert_match: bool,
+    pub only_matching: bool,
+    pub hex_all: bool,
+    pub with_hex: bool,
+    pub match_all: bool,
+    pub ungroup: bool,
+    pub fuzzy: usize,
     /// `--hyperlink` strings that `std::string` statics keep in C++ (`flag_hyperlink_prefix`, `_host`, `_path`).
     pub hyperlink_prefix: &'a [u8],
     pub hyperlink_host: &'a [u8],
@@ -94,34 +113,46 @@ pub struct Opts<'a> {
 }
 
 /// `nl()` appends the platform newline: `\r\n` on Windows, `\n` elsewhere.
-const NL: &[u8] = if cfg!(windows) { b"\r\n" } else { b"\n" };
+pub(crate) const NL: &[u8] = if cfg!(windows) { b"\r\n" } else { b"\n" };
+
+/// The letter of the escape for `\b \f \n \r \t`, else the byte itself.
+fn escape_letter(c: u8) -> u8 {
+    match c {
+        0x08 => b'b',
+        0x0c => b'f',
+        b'\n' => b'n',
+        b'\r' => b'r',
+        b'\t' => b't',
+        _ => c,
+    }
+}
 
 /// The appenders of `Output` (`chr`, `str`, `num`, `hex`, `uri`, `nl`) on a byte vector.
 #[derive(Default)]
-struct Out(Vec<u8>);
+pub(crate) struct Out(pub(crate) Vec<u8>);
 
 impl Out {
-    fn chr(&mut self, c: u8) {
+    pub(crate) fn chr(&mut self, c: u8) {
         self.0.push(c);
     }
 
-    fn str(&mut self, s: &[u8]) {
+    pub(crate) fn str(&mut self, s: &[u8]) {
         self.0.extend_from_slice(s);
     }
 
-    fn nl(&mut self) {
+    pub(crate) fn nl(&mut self) {
         self.0.extend_from_slice(NL);
     }
 
     /// `num(i, w)`: decimal, padded with spaces to width `w`.
-    fn num(&mut self, i: usize, w: usize) {
+    pub(crate) fn num(&mut self, i: usize, w: usize) {
         let digits = i.to_string();
         self.0.resize(self.0.len() + w.saturating_sub(digits.len()), b' ');
         self.str(digits.as_bytes());
     }
 
     /// `hex(i, w)`: lower case hexadecimal, padded with `0` to width `w`.
-    fn hex(&mut self, i: usize, w: usize) {
+    pub(crate) fn hex(&mut self, i: usize, w: usize) {
         let digits = format!("{i:x}");
         self.0.resize(self.0.len() + w.saturating_sub(digits.len()), b'0');
         self.str(digits.as_bytes());
@@ -161,6 +192,121 @@ impl Out {
             }
         }
         self.str(o.color_st);
+    }
+
+    /// `oct(i)`: one byte in three octal digits.
+    fn oct(&mut self, c: u8) {
+        self.chr(b'0' + (c >> 6));
+        self.chr(b'0' + ((c >> 3) & 7));
+        self.chr(b'0' + (c & 7));
+    }
+
+    /// `Output::quote(data, size)`: quoted with a backslash before `\` and `"`.
+    pub(crate) fn quote(&mut self, data: &[u8]) {
+        self.chr(b'"');
+        for &c in data {
+            if c == b'\\' || c == b'"' {
+                self.chr(b'\\');
+            }
+            self.chr(c);
+        }
+        self.chr(b'"');
+    }
+
+    /// `Output::cpp(data, size)`: C/C++ string, non-ASCII bytes verbatim.
+    pub(crate) fn cpp(&mut self, data: &[u8]) {
+        self.chr(b'"');
+        for &c in data {
+            if c & 0x80 == 0 && (c < 0x20 || c == b'"' || c == b'\\') {
+                let c = escape_letter(c);
+                self.chr(b'\\');
+                if c > 0x20 {
+                    self.chr(c);
+                } else {
+                    self.oct(c);
+                }
+            } else {
+                self.chr(c);
+            }
+        }
+        self.chr(b'"');
+    }
+
+    /// `Output::csv(data, size)`.
+    pub(crate) fn csv(&mut self, data: &[u8]) {
+        self.chr(b'"');
+        for &c in data {
+            if c & 0x80 != 0 {
+                self.chr(c);
+            } else if c == b'"' {
+                self.str(b"\"\"");
+            } else if (c < 0x20 && c != b'\t') || c == b'\\' {
+                let c = escape_letter(c);
+                if c > 0x20 {
+                    self.chr(b'\\');
+                    self.chr(c);
+                } else {
+                    self.str(b"\\x");
+                    self.hex(usize::from(c), 2);
+                }
+            } else {
+                self.chr(c);
+            }
+        }
+        self.chr(b'"');
+    }
+
+    /// `Output::hex(data, size)`: bytes as two hex digits, separated by a space.
+    pub(crate) fn hex_bytes(&mut self, data: &[u8]) {
+        for (i, &c) in data.iter().enumerate() {
+            if i > 0 {
+                self.chr(b' ');
+            }
+            self.hex(usize::from(c), 2);
+        }
+    }
+
+    /// `Output::json(data, size)`.
+    pub(crate) fn json(&mut self, data: &[u8]) {
+        self.chr(b'"');
+        for &c in data {
+            if c & 0x80 == 0 && (c < 0x20 || c == b'"' || c == b'\\') {
+                let c = escape_letter(c);
+                if c > 0x20 {
+                    self.chr(b'\\');
+                    self.chr(c);
+                } else {
+                    self.str(b"\\u");
+                    self.hex(usize::from(c), 4);
+                }
+            } else {
+                self.chr(c);
+            }
+        }
+        self.chr(b'"');
+    }
+
+    /// `Output::xml(data, size)`.
+    pub(crate) fn xml(&mut self, data: &[u8]) {
+        for &c in data {
+            if c & 0x80 != 0 {
+                self.chr(c);
+                continue;
+            }
+            match c {
+                b'&' => self.str(b"&amp;"),
+                b'<' => self.str(b"&lt;"),
+                b'>' => self.str(b"&gt;"),
+                b'"' => self.str(b"&quot;"),
+                0x7f => self.str(b"&#x7f;"),
+                0..=0x1f => {
+                    self.str(b"&#");
+                    self.num(usize::from(c), 0);
+                    self.chr(b';');
+                }
+                _ => self.chr(c),
+            }
+        }
     }
 
     fn close_hyperlink(&mut self, o: &Opts) {
@@ -521,7 +667,7 @@ pub struct TreeGlyphs<'a> {
 }
 
 /// The path separator of the platform (`PATHSEPCHR`).
-const PATHSEP: u8 = if cfg!(windows) { b'\\' } else { b'/' };
+pub(crate) const PATHSEP: u8 = if cfg!(windows) { b'\\' } else { b'/' };
 
 /// `Output::header(pathname, partname)` with `--tree`: the tree lines and the new `Tree::path` and `Tree::depth`.
 pub fn header_tree(
@@ -757,37 +903,6 @@ pub fn truncate_lines(o: &Opts, data: &[u8], st: &mut TruncState) -> Vec<u8> {
     }
 
     out
-}
-
-/// `Output::format(format, matches)` (--format-begin, --format-end).
-pub fn format_count(_format: &[u8], _matches: usize, _ctx: &OutputCtx) -> Vec<u8> {
-    not_ported("format_count")
-}
-
-/// `Output::format(format, pathname, partname, matches, matching, matcher, heading, body, next)`.
-pub fn format_match(
-    _format: &[u8],
-    _pathname: &[u8],
-    _partname: &[u8],
-    _window: &[u8],
-    _args: &OutputArgs,
-    _matcher: &OutputMatch,
-    _ctx: &OutputCtx,
-) -> OutputFormatResult {
-    not_ported("format_match")
-}
-
-/// `Output::format_invert(format, pathname, partname, matches, lineno, offset, ptr, size, heading, next)`:
-/// `line` is `ptr[..size]`.
-pub fn format_invert(
-    _format: &[u8],
-    _pathname: &[u8],
-    _partname: &[u8],
-    _line: &[u8],
-    _args: &OutputArgs,
-    _ctx: &OutputCtx,
-) -> OutputFormatResult {
-    not_ported("format_invert")
 }
 
 #[cfg(test)]
