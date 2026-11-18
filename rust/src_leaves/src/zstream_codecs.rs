@@ -4,8 +4,7 @@
 //! them. Types and signatures were fixed by the Prepare seam task (C++ line ranges: rust/src_leaves/SEAM.md). The
 //! third-party libraries stay C: they are reached through `extern "C"` declarations in `ffi/codecs.rs`, and a decoder
 //! exists only for a codec in `Config::codecs` (the HAVE_LIB* and WITH_NO_7ZIP macros the C++ build was compiled with).
-//! Brotli and bzip3 are not linked into the Rust build (they are not built in the C++ reference either); the stream
-//! reports them as an unsupported compression format.
+//! Brotli (decoder) and bzip3 are reached the same way (BrotliDecoder*, bz3_*), when `Config::codecs` has their bit.
 use core::ffi::c_void;
 use std::collections::VecDeque;
 
@@ -13,7 +12,7 @@ use crate::signatures::zopen::{self, ZState};
 
 #[path = "ffi/codecs.rs"]
 mod sys;
-use sys::{BzStream, Lz4Stream, LzmaStream, Tm, Viizip, ZlibStream, ZstdStream};
+use sys::{BrotliStream, Bz3State, BzStream, Lz4Stream, LzmaStream, Tm, Viizip, ZlibStream, ZstdStream};
 
 /// `FILE*` of the caller, opaque to the signatures; borrowed for the life of the stream.
 pub type FilePtr = *mut c_void;
@@ -1491,7 +1490,174 @@ impl Zstd {
     }
 }
 
-/// Per-format decoder state: the `Z`, `BZ`, `XZ`, `LZ4`, `ZSTD` structs of src/zstream.hpp, the `zzFile` of `.Z`
+/// brotli decoder state: `zstreambuf::BR`. `next_in` is `zbuf[in_pos..]` with `avail_in` bytes left; `avail_out` is kept
+/// between calls as the legacy code does (the output pointer is re-established whenever it is used).
+pub struct Brotli {
+    strm: BrotliStream,
+    zbuf: Vec<u8>,
+    in_pos: usize,
+    avail_in: usize,
+    out_pos: usize,
+    avail_out: usize,
+    zend: bool,
+}
+
+impl Brotli {
+    /// `None` when `BrotliDecoderCreateInstance` fails (the legacy code warns).
+    pub fn new() -> Option<Brotli> {
+        Some(Brotli { strm: BrotliStream::new()?, zbuf: vec![0u8; Z_BUF_LEN], in_pos: 0, avail_in: 0, out_pos: 0, avail_out: 0, zend: false })
+    }
+
+    /// Decompress the pending input into `buf[out_pos..out_pos + avail_out]`; false on a brotli error.
+    fn run(&mut self, buf: &mut [u8]) -> bool {
+        let input = &self.zbuf[self.in_pos..self.in_pos + self.avail_in];
+        let Some(output) = buf.get_mut(self.out_pos..self.out_pos + self.avail_out) else { return false };
+        match self.strm.decompress(input, output) {
+            Err(()) => false,
+            Ok((used, produced)) => {
+                self.in_pos += used;
+                self.avail_in -= used;
+                self.out_pos += produced;
+                self.avail_out -= produced;
+                true
+            }
+        }
+    }
+
+    pub fn next(&mut self, file: FilePtr, diag: &mut Diagnostics, buf: &mut [u8]) -> Step {
+        const ERR: &str = "an error was detected in the brotli compressed data";
+        let len = buf.len();
+        let mut num: isize = 0;
+
+        loop {
+            let mut failed = false;
+
+            // decompress non-empty zbuf[] into the given buf[]
+            if self.avail_out == 0 {
+                self.out_pos = 0;
+                self.avail_out = len;
+                if self.run(buf) {
+                    num = (len - self.avail_out) as isize;
+                } else {
+                    diag.cannot_decompress(ERR);
+                    num = -1;
+                    failed = true;
+                }
+            }
+
+            // read compressed data into zbuf[] and decompress zbuf[] into the given buf[]
+            if !failed && self.avail_in == 0 && num < len as isize && !self.zend {
+                let zlen = sys::file_read(file, &mut self.zbuf);
+
+                if sys::file_error(file) {
+                    diag.warning(READ_ERR);
+                    self.zend = true;
+                    num = -1;
+                } else {
+                    if sys::file_eof(file) {
+                        self.zend = true;
+                    }
+                    self.in_pos = 0;
+                    self.avail_in = zlen;
+
+                    if num == 0 {
+                        self.out_pos = 0;
+                        self.avail_out = len;
+                    }
+
+                    if self.run(buf) {
+                        num = (len - self.avail_out) as isize;
+                        if num == 0 {
+                            continue;
+                        }
+                    } else {
+                        diag.cannot_decompress(ERR);
+                        num = -1;
+                    }
+                }
+            }
+            break;
+        }
+
+        // decompressed the last block or there was an error?
+        Step { num, done: num <= 0 }
+    }
+}
+
+/// bzip3 decoder state: `zstreambuf::BZ3`.
+pub struct Bzip3 {
+    strm: Bz3State,
+    buf: Vec<u8>,
+    loc: usize,
+    len: usize,
+}
+
+/// Why `Bzip3::new` gave no decoder.
+pub enum Bzip3Error {
+    /// `bz3_new` failed (the legacy code warns).
+    New,
+    /// The block buffer cannot be allocated.
+    OutOfMemory,
+}
+
+impl Bzip3 {
+    pub fn new(block_size: u32) -> Result<Bzip3, Bzip3Error> {
+        let strm = Bz3State::new(block_size).ok_or(Bzip3Error::New)?;
+        let max = Bz3State::bound(block_size) as u32 as usize;
+        let mut buf = Vec::new();
+        buf.try_reserve_exact(max).map_err(|_| Bzip3Error::OutOfMemory)?;
+        buf.resize(max, 0);
+        Ok(Bzip3 { strm, buf, loc: 0, len: 0 })
+    }
+
+    pub fn next(&mut self, file: FilePtr, diag: &mut Diagnostics, buf: &mut [u8]) -> Step {
+        let mut num: isize = 0;
+        let max = self.buf.len();
+
+        while self.loc >= self.len {
+            // read decompressed and compressed size
+            if sys::file_read(file, &mut self.buf[..8]) < 8 {
+                if sys::file_error(file) {
+                    diag.warning(READ_ERR);
+                    num = -1;
+                }
+                break;
+            }
+
+            // compressed ("new") size
+            let block_size = u32le(&self.buf) as usize;
+
+            // decompressed ("old") size
+            self.len = u32le(&self.buf[4..]) as usize;
+            self.loc = 0;
+
+            if block_size > max
+                || self.len > max
+                || sys::file_read(file, &mut self.buf[..block_size]) < block_size
+                || self.strm.decode_block(&mut self.buf, block_size as u32, self.len as u32).is_none()
+            {
+                if sys::file_error(file) {
+                    diag.warning(READ_ERR);
+                } else {
+                    diag.cannot_decompress("an error was detected in the bzip3 compressed data");
+                }
+                num = -1;
+                break;
+            }
+        }
+
+        // if all OK then copy the next part of the decompressed block into buf[]
+        if num != -1 && self.loc < self.len {
+            let n = (self.len - self.loc).min(buf.len());
+            buf[..n].copy_from_slice(&self.buf[self.loc..self.loc + n]);
+            self.loc += n;
+            num = n as isize;
+        }
+        Step { num, done: num <= 0 }
+    }
+}
+
+/// Per-format decoder state: the `Z`, `BZ`, `XZ`, `LZ4`, `ZSTD`, `BR`, `BZ3` structs of src/zstream.hpp, the `zzFile` of `.Z`
 /// and the zip/7zip archive.
 pub enum Decoder {
     Gzip(Gzip),
@@ -1500,6 +1666,8 @@ pub enum Decoder {
     Xz(Xz),
     Lz4(Box<Lz4>),
     Zstd(Zstd),
+    Brotli(Box<Brotli>),
+    Bzip3(Box<Bzip3>),
     Zip(Box<ZipState>),
 }
 
@@ -1512,6 +1680,8 @@ impl core::fmt::Debug for Decoder {
             Decoder::Xz(_) => "Xz",
             Decoder::Lz4(_) => "Lz4",
             Decoder::Zstd(_) => "Zstd",
+            Decoder::Brotli(_) => "Brotli",
+            Decoder::Bzip3(_) => "Bzip3",
             Decoder::Zip(_) => "Zip",
         })
     }
@@ -1537,6 +1707,8 @@ impl Decoder {
             Decoder::Xz(z) => z.next(file, diag, buf),
             Decoder::Lz4(z) => z.next(file, diag, buf),
             Decoder::Zstd(z) => z.next(file, diag, buf),
+            Decoder::Brotli(z) => z.next(file, diag, buf),
+            Decoder::Bzip3(z) => z.next(file, diag, buf),
             Decoder::Zip(z) => {
                 // decompress a zip compressed block into the given buf[]
                 let num = z.decompress(buf, diag);
@@ -1562,6 +1734,20 @@ pub fn open_compress(file: FilePtr) -> Option<Decoder> {
 #[cfg(all(test, not(ugrep_no_codecs)))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bzip3_rejects_block_size_outside_range() {
+        assert!(matches!(Bzip3::new(65 * 1024 - 1), Err(Bzip3Error::New)));
+        assert!(Bzip3::new(65 * 1024).is_ok());
+    }
+
+    #[test]
+    fn brotli_reports_garbage_as_error() {
+        let mut z = Brotli::new().unwrap();
+        let mut out = [0u8; 64];
+        let garbage = [0xffu8; 32];
+        assert!(z.strm.decompress(&garbage, &mut out).is_err());
+    }
 
     // Review fix (D-zstream-lz4-ring): an uncompressed block after earlier blocks left `loc` past the wrap point must not
     // write past the ring buffer (the legacy code does); it wraps like a compressed block.

@@ -1,0 +1,14 @@
+schema: cpp-rust-unit/1
+unit: zstream_brotli_bzip3
+component: src_leaves
+functions: [src_leaves.zs_open, src_leaves.zs_close, src_leaves.zs_decompressing, src_leaves.zs_next, src_leaves.zs_zipinfo, src_leaves.zs_zippeek, src_leaves.zs_is_bz, src_leaves.zs_is_xz, src_leaves.zs_is_lz4, src_leaves.zs_is_zstd, src_leaves.zs_is_br, src_leaves.zs_is_bz3, src_leaves.zs_is_Z, src_leaves.zs_is_zip, src_leaves.zs_is_7z, src_leaves.zs_is_rar]
+cpp_files: [src/zstream.cpp, src/zstream.hpp, src/zstream_seam.h]
+rust_files: rust/src_leaves/src/zstream_codecs.rs rust/src_leaves/src/zstream_core.rs rust/src_leaves/src/ffi/codecs.rs
+rust_crate_name: src_leaves
+harness_crate_name: src_leaves-harness
+depends_on: [zstream_codecs, zstream_core]
+status: ported
+notes:
+  - 'S6 Port (D-S6-1, reverses D-cleanup-codecs): the Rust zstream decodes .br and .bz3 again through the brotli decoder (BrotliDecoderCreateInstance/DecompressStream/DestroyInstance) and bzip3 (bz3_new/bz3_bound/bz3_decode_block/bz3_free) C libraries, called through extern "C" in ffi/codecs.rs (stubbed by cfg ugrep_no_brotlidec / ugrep_no_bzip3 when a library is not in CPP2RUST_CODEC_LIBS or the codecs feature is off). Decoders Brotli and Bzip3 in zstream_codecs.rs mirror the C++ BR and BZ3 structs and the next() loops; open() in zstream_core.rs selects them when Config has CODEC_BROTLI / CODEC_BZIP3, otherwise "unsupported compression format" as before. src/zstream.cpp already hands the HAVE_LIBBROTLI / HAVE_LIBBZIP3 bits over (ZS_CODEC_BROTLI, ZS_CODEC_BZIP3): no C++ change.'
+  - 'Intentional deviations: instances are destroyed on every path by Drop (BrotliDecoderDestroyInstance, bz3_free), the block buffer is allocated fallibly (out of memory is the legacy message); a bad bzip3 magic with a usable block size ends the stream after the message (the C++ crashes there, B-src_leaves-068, not in the corpus); stale bytes of a header shorter than 9 bytes read as zeros.'
+  - 'unit gate: GATE unit zstream_brotli_bzip3: PASS (migration/out/gates/unit/zstream_brotli_bzip3/report.json); seam-replay divergent_cases=0 over 33 cases, rust-tests 9 passed, clippy -D warnings clean, policy-scan clean. Surface proof (local, product built with HAVE_LIB* for all codecs, CPP_RUST_IMPL_SRC_LEAVES=rust, RustCargoFeatures=codecs, CppRustOutSuffix=-codecs): run-cases + trace-diff against migration/corpus/src_leaves/zstream/surface: cases 287 (197 earlier + 90 br/bz3), divergent 0; linker map shows brotlidec:decode.obj and bzip3:libbz3.obj linked. The default Base-Release build defines no HAVE_LIBBROTLI/HAVE_LIBBZIP3, so br/bz3 stay unsupported there until the MSVC glue task; ffi/codecs.rs adds link attributes (cfg ugrep_build_links unset) so the replay harness, which this task may not edit, links the new libs. Unsafe review: only extern C calls with pointers derived from slices/locals, instances owned by Drop types, no panics on FFI paths.'
