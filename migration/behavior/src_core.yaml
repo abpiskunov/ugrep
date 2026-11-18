@@ -1158,7 +1158,8 @@ behaviors:
   - id: B-src_core-172
     statement: "`--label` and file names in the structured formats: a `\"` is written `\\\"` in JSON, `&quot;` in XML, `\\\"` in CSV (the match text uses a doubled `\"\"` in CSV) and `\\\"` in the C++ output"
     kind: normal
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-output-6
     evidence: ["case:out-lab-json-2", "case:out-lab-xml-2", "case:out-lab-csv-2", "case:out-lab-cpp-2"]
     origin: capture
     suspicious: true
@@ -1244,7 +1245,8 @@ behaviors:
   - id: B-src_core-186
     statement: "A last line without a line ending: the plain output of stdin `foo` with -n is `1:foo` followed by CRLF (`\\r\\n`), while a line that has its LF is output with a bare LF; XML and the `%~` of --format give LF and CRLF as for other lines"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-output-5
     evidence: ["case:out-nonl-plain", "case:out-nonl-xml", "case:out-nonl-format", "case:out-nonl-color"]
     origin: capture
     suspicious: true
@@ -1282,7 +1284,8 @@ behaviors:
   - id: B-src_core-192
     statement: "`--replace=FORMAT` with the `%n` field and without -n prints the number of the match line in the output (1, 2, 3 for lines 1, 4, 6): the real line number appears only when -n or a `--max-line` option is given, `--format=%n` always gives the real line number"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-output-1
     evidence: ["case:out-rn2-replace-n-plain", "case:out-rn2-replace-n-with-n", "case:out-rn2-replace-n-maxline", "case:out-r-65-5_n"]
     origin: capture
     suspicious: true
@@ -1290,7 +1293,8 @@ behaviors:
   - id: B-src_core-193
     statement: "`--format=%l` under `-v` outputs the letter `l`, `%n` the real line number and `%k`, `%b` the column and offset of the non-matching line"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-output-2
     evidence: ["case:out-rn2-format-n-invert"]
     origin: capture
     suspicious: true
@@ -1298,7 +1302,8 @@ behaviors:
   - id: B-src_core-194
     statement: "`--color=always` with `--width` leaves an empty separator colour pair `ESC[36mESC[m` after a file name that the cut shortened (`out-w-5-c`: `ESC[1;35mu.txtESC[mESC[36mESC[m`)"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-output-3
     evidence: ["case:out-w-5-c"]
     origin: capture
     suspicious: true
@@ -1306,7 +1311,8 @@ behaviors:
   - id: B-src_core-195
     statement: "`-o` with `--replace=FORMAT` writes the replacements back to back with no separator and no final newline: `<foo><foo>`"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-output-4
     evidence: ["case:out-rn2-replace-n-only", "case:out-r-0-", "case:out-rf-0-o"]
     origin: capture
     suspicious: true
