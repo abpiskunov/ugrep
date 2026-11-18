@@ -208,3 +208,62 @@ The ugrep.cpp ~9166-10482 range (Grep::ugrep, select, recurse, Static helpers) a
 ## ugrep.cpp options and main/wmain retained (D-src_core-options-main-retained)
 
 The ugrep.cpp ~4670-4765 (main/wmain) and ~5282-6354 (options, option_regexp/and/andnot/not/all_files) ranges stay C++. No seam signature, facade, tap, recorded trace or unit record exists; options only writes C++-owned flag_* globals (D-src_core-globals-retained), and main installs signal handlers and exit paths. Porting it later needs its own Prepare seam (flag snapshot in, resolved options out) + Behavior follow-up.
+
+
+## Seam: output (src/output.cpp, src/output.hpp) - Prepare seam
+
+Switch: `CPP_RUST_IMPL_OUTPUT` = `cpp` (default) | `rust`. MSBuild: `msvc/rust.props` default, `msvc/rust.targets` defines
+`CPP_RUST_IMPL_OUTPUT_RUST=1` for `rust`. Autotools has no option yet (default cpp; `make CPPFLAGS=-DCPP_RUST_IMPL_OUTPUT_RUST`
+selects rust; the umbrella is always built and linked). The umbrella is always linked (see Build above), so the switch is a
+compile-time facade, not a link-time one: with `rust` the `*_cpp` bodies stay compiled but unreachable. The Port tasks delete them
+(then output.obj holds only the facade). Only `src/ugrep.cpp` includes `output.hpp`; **no call site changed**, the public
+`Output` API is the facade.
+
+Facade (members of `Output`, in `src/output.cpp`, end of file): `color`, `header` x2, `binary_file_matches`, `format` x2,
+`format_invert`, `quote`, `cpp`, `csv`, `hex`, `json`, `xml`, `Dump::line`. Legacy bodies renamed `*_cpp` (declared protected in
+`output.hpp`; `Dump::line_cpp` is public). Rust bridge: `output_*` in `rust/src_core/src/lib.rs`, types and signatures
+`rust/src_core/src/output.rs` (stub bodies `panic!`, panic = abort). C++ conversions: `src/output_rust.hpp`.
+
+### Decision: matcher handoff = plain-data snapshot (not a callback table)
+
+Rust cannot own `reflex::AbstractMatcher`. C++ builds `OutputMatch` per call: first, last, size, wsize, lineno, lineno_end,
+columno, lines, accept, begin/text/end as offsets into `window` (the bytes `bol()..max(eol(), end())`, passed beside it), fuzzy
+`edits`/`distance` (dynamic_cast to FuzzyMatcher), and `groups` (`group_id()`/`group_next_id()` enumerated once, each with name
+and `(*matcher)[id]` as offset from `text()` and size). Reason: the accessors are cheap and stable during a call; a callback table
+would cost one crossing per accessor (about 15 per match) and make Rust call back into C++ (re-entrancy). `eol()` is called
+before `bol()` as the C++ requires. Cost to measure at Port: the group enumeration runs for every `format()` match
+(`groups` is not yet lazy); header/format are the only users. The caller-visible matcher state is not changed.
+
+### Decision: bytes out, C++ keeps the buffer (this stage)
+
+Every seam function is pure: inputs are slices plus small structs, output is `Vec<u8>` that the facade appends with `Output::str`.
+`Output` (Buffer, Sync, Dump state, `FILE*`, `mode_`, `lineno_`) stays in C++: it is embedded by value in `Grep`, its inline
+primitives (`chr`, `str`, `num`, `nl`, `hex`, `uri`, `mat`, `try_flush`) are hot and stay inline, so **no per-token bridge crossing**:
+one crossing per header, per format, per emitted data item (`quote`...`xml`) and per hex-dump line. The Rust side reads the options
+it already owns (`settings`, `color`), so no flag snapshot crosses. State a function changes comes back in the result:
+`heading`, `matching`, `lineno_` (`lineno_set`), BINARY bit (`set_binary`), `Dump::done()` request (`complete_dump`),
+`pstar`/`prevb` (`repeated`). `pathname == Static::LABEL_STANDARD_INPUT` is a pointer test: passed as `OutputCtx.stdin_label`.
+`Dump::hex`, `Dump::done` and `flush_truncated_lines` are state machines on the C++ buffer and are not seam functions yet.
+
+Known differences the Port must settle (listed, not decided here):
+1. Inside one facade call the C++ body writes through `str()` and may flush mid-call when the 32768-byte buffer fills or on
+   `nl()` with --line-buffered; the Rust result is appended after the call, so the flush points of one call move to the end of the
+   call (total bytes and order unchanged; interleaving between threads in unordered mode can differ).
+2. `Output::str` from `append` runs `check_flush` only through `next()`, not per `nl()` inside the bytes: with --line-buffered
+   the facade must call `check_flush()` per line, or Port Unit A moves `Buffer` and `Sync` to Rust (Rust-owned buffer pointer,
+   opaque `OutputState`, C++ inline appenders writing into it) and the facade shrinks to that. Decide there, with the benchmark.
+3. A NULL `separator`/`arg` is `has_separator`/`has_arg` false; a NULL `pathname` is the empty slice.
+
+### Decision: threading (cpp-rust-concurrency)
+
+This stage adds no Rust thread state: the seam functions are stateless and thread-neutral, so they are safe from any `GrepWorker`.
+`Sync` (UNORDERED/ORDERED, `acquire/try_acquire/release/finish/cancel`, STOP) and the buffers stay C++ until Port Unit A. The shape
+planned for Unit A: `Sync` as `Mutex + Condvar` with a slot counter, `Output` `Send` per worker (one per thread, never shared),
+`std::unique_lock` ownership mapped to a guard stored in the worker's `Output`; `cancel()` sets an atomic `eof` and wakes waiters.
+
+### Tap and gates
+
+No tap macro was added: `src/core_tap.hpp` was deleted at Cleanup and the plan has no output component or seam gate (the Output
+bodies are part of `src_core`, whose gates are cleaned). The generic `rust/src_core/cpp2rust_tap.hpp` template exists for the
+Behavior task. Evidence at Prepare: both modes build with MSVC (default and `/p:CPP_RUST_IMPL_OUTPUT=rust /p:CppRustOutSuffix=-rust`),
+`gate-check --gate baseline --target src_core` PASS (2981 surface cases, 0 divergent), `policy-scan` PASS.
