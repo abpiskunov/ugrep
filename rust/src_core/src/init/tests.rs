@@ -14,15 +14,15 @@ fn strncmp_and_setw_helpers() {
 struct HexEnv {
     settings: Settings,
     usages: Vec<Vec<u8>>,
+    arg: &'static [u8],
 }
 
 impl Env for HexEnv {
     fn settings(&mut self) -> &mut Settings {
         &mut self.settings
     }
-    fn c_string(&mut self, p: *const c_char) -> Vec<u8> {
-        // SAFETY: the tests pass pointers to NUL-terminated literals.
-        unsafe { std::ffi::CStr::from_ptr(p) }.to_bytes().to_vec()
+    fn c_string(&mut self, _p: *const c_char) -> Vec<u8> {
+        self.arg.to_vec()
     }
     fn usage(&mut self, message: &[u8]) {
         self.usages.push(message.to_vec());
@@ -75,7 +75,7 @@ impl Env for HexEnv {
 }
 
 fn run_hexdump(arg: &'static std::ffi::CStr) -> HexEnv {
-    let mut env = HexEnv { settings: Settings::DEFAULT, usages: Vec::new() };
+    let mut env = HexEnv { settings: Settings::DEFAULT, usages: Vec::new(), arg: arg.to_bytes() };
     env.settings.flag_hexdump = arg.as_ptr();
     let k = Consts {
         auto: std::ptr::null(),
