@@ -399,18 +399,14 @@ for lib in z bz2 lzma lz4 zstd viiz; do
       ;;
   esac
 done
-# the macros define HAVE_LIBBROTLI/HAVE_LIBBZIP3 and add -lbrotlidec -lbrotlienc / -lbzip3 to LIBS only on success;
-# the Rust decoder also needs brotlicommon
-case " $LIBS " in
-  *" -lbrotlidec "*)
-    rust_codec_libs="${rust_codec_libs:+$rust_codec_libs,}brotlidec,brotlicommon"
-    ;;
-esac
-case " $LIBS " in
-  *" -lbzip3 "*)
-    rust_codec_libs="${rust_codec_libs:+$rust_codec_libs,}bzip3"
-    ;;
-esac
+# the macros define HAVE_LIBBROTLI/HAVE_LIBBZIP3 on the same conditions tested here, but add -lbrotlidec -lbrotlienc to LIBS;
+# the Rust decoder needs brotlicommon, so derive the list from the macro results
+if test "x$brotli_cv_libbrotli" = "xyes" && test "x$brotli_cv_brotli_h" = "xyes"; then
+  rust_codec_libs="${rust_codec_libs:+$rust_codec_libs,}brotlidec,brotlicommon"
+fi
+if test "x$bzip3_cv_libbzip3" = "xyes" && test "x$bzip3_cv_libbz3_h" = "xyes" && test "x$bzip3_cv_libbz3_v150" = "xyes"; then
+  rust_codec_libs="${rust_codec_libs:+$rust_codec_libs,}bzip3"
+fi
 RUST_FEATURES=""
 if test "x$rust_codec_libs" != "x"; then
   RUST_FEATURES="--features codecs"
