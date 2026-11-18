@@ -956,7 +956,7 @@ behaviors:
     statement: "usage() for an invalid option value writes `ugrep: invalid argument --OPT=VALUE, valid arguments are ...` and `For more help, run `ugrep --help' or `ugrep --help --OPT'` to standard error, exit 2; the same in a config file"
     kind: error
     status: observed
-    evidence: ["case:hm-usage-invalid-value", "case:hm-usage-invalid-value-list", "case:hm-usage-invalid-value-dir", "case:hm-usage-invalid-value-dev", "case:hm-usage-invalid-value-hexdump", "case:hm-usage-invalid-value-type", "case:hm-usage-invalid-value-tabs", "case:hm-usage-invalid-value-zmax", "case:hm-usage-invalid-value-context", "case:hm-usage-invalid-value-maxcount", "case:hm-usage-bad-regex-perl", "case:hm-usage-invalid-value-jobs", "case:hm-usage-invalid-value-sort", "case:hm-usage-invalid-value-width", "case:hm-usage-invalid-value-encoding", "case:hm-usage-config-bad-value", "case:hm-usage-config-bad-warn-then-search"]
+    evidence: ["case:hm-usage-invalid-value", "case:hm-usage-invalid-value-list", "case:hm-usage-invalid-value-dir", "case:hm-usage-invalid-value-dev", "case:hm-usage-invalid-value-hexdump", "case:hm-usage-invalid-value-type", "case:hm-usage-invalid-value-tabs", "case:hm-usage-invalid-value-zmax", "case:hm-usage-invalid-value-context", "case:hm-usage-invalid-value-maxcount", "case:hm-usage-invalid-value-jobs", "case:hm-usage-invalid-value-sort", "case:hm-usage-invalid-value-width", "case:hm-usage-invalid-value-encoding", "case:hm-usage-config-bad-value", "case:hm-usage-config-bad-warn-then-search"]
     origin: capture
   - id: B-src_core-141
     statement: "A command without PATTERN (`ugrep`, `ugrep -n`, `ugrep -r`, with stdin text) writes `ugrep: no search PATTERN specified` and the Examples block to standard error, exit 2; a missing value of `-A`/`--context` at the end of the command line is the same error because the option consumes nothing; a trailing long option that needs a value (`foo a.txt --max-count`) writes `ugrep: missing argument for --max-count` and `For more help, run `ugrep --help' or `ugrep --help --max-count'`, exit 2"
@@ -1011,10 +1011,10 @@ behaviors:
     evidence: ["case:hm-isdir-skip", "case:hm-isdir-skip-q", "case:hm-isdir-recurse", "case:hm-isdir-default", "case:hm-isdir-default-match", "case:hm-isdir-default-r-empty", "case:hm-isdir-read-exclude-dir", "case:hm-isdir-read-include-dir", "case:hm-isdir-read-glob-opt", "case:hm-exit-dir-match", "case:hm-exit-dir-nomatch"]
     origin: capture
   - id: B-src_core-149
-    statement: "`-z`/`--decompress` is not available in the recorded build (HAVE_LIBZ undefined in Base-Release): every format and every combination of options exits 2 with `ugrep: option -z is not available in this build configuration of ugrep` and the `For more help ... --help -z'` line, so cannot_decompress() is never called"
+    statement: "`-z`/`--decompress` is not available in the recorded build (HAVE_LIBZ undefined in Base-Release): every format and every combination of options exits 2 with `ugrep: option -z is not available in this build configuration of ugrep` and the `For more help ... --help -z'` line, so cannot_decompress() is never called; `-P` likewise exits 2 with `ugrep: option -P is not available in this build configuration of ugrep` (no PCRE2 in Base-Release)"
     kind: error
     status: observed
-    evidence: ["case:hm-decomp-gz", "case:hm-decomp-bz2", "case:hm-decomp-xz", "case:hm-decomp-lz4", "case:hm-decomp-zst", "case:hm-decomp-zip", "case:hm-decomp-7z", "case:hm-decomp-tar", "case:hm-decomp-gz-s", "case:hm-decomp-gz-q", "case:hm-decomp-gz-color", "case:hm-decomp-gz-multi", "case:hm-decomp-gz-r", "case:hm-decomp-gz-trunc-header", "case:hm-decomp-gz-empty", "case:hm-decomp-gz-text", "case:hm-decomp-zzz", "case:hm-decomp-long", "case:hm-decomp-zmax", "case:hm-decomp-stats", "case:hm-decomp-stdin", "case:hm-decomp-bad-then-good", "case:hm-exit-null-data"]
+    evidence: ["case:hm-decomp-gz", "case:hm-decomp-bz2", "case:hm-decomp-xz", "case:hm-decomp-lz4", "case:hm-decomp-zst", "case:hm-decomp-zip", "case:hm-decomp-7z", "case:hm-decomp-tar", "case:hm-decomp-gz-s", "case:hm-decomp-gz-q", "case:hm-decomp-gz-color", "case:hm-decomp-gz-multi", "case:hm-decomp-gz-r", "case:hm-decomp-gz-trunc-header", "case:hm-decomp-gz-empty", "case:hm-decomp-gz-text", "case:hm-decomp-zzz", "case:hm-decomp-long", "case:hm-decomp-zmax", "case:hm-decomp-stats", "case:hm-decomp-stdin", "case:hm-decomp-bad-then-good", "case:hm-exit-null-data", "case:hm-usage-bad-regex-perl"]
     origin: capture
   - id: B-src_core-150
     statement: "`--no-decompress` and a corrupt file without `-z` search the bytes as a binary or text file; no decompression error is reported"
@@ -1065,10 +1065,10 @@ behaviors:
     evidence: ["case:hm-exit-exit-error-match", "case:hm-exit-exit-error-nomatch", "case:hm-exit-exit-error-warn", "case:hm-exit-exit-error-warn-q", "case:hm-exit-exit-error-warn-s", "case:hm-exit-no-exit-error", "case:hm-warn-exit-error-match"]
     origin: capture
   - id: B-src_core-158
-    statement: "Search output line endings on the recorded Windows build: match lines, `--json` and `--format` output are bare LF (`\\n`); the `-c` count, the `-l`/`-L` file names and `Binary file NAME matches` lines are CRLF (`\\r\\n`), as are help, version and every message on standard error (written by iostreams/stdio in text mode)"
+    statement: "Search output line endings on the recorded Windows build: match lines and `--json` output are bare LF (`\\n`); the `-c` count, the `-l`/`-L` file names, `Binary file NAME matches` lines and the `%~` newline of `--format` are CRLF (`\\r\\n`), as are help, version and every message on standard error (written by iostreams/stdio in text mode)"
     kind: edge-case
     status: observed
-    evidence: ["case:hm-help", "case:hm-version", "case:hm-usage-unknown-long", "case:hm-isdir-read", "case:hm-warn-nofile", "case:hm-exit-match", "case:hm-exit-c-match", "case:hm-isdir-read-count", "case:hm-isdir-read-list", "case:hm-exit-L-nomatch", "case:hm-exit-binary-match", "case:hm-exit-json-match"]
+    evidence: ["case:hm-help", "case:hm-version", "case:hm-usage-unknown-long", "case:hm-isdir-read", "case:hm-warn-nofile", "case:hm-exit-match", "case:hm-exit-c-match", "case:hm-isdir-read-count", "case:hm-isdir-read-list", "case:hm-exit-L-nomatch", "case:hm-exit-binary-match", "case:hm-exit-json-match", "case:output-format"]
     origin: capture
   - id: B-src_core-159
     statement: "Value checks of `-Z`, `--max-line`, `--hyperlink` and `--colors`: an out of range fuzzy (`-Z99999`) or `--max-line=0` exits 2 with `invalid argument`, while `--hyperlink=%` and `--colors=zz=1` are accepted silently and the search runs (exit 0)"
