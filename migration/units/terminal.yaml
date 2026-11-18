@@ -1,0 +1,17 @@
+schema: cpp-rust-unit/1
+unit: terminal
+component: src_core
+functions: [src_core.terminal, src_core.set_terminal_hyperlink, src_core.set_color, src_core.trim]
+cpp_files: [src/ugrep.cpp]
+rust_files: rust/src_core/src/terminal.rs rust/src_core/src/color.rs rust/src_core/src/ffi/terminal.rs
+rust_crate_name: src_core
+harness_crate_name: src_core-harness
+depends_on: [settings, options]
+status: ported
+notes:
+  - 'terminal() and set_terminal_hyperlink() are thin shims in src/ugrep.cpp that fill a TerminalEnv callback table and call ugrep_core_terminal / ugrep_core_set_terminal_hyperlink (ffi/terminal.rs, #[export_name]). Logic is in terminal.rs on the S1 Settings struct through a Host trait; usage(), fstat of stdout into Static::output_stat*, the UTF-8 tree glyphs and flag_hyperlink_host/path/prefix stay C++ behind callbacks. isatty, getenv, gethostname (WSAStartup on Windows) and the console VT mode are called from Rust.'
+  - 'DEVIATION from the plan: find_text_preview is NOT ported. It only clones the reflex matcher and runs Grep (unported C++), so there is no portable logic; it stays C++ as ugrep_find_text_preview and its Rust stub, bridge fn and TextPreview struct were removed.'
+  - 'DEVIATION from the Prepare seam: the CPP_RUST_IMPL_SRC_CORE_TERMINAL sub-switch is removed and the C++ bodies are deleted (same as the options port); terminal/set_terminal_hyperlink changed from cxx bridge to a C ABI callback table, and set_color/trim were removed from signatures::ui because the harness includes signatures.rs.'
+  - 'set_color and trim remain cxx bridge fns (core_set_color, core_trim) implemented in color.rs.'
+  - 'bug-preserve (Q-core-114..126): hl= sets flag_hyperlink to grep_colors+3; an empty color capability still emits the reset; processing continues after usage() returns in config mode; query mode calls set_terminal_hyperlink repeatedly and flag_hyperlink_path accumulates. Q-core-115: HOME/USERPROFILE unset behaves like set-but-empty (no crash).'
+  - 'unsafe is confined to ffi/terminal.rs with SAFETY comments.'

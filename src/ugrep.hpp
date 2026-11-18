@@ -675,7 +675,6 @@ extern void set_terminal_hyperlink();
 extern void ugrep();
 
 // perform a limited ugrep search on a single file with optional archive part and store up to num results in a vector, may throw an exception
-extern void ugrep_find_text_preview_cpp(const char *filename, const char *partname, size_t from_lineno, size_t max, size_t& lineno, size_t& num, std::vector<std::string>& text);
 extern void ugrep_find_text_preview(const char *filename, const char *partname, size_t from_lineno, size_t max, size_t& lineno, size_t& num, std::vector<std::string>& text);
 
 // extract a part from an archive and send to a stream

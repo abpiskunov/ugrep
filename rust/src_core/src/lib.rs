@@ -18,6 +18,12 @@ pub mod options_ffi;
 // the C-ABI entry of `init` (argv pointers cannot cross the cxx bridge)
 #[path = "ffi/init.rs"]
 pub mod init_ffi;
+// `set_color` and `trim`
+pub mod color;
+// `terminal()` and `set_terminal_hyperlink()` and their C-ABI entries (callbacks into the retained C++)
+pub mod terminal;
+#[path = "ffi/terminal.rs"]
+pub mod terminal_ffi;
 
 use signatures as sig;
 
@@ -141,20 +147,7 @@ mod ffi {
         end: usize,
     }
 
-    /// Result of `ugrep_find_text_preview`: the out-parameters the facade copies back.
-    struct TextPreview {
-        lineno: usize,
-        num: usize,
-        text: Vec<Bytes>,
-    }
-
     extern "Rust" {
-        /// Seam function `src_core.find_text_preview`.
-        fn core_find_text_preview(filename: &[u8], partname: &[u8], from_lineno: usize, max: usize) -> Result<TextPreview>;
-        /// Seam function `src_core.terminal`: reads and writes `ugrep_settings` directly.
-        fn core_terminal();
-        /// Seam function `src_core.set_terminal_hyperlink`.
-        fn core_set_terminal_hyperlink();
         /// Seam function `src_core.set_color`: `color` is the `char[COLORLEN]` the C++ passes.
         fn core_set_color(colors: &[u8], parameter: &[u8], color: &mut [u8]);
         /// Seam function `src_core.trim`: the facade erases what is outside the returned range.
@@ -330,29 +323,12 @@ fn cnf_anchor(pattern: &[u8], flags: &ffi::CnfFlags) -> ffi::CnfAnchored {
     ffi::CnfAnchored { pattern: a.pattern, enable_empty: a.enable_empty }
 }
 
-fn core_find_text_preview(filename: &[u8], partname: &[u8], from_lineno: usize, max: usize) -> Result<ffi::TextPreview, String> {
-    let r = sig::ui::find_text_preview(filename, partname, from_lineno, max).map_err(|e| format!("{:?}", e))?;
-    Ok(ffi::TextPreview {
-        lineno: r.lineno,
-        num: r.num,
-        text: r.text.into_iter().map(|data| ffi::Bytes { data }).collect(),
-    })
-}
-
-fn core_terminal() {
-    sig::ui::terminal()
-}
-
-fn core_set_terminal_hyperlink() {
-    sig::ui::set_terminal_hyperlink()
-}
-
 fn core_set_color(colors: &[u8], parameter: &[u8], color: &mut [u8]) {
-    sig::ui::set_color(colors, parameter, color)
+    color::set_color(colors, parameter, color)
 }
 
 fn core_trim(line: &[u8]) -> ffi::TrimRange {
-    let r = sig::ui::trim(line);
+    let r = color::trim(line);
     ffi::TrimRange { begin: r.begin, end: r.end }
 }
 
