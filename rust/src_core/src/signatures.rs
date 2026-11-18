@@ -1,5 +1,5 @@
 //! Types and signatures of the seam of `src_core` (src/ugrep.cpp, cnf, output, stats, mmap), fixed by the
-//! Prepare seam task. Every body is `todo!()` until a Port task; the Port never edits a signature (the
+//! Prepare seam task. Every body is `panic!` until a Port task; the Port never edits a signature (the
 //! signature change protocol of the plan applies). The replay harness includes this file alone, so it names
 //! no `cxx` type: `lib.rs` converts between the bridge structs and the types here.
 //!
@@ -240,6 +240,66 @@ pub mod cnf {
     /// `CNF::anchor` (static): reads `flag_line_regexp`, `flag_word_regexp`, `flag_mode`; writes `flag_empty`.
     pub fn anchor(pattern: &[u8], flags: &CnfFlags) -> Anchored {
         super::cnf_impl::anchor(pattern, flags)
+    }
+}
+
+/// Part of a line that `trim` keeps: `line[begin..end]`, white space (`isspace`, C locale) removed from both ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrimRange {
+    pub begin: usize,
+    pub end: usize,
+}
+
+/// Result of `find_text_preview`: the `lineno`, `num` and `text` out-parameters of `ugrep_find_text_preview`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextPreview {
+    pub lineno: usize,
+    pub num: usize,
+    pub text: Vec<Vec<u8>>,
+}
+
+/// Seam functions of the terminal group and `init` (src/ugrep.cpp, Prepare seam "init/terminal/hyperlink/set_color/trim").
+/// They work on `ugrep_settings` (S1) directly; the C++ they need is listed in `SEAM.md` (callbacks). Stubs until the Ports.
+pub mod ui {
+    use super::{TextPreview, TrimRange};
+    use std::os::raw::c_char;
+
+    /// `terminal()`: TTY check, `flag_tty_term`, color defaults and `GREP_COLORS`, pager and query decisions.
+    pub fn terminal() {
+        panic!("not ported yet: terminal")
+    }
+
+    /// `set_terminal_hyperlink()`: `--hyperlink` prefix, host and working directory (host/path are opaque C++ strings).
+    pub fn set_terminal_hyperlink() {
+        panic!("not ported yet: set_terminal_hyperlink")
+    }
+
+    /// `set_color(colors, parameter, color)`: `colors` and `parameter` are C strings without NUL, `color` is the
+    /// `char[COLORLEN]` buffer the C++ owns; the result is NUL-terminated inside `color`.
+    pub fn set_color(colors: &[u8], parameter: &[u8], color: &mut [u8]) {
+        let _ = (colors, parameter, color);
+        panic!("not ported yet: set_color")
+    }
+
+    /// `ugrep_find_text_preview`: limited search of one file (or archive part) for the TUI preview.
+    pub fn find_text_preview(filename: &[u8], partname: &[u8], from_lineno: usize, max: usize) -> Result<TextPreview, super::CoreError> {
+        let _ = (filename, partname, from_lineno, max);
+        panic!("not ported yet: find_text_preview")
+    }
+
+    /// `trim(line)`: the range of `line` left after removing white space from both ends.
+    pub fn trim(line: &[u8]) -> TrimRange {
+        let _ = line;
+        panic!("not ported yet: trim")
+    }
+
+    /// `init(argc, argv)`: parses options into `ugrep_settings` and the opaque C++ containers.
+    ///
+    /// `argv` is the process argument vector (`argc` entries, valid NUL-terminated strings that live for the whole
+    /// process: the settings keep pointers into them, and `trim_pathname_arg` modifies them in place).
+    pub fn init(argv: &mut [*const c_char]) {
+        let _ = argv;
+        panic!("not ported yet: init")
     }
 }
 

@@ -1,5 +1,5 @@
 //! Rust side of the `src_core` component (src/cnf.cpp, src/stats.cpp; later src/ugrep.cpp and src/output.cpp).
-//! One bridge module (`ffi`); all boundary code is here. The bodies are `todo!()` stubs until the Port tasks.
+//! One bridge module (`ffi`); all boundary code is here. The bodies are `panic!` stubs until the Port tasks.
 //!
 //! Only `extern "Rust"` functions: the C++ facade calls Rust, Rust never calls the component's legacy C++.
 //! State stays in C++ (see SEAM.md): everything crosses by value, as a snapshot in and a result out.
@@ -11,6 +11,9 @@ pub mod signatures;
 pub mod settings;
 #[path = "ffi/settings.rs"]
 pub mod settings_ffi;
+// the C-ABI entry of `init` (argv pointers cannot cross the cxx bridge)
+#[path = "ffi/init.rs"]
+pub mod init_ffi;
 
 use signatures as sig;
 
@@ -128,7 +131,30 @@ mod ffi {
         pathsep: u8,
     }
 
+    /// Part of the line `trim` keeps: `line[begin..end]` (`signatures::TrimRange`).
+    struct TrimRange {
+        begin: usize,
+        end: usize,
+    }
+
+    /// Result of `ugrep_find_text_preview`: the out-parameters the facade copies back.
+    struct TextPreview {
+        lineno: usize,
+        num: usize,
+        text: Vec<Bytes>,
+    }
+
     extern "Rust" {
+        /// Seam function `src_core.find_text_preview`.
+        fn core_find_text_preview(filename: &[u8], partname: &[u8], from_lineno: usize, max: usize) -> Result<TextPreview>;
+        /// Seam function `src_core.terminal`: reads and writes `ugrep_settings` directly.
+        fn core_terminal();
+        /// Seam function `src_core.set_terminal_hyperlink`.
+        fn core_set_terminal_hyperlink();
+        /// Seam function `src_core.set_color`: `color` is the `char[COLORLEN]` the C++ passes.
+        fn core_set_color(colors: &[u8], parameter: &[u8], color: &mut [u8]);
+        /// Seam function `src_core.trim`: the facade erases what is outside the returned range.
+        fn core_trim(line: &[u8]) -> TrimRange;
         /// Seam function `src_core.cnf_compile`.
         fn cnf_compile(terms: Vec<CnfTerm>, pattern: &[u8], flags: &CnfFlags) -> CnfCompiled;
         /// Seam function `src_core.cnf_new_pattern`.
@@ -298,6 +324,32 @@ fn cnf_quote(pattern: &[u8]) -> Vec<u8> {
 fn cnf_anchor(pattern: &[u8], flags: &ffi::CnfFlags) -> ffi::CnfAnchored {
     let a = sig::cnf::anchor(pattern, &flags_in(flags));
     ffi::CnfAnchored { pattern: a.pattern, enable_empty: a.enable_empty }
+}
+
+fn core_find_text_preview(filename: &[u8], partname: &[u8], from_lineno: usize, max: usize) -> Result<ffi::TextPreview, String> {
+    let r = sig::ui::find_text_preview(filename, partname, from_lineno, max).map_err(|e| format!("{:?}", e))?;
+    Ok(ffi::TextPreview {
+        lineno: r.lineno,
+        num: r.num,
+        text: r.text.into_iter().map(|data| ffi::Bytes { data }).collect(),
+    })
+}
+
+fn core_terminal() {
+    sig::ui::terminal()
+}
+
+fn core_set_terminal_hyperlink() {
+    sig::ui::set_terminal_hyperlink()
+}
+
+fn core_set_color(colors: &[u8], parameter: &[u8], color: &mut [u8]) {
+    sig::ui::set_color(colors, parameter, color)
+}
+
+fn core_trim(line: &[u8]) -> ffi::TrimRange {
+    let r = sig::ui::trim(line);
+    ffi::TrimRange { begin: r.begin, end: r.end }
 }
 
 fn stats_report(input: &ffi::StatsInput) -> Vec<u8> {

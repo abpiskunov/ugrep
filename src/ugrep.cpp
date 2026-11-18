@@ -80,6 +80,11 @@ After this, you may want to test ugrep and install it (optional):
 #include "output.hpp"
 #include "tui_entry.hpp"
 #include "stats.hpp"
+
+// the terminal group and init() may be implemented in Rust (rust/src_core), see rust/src_core/SEAM.md
+#if defined(CPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST) || defined(CPP_RUST_IMPL_SRC_CORE_INIT_RUST)
+# include "core_rust.hpp"
+#endif
 #include <reflex/matcher.h>
 #include <reflex/linematcher.h>
 #include <reflex/fuzzymatcher.h>
@@ -306,8 +311,11 @@ void option_not(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, in
 void option_not(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, const char *arg);
 void option_all_files();
 void init(int argc, const char **argv);
+void init_cpp(int argc, const char **argv);
 void set_color(const char *colors, const char *parameter, char color[COLORLEN]);
+void set_color_cpp(const char *colors, const char *parameter, char color[COLORLEN]);
 void trim(std::string& line);
+void trim_cpp(std::string& line);
 void trim_pathname_arg(const char *arg);
 bool is_output(ino_t inode);
 const char *getoptarg(int argc, const char **argv, const char *arg, int& i);
@@ -6185,7 +6193,7 @@ void option_all_files()
 }
 
 // parse the command-line options and initialize
-void init(int argc, const char **argv)
+void init_cpp(int argc, const char **argv)
 {
   // get home directory path to expand ~ in options with path arguments, using fopen_smart()
 
@@ -7355,7 +7363,7 @@ void init(int argc, const char **argv)
 }
 
 // check TTY info and set colors
-void terminal()
+void terminal_cpp()
 {
   // check if standard output is a TTY
   flag_tty_term = isatty(STDOUT_FILENO) != 0;
@@ -7720,7 +7728,7 @@ void terminal()
 }
 
 // --hyperlink parsing
-void set_terminal_hyperlink()
+void set_terminal_hyperlink_cpp()
 {
   // set prefix, host, current working directory path to output hyperlinks with --hyperlink
   if (flag_hyperlink != NULL)
@@ -8993,7 +9001,7 @@ void ugrep()
 }
 
 // perform a limited ugrep search on a single file with optional archive part and store up to num results in a vector, may throw an exception, used by the TUI
-void ugrep_find_text_preview(const char *filename, const char *partname, size_t from_lineno, size_t max, size_t& lineno, size_t& num, std::vector<std::string>& text)
+void ugrep_find_text_preview_cpp(const char *filename, const char *partname, size_t from_lineno, size_t max, size_t& lineno, size_t& num, std::vector<std::string>& text)
 {
   // we can only return a text preview when the main search engine ugrep() already started and executes, or after it ends
   if (!Static::matcher)
@@ -13502,7 +13510,7 @@ void import_globs(FILE *file, std::vector<std::string>& files, std::vector<std::
 }
 
 // trim white space from either end of the line
-void trim(std::string& line)
+void trim_cpp(std::string& line)
 {
   size_t len = line.length();
   size_t pos;
@@ -13540,7 +13548,7 @@ void trim_pathname_arg(const char *arg)
 }
 
 // convert GREP_COLORS and set the color substring to the ANSI SGR codes
-void set_color(const char *colors, const char *parameter, char color[COLORLEN])
+void set_color_cpp(const char *colors, const char *parameter, char color[COLORLEN])
 {
   const char *s = strstr(colors, parameter);
 
@@ -15190,4 +15198,86 @@ void abort(const char *message, const std::string& what)
 {
   fprintf(Static::errout, "%sugrep: %s%s%s%s%s%s\n\n", color_off, color_error, message != NULL ? message : "", color_off, color_high, what.c_str(), color_off);
   exit(EXIT_ERROR);
+}
+
+// src_core seam facades (rust/src_core/SEAM.md): cpp by default, Rust when the build defines
+// CPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST (terminal group) or CPP_RUST_IMPL_SRC_CORE_INIT_RUST (init)
+
+#ifdef CPP_RUST_IMPL_SRC_CORE_INIT_RUST
+extern "C" void ugrep_core_init(int argc, const char **argv);
+#endif
+
+void init(int argc, const char **argv)
+{
+#ifdef CPP_RUST_IMPL_SRC_CORE_INIT_RUST
+  ugrep_core_init(argc, argv);
+#else
+  init_cpp(argc, argv);
+#endif
+}
+
+void terminal()
+{
+#ifdef CPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST
+  ugrep_rust::core_terminal();
+#else
+  terminal_cpp();
+#endif
+}
+
+void set_terminal_hyperlink()
+{
+#ifdef CPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST
+  ugrep_rust::core_set_terminal_hyperlink();
+#else
+  set_terminal_hyperlink_cpp();
+#endif
+}
+
+void set_color(const char *colors, const char *parameter, char color[COLORLEN])
+{
+#ifdef CPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST
+  ugrep_rust::core_set_color(core_rust::to_slice(colors), core_rust::to_slice(parameter), rust::Slice<uint8_t>(reinterpret_cast<uint8_t*>(color), COLORLEN));
+#else
+  set_color_cpp(colors, parameter, color);
+#endif
+}
+
+void trim(std::string& line)
+{
+#ifdef CPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST
+  ugrep_rust::TrimRange r = ugrep_rust::core_trim(core_rust::to_slice(line));
+  line.erase(r.end);
+  line.erase(0, r.begin);
+#else
+  trim_cpp(line);
+#endif
+}
+
+void ugrep_find_text_preview(const char *filename, const char *partname, size_t from_lineno, size_t max, size_t& lineno, size_t& num, std::vector<std::string>& text)
+{
+#ifdef CPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST
+  // outputs stay untouched before the search engine runs, as in the C++ body
+  if (!Static::matcher)
+    return;
+
+  // a Rust error becomes a rust::Error exception, caught by the caller like the C++ throw
+  ugrep_rust::TextPreview r = ugrep_rust::core_find_text_preview(core_rust::to_slice(filename), core_rust::to_slice(partname), from_lineno, max);
+  lineno = r.lineno;
+  num = r.num;
+
+  // overwrite existing slots and leave the tail untouched, as the C++ body does
+  size_t i = 0;
+  for (const auto& line : r.text)
+  {
+    const char *data = reinterpret_cast<const char*>(line.data.data());
+    if (i < text.size())
+      text[i].assign(data, line.data.size());
+    else
+      text.emplace_back(data, line.data.size());
+    ++i;
+  }
+#else
+  ugrep_find_text_preview_cpp(filename, partname, from_lineno, max, lineno, num, text);
+#endif
 }
