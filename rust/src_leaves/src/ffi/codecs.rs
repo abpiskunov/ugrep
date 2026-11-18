@@ -378,6 +378,133 @@ impl Drop for ZstdStream {
     }
 }
 
+// ---- brotli (decoder) ----
+
+// The link attributes keep the replay harness, which includes this module without the cfg flags and the build script of
+// this crate, linking the libraries (build.rs links them for the crate itself, the product link line in linker mode).
+#[cfg(not(ugrep_no_brotlidec))]
+#[cfg_attr(not(ugrep_build_links), link(name = "brotlicommon", kind = "static"))]
+extern "C" {}
+
+#[cfg(not(ugrep_no_brotlidec))]
+#[cfg_attr(not(ugrep_build_links), link(name = "brotlidec", kind = "static"))]
+extern "C" {
+    fn BrotliDecoderCreateInstance(alloc: *const c_void, free: *const c_void, opaque: *mut c_void) -> *mut c_void;
+    fn BrotliDecoderDestroyInstance(state: *mut c_void);
+    fn BrotliDecoderDecompressStream(
+        state: *mut c_void,
+        available_in: *mut usize,
+        next_in: *mut *const u8,
+        available_out: *mut usize,
+        next_out: *mut *mut u8,
+        total_out: *mut usize,
+    ) -> c_int;
+}
+
+/// `BROTLI_DECODER_RESULT_ERROR`
+const BROTLI_DECODER_RESULT_ERROR: c_int = 0;
+
+/// `BrotliDecoderState*`
+pub struct BrotliStream(*mut c_void);
+
+impl BrotliStream {
+    /// `BrotliDecoderCreateInstance(NULL, NULL, NULL)`, `None` when it fails.
+    pub fn new() -> Option<BrotliStream> {
+        // SAFETY: null allocator callbacks select the default allocator.
+        let p = unsafe { x_brotli_create(core::ptr::null(), core::ptr::null(), core::ptr::null_mut()) };
+        if p.is_null() {
+            None
+        } else {
+            Some(BrotliStream(p))
+        }
+    }
+
+    /// `BrotliDecoderDecompressStream` over `input` and `output`; `Ok((consumed, produced))`, `Err(())` for
+    /// `BROTLI_DECODER_RESULT_ERROR`.
+    pub fn decompress(&mut self, input: &[u8], output: &mut [u8]) -> Result<(usize, usize), ()> {
+        let mut avail_in = input.len();
+        let mut next_in = input.as_ptr();
+        let mut avail_out = output.len();
+        let mut next_out = output.as_mut_ptr();
+        // SAFETY: the pointers and counts describe `input` and `output`, which stay valid for the call; the library only
+        // advances them within these bounds; the instance is valid until dropped; `total_out` may be NULL.
+        let ret = unsafe {
+            x_brotli_decompress(self.0, &mut avail_in, &mut next_in, &mut avail_out, &mut next_out, core::ptr::null_mut())
+        };
+        if ret == BROTLI_DECODER_RESULT_ERROR {
+            Err(())
+        } else {
+            Ok((input.len() - avail_in, output.len() - avail_out))
+        }
+    }
+}
+
+impl Drop for BrotliStream {
+    fn drop(&mut self) {
+        // SAFETY: the instance came from `BrotliDecoderCreateInstance` and is destroyed once.
+        unsafe {
+            x_brotli_destroy(self.0);
+        }
+    }
+}
+
+// ---- bzip3 ----
+
+#[cfg(not(ugrep_no_bzip3))]
+#[cfg_attr(not(ugrep_build_links), link(name = "bzip3", kind = "static"))]
+extern "C" {
+    fn bz3_new(block_size: i32) -> *mut c_void;
+    fn bz3_free(state: *mut c_void);
+    fn bz3_bound(input_size: usize) -> usize;
+    fn bz3_decode_block(state: *mut c_void, buffer: *mut u8, buffer_size: usize, compressed_size: i32, orig_size: i32) -> i32;
+}
+
+/// `struct bz3_state*`
+pub struct Bz3State(*mut c_void);
+
+impl Bz3State {
+    /// `bz3_new(block_size)`, `None` for a block size outside 65 KiB..511 MiB or when allocation fails.
+    pub fn new(block_size: u32) -> Option<Bz3State> {
+        let Ok(block_size) = i32::try_from(block_size) else { return None };
+        // SAFETY: plain allocation call.
+        let p = unsafe { x_bz3_new(block_size) };
+        if p.is_null() {
+            None
+        } else {
+            Some(Bz3State(p))
+        }
+    }
+
+    /// `bz3_bound(block_size)`: the size of the buffer `decode_block` needs.
+    pub fn bound(block_size: u32) -> usize {
+        // SAFETY: pure function.
+        unsafe { x_bz3_bound(block_size as usize) }
+    }
+
+    /// `bz3_decode_block(state, buf, buf.len(), compressed_size, orig_size)` in place; `buf` holds the compressed block
+    /// and receives the decompressed one. `None` on error (or a size that does not fit the C `int32_t`).
+    pub fn decode_block(&mut self, buf: &mut [u8], compressed_size: u32, orig_size: u32) -> Option<()> {
+        let compressed = i32::try_from(compressed_size).ok()?;
+        let orig = i32::try_from(orig_size).ok()?;
+        // SAFETY: `buf` is writable for `buf.len()` bytes; the state is valid until dropped.
+        let ret = unsafe { x_bz3_decode_block(self.0, buf.as_mut_ptr(), buf.len(), compressed, orig) };
+        if ret < 0 {
+            None
+        } else {
+            Some(())
+        }
+    }
+}
+
+impl Drop for Bz3State {
+    fn drop(&mut self) {
+        // SAFETY: the state came from `bz3_new` and is freed once.
+        unsafe {
+            x_bz3_free(self.0);
+        }
+    }
+}
+
 // ---- viizip (7zip) ----
 
 #[cfg(windows)]
@@ -471,6 +598,31 @@ codec_fn!(ugrep_no_zstd, x_zstd_init, ZSTD_initDStream, (s: *mut c_void) -> usiz
 codec_fn!(ugrep_no_zstd, x_zstd_decompress, ZSTD_decompressStream, (s: *mut c_void, o: *mut ZstdOutBuffer, i: *mut ZstdInBuffer) -> usize, usize::MAX);
 codec_fn!(ugrep_no_zstd, x_zstd_is_error, ZSTD_isError, (c: usize) -> u32, 1);
 codec_fn!(ugrep_no_zstd, x_zstd_in_size, ZSTD_DStreamInSize, () -> usize, 0);
+codec_fn!(
+    ugrep_no_brotlidec,
+    x_brotli_create,
+    BrotliDecoderCreateInstance,
+    (a: *const c_void, f: *const c_void, o: *mut c_void) -> *mut c_void,
+    core::ptr::null_mut()
+);
+codec_fn!(ugrep_no_brotlidec, x_brotli_destroy, BrotliDecoderDestroyInstance, (s: *mut c_void) -> (), ());
+codec_fn!(
+    ugrep_no_brotlidec,
+    x_brotli_decompress,
+    BrotliDecoderDecompressStream,
+    (s: *mut c_void, ai: *mut usize, ni: *mut *const u8, ao: *mut usize, no: *mut *mut u8, t: *mut usize) -> c_int,
+    BROTLI_DECODER_RESULT_ERROR
+);
+codec_fn!(ugrep_no_bzip3, x_bz3_new, bz3_new, (b: i32) -> *mut c_void, core::ptr::null_mut());
+codec_fn!(ugrep_no_bzip3, x_bz3_free, bz3_free, (s: *mut c_void) -> (), ());
+codec_fn!(ugrep_no_bzip3, x_bz3_bound, bz3_bound, (n: usize) -> usize, 0);
+codec_fn!(
+    ugrep_no_bzip3,
+    x_bz3_decode_block,
+    bz3_decode_block,
+    (s: *mut c_void, b: *mut u8, n: usize, c: i32, o: i32) -> i32,
+    -1
+);
 codec_fn!(ugrep_no_viiz, x_viinew, viinew, (f: *mut c_void) -> *mut c_void, core::ptr::null_mut());
 codec_fn!(ugrep_no_viiz, x_viiget, viiget, (v: *mut c_void, n: *mut c_char, m: usize, t: *mut i64, u: *mut u64) -> c_int, -1);
 codec_fn!(ugrep_no_viiz, x_viidec, viidec, (v: *mut c_void, b: *mut u8, l: usize) -> SSize, -1);

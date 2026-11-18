@@ -3,8 +3,8 @@
 //! `std::streambuf` part (buffer, `cur_`/`len_`, underflow/uflow/xsgetn) stays C++ in the adapter. C++ line ranges:
 //! rust/src_leaves/SEAM.md. The decoder state and the zip/7zip parsing are in `zstream_codecs`.
 use crate::signatures::zstream_codecs::{
-    file_eof, file_read, open_compress, u16le, u32le, Bzip2, Config, Decoder, Diagnostics, FilePtr, Gzip, Lz4, Xz,
-    ZipInfo, ZipState, Zstd, CODEC_7ZIP, CODEC_BZ2, CODEC_LZ4, CODEC_LZMA, CODEC_ZSTD, COMPRESS_HEADER_MAGIC,
+    file_eof, file_read, open_compress, u16le, u32le, Brotli, Bzip2, Bzip3, Bzip3Error, Config, Decoder, Diagnostics, FilePtr, Gzip, Lz4, Xz,
+    ZipInfo, ZipState, Zstd, CODEC_7ZIP, CODEC_BROTLI, CODEC_BZ2, CODEC_BZIP3, CODEC_LZ4, CODEC_LZMA, CODEC_ZSTD, COMPRESS_HEADER_MAGIC,
     DEFLATE_HEADER_MAGIC, XZ_HEADER_MAGIC_1, XZ_HEADER_MAGIC_2, ZIP_DESCRIPTOR_MAGIC, ZIP_EMPTY_MAGIC,
     ZIP_HEADER_MAGIC, ZSTD_HEADER_MAGIC, Z_BUF_LEN,
 };
@@ -150,8 +150,22 @@ impl ZStream {
             } else {
                 s.unsupported();
             }
-        } else if is_br(&name) || is_bz3(&name) || is_rar(&name) {
-            // brotli and bzip3 are not linked into the Rust build
+        } else if is_br(&name) {
+            if config.has(CODEC_BROTLI) {
+                match Brotli::new() {
+                    Some(z) => s.decoder = Some(Decoder::Brotli(Box::new(z))),
+                    None => s.fail_warning("BrotliDecoderCreateInstance failed"),
+                }
+            } else {
+                s.unsupported();
+            }
+        } else if is_bz3(&name) {
+            if config.has(CODEC_BZIP3) {
+                s.open_bzip3();
+            } else {
+                s.unsupported();
+            }
+        } else if is_rar(&name) {
             s.unsupported();
         } else if is_7z(&name) {
             if config.has(CODEC_7ZIP) {
@@ -178,6 +192,43 @@ impl ZStream {
     fn fail_warning(&mut self, message: &str) {
         self.diag.warning(message);
         self.at_end = true;
+    }
+
+    /// The bzip3 branch of `zstreambuf::open`: "BZ3v1" and the u32 block size (65 KiB..511 MiB) of the first 9 bytes.
+    /// The legacy code continues after a bad header with a null file: a bad block size gives a second message and the
+    /// `bz3_new failed` warning, which is reproduced; a bad magic with a usable block size reads through the null
+    /// file (it crashes), where the stream here just ends after the message.
+    fn open_bzip3(&mut self) {
+        const ERR: &str = "an error was detected in the bzip3 compressed data";
+        let mut hdr = [0u8; 9];
+        let n = file_read(self.file, &mut hdr);
+        let bad_magic = n < 9 || &hdr[..5] != b"BZ3v1";
+        if bad_magic {
+            self.diag.cannot_decompress(ERR);
+        }
+        let block_size = u32le(&hdr[5..]);
+        let bad_size = !(65 * 1024..=511 * 1024 * 1024).contains(&block_size);
+        if bad_size {
+            self.diag.cannot_decompress(ERR);
+        }
+        if bad_magic && !bad_size {
+            self.at_end = true;
+            return;
+        }
+        match Bzip3::new(block_size) {
+            Ok(z) => {
+                if bad_size {
+                    self.at_end = true;
+                } else {
+                    self.decoder = Some(Decoder::Bzip3(Box::new(z)));
+                }
+            }
+            Err(Bzip3Error::New) => self.fail_warning("bz3_new failed"),
+            Err(Bzip3Error::OutOfMemory) => {
+                self.diag.cannot_decompress("out of memory");
+                self.at_end = true;
+            }
+        }
     }
 
     /// The magic byte detection of `zstreambuf::open`.
