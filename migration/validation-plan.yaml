@@ -95,9 +95,9 @@ components:
     product_bin_rust: msvc/bin/Base-Release-x64-rust/ugrep-indexer.exe
     link_map: msvc/bin/Base-Release-x64-rust/ugrep-indexer.map
     rust_archive: "rust_umbrella:src_indexer"   # D-src_indexer-linked: the src_indexer crate itself
-    linked_args: '--forbid "[?](index|indexer|deleter)_cpp@@"'   # D-src_indexer-linked: the replaced C++ bodies; indexer_cli (options/usage/load_config/main) is retained C++
+    linked_args: '--forbid "[?](index_cpp|indexer_cpp|deleter_cpp|options_cpp|usage|help|version|load_config|cannot_decompress|warning|strtonum|strtopos)@@"'   # D-indexer-cli-linked: every former C++ indexer function; only the C++ main stub links
     cleanup_map: msvc/bin/Base-Release-x64/ugrep-indexer.map
-    retained_args: '--require "[?]options_cpp@@"'   # Q-cleanup-1 / Q-indexer-6, superseded by D-S1-supersede: still links; removed by the indexer_cli port
+    retained_args: ''   # D-indexer-cli-linked: indexer_cli is Rust (S3); no ugrep-owned C++ is required
     coverage_functions: 100
     coverage_lines: 85
 
