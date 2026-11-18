@@ -47,7 +47,7 @@ fn opt_ptr(c: &Option<CString>) -> *const c_char {
     c.as_ref().map_or(std::ptr::null(), |c| c.as_ptr())
 }
 
-struct CEnv<'a>(&'a OptionsEnv);
+pub(crate) struct CEnv<'a>(pub(crate) &'a OptionsEnv);
 
 impl Env for CEnv<'_> {
     fn usage(&mut self, message: &str, arg: Option<&[u8]>, valid: Option<&str>) {
@@ -135,6 +135,15 @@ pub unsafe extern "C" fn ugrep_core_options(env: *const OptionsEnv, argc: c_int,
     let argc = usize::try_from(argc).unwrap_or(0);
     // SAFETY: the caller passes a valid table and `argc` argv entries (see above).
     let (env, args) = unsafe { (&*env, std::slice::from_raw_parts(argv, argc)) };
+    // SAFETY: option parsing runs on the main thread before the workers start; C++ callbacks read the settings
+    // only after this function returns or between statements, never concurrently.
+    let settings = unsafe { &mut *UGREP_SETTINGS.as_ptr() };
+    run_options(env, settings, args);
+}
+
+/// Run the parser on `settings` with the argv entries `args` (NULL or NUL-terminated strings that outlive the
+/// call and whatever the parser keeps of them).
+pub(crate) fn run_options(env: &OptionsEnv, settings: &mut crate::settings::Settings, args: &[*const c_char]) {
     let argv: Vec<Z<'_>> = args
         .iter()
         .map(|&p| {
@@ -156,8 +165,5 @@ pub unsafe extern "C" fn ugrep_core_options(env: *const OptionsEnv, argc: c_int,
         default_ignore_file: unsafe { CStr::from_ptr(env.default_ignore_file) }.to_bytes_with_nul(),
         os_win: env.os_win != 0,
     };
-    // SAFETY: option parsing runs on the main thread before the workers start; C++ callbacks read the settings
-    // only after this function returns or between statements, never concurrently.
-    let settings = unsafe { &mut *UGREP_SETTINGS.as_ptr() };
     options::options(settings, &mut CEnv(env), consts, &argv);
 }

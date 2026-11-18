@@ -15,6 +15,10 @@ pub mod settings_ffi;
 pub mod options;
 #[path = "ffi/options.rs"]
 pub mod options_ffi;
+// `load_config` and `save_config` of src/ugrep.cpp and their C-ABI entries
+pub mod config;
+#[path = "ffi/config.rs"]
+pub mod config_ffi;
 // the C-ABI entry of `init` (argv pointers cannot cross the cxx bridge)
 #[path = "ffi/init.rs"]
 pub mod init_ffi;

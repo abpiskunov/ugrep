@@ -496,7 +496,11 @@ int fopen_smart(FILE **file, const char *filename, const char *mode)
   }
 
   if (*filename == '~')
+  {
+    if (Static::home_dir == NULL)
+      return errno = ENOENT;
     return fopenw_s(file, std::string(Static::home_dir).append(filename + 1).c_str(), mode);
+  }
 
   return fopenw_s(file, filename, mode);
 }
@@ -4583,482 +4587,6 @@ int main(int argc, const char **argv)
   return Static::warnings > 0 ? EXIT_ERROR : Stats::found_any_file() ? EXIT_OK : EXIT_FAIL;
 }
 
-// load config file specified or the default .ugrep, located in the working directory or home directory
-static void load_config(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, bool recurse = false)
-{
-  // the default config file is .ugrep when FILE is not specified
-  if (flag_config == NULL || *flag_config == '\0')
-    flag_config = ".ugrep";
-
-  // if config file was parsed before, then only try parsing the home dir config file
-  bool home = flag_config_files.find(flag_config) != flag_config_files.end();
-  bool wdir = !home;
-
-  // open a config file in the working dir or in the home directory
-  std::string config_file(flag_config);
-  FILE *file = NULL;
-
-  if (wdir)
-  {
-    // try opening a config file in the working directory
-    if (fopen_smart(&file, flag_config, "r") == 0)
-    {
-      if (file != NULL && file != stdin)
-      {
-        // check if we own this config file located in the working directory
-#ifdef OS_WIN_OR_MINGW
-        HANDLE hFile = reinterpret_cast<HANDLE>(_get_osfhandle(_fileno(file)));
-        PSID pSidOwner = NULL;
-        PSECURITY_DESCRIPTOR pSD = NULL;
-        if (GetSecurityInfo(hFile, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION, &pSidOwner, NULL, NULL, NULL, &pSD) == ERROR_SUCCESS)
-        {
-          HANDLE hToken = NULL;
-          if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
-          {
-            DWORD dwBufferSize = 0;
-            GetTokenInformation(hToken, TokenUser, NULL, 0, &dwBufferSize);
-            PTOKEN_USER pTokenUser = reinterpret_cast<PTOKEN_USER>(HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwBufferSize));
-            if (pTokenUser != NULL)
-            {
-              if (!GetTokenInformation(hToken, TokenUser, pTokenUser, dwBufferSize, &dwBufferSize) ||
-                  !EqualSid(pSidOwner, pTokenUser->User.Sid))
-              {
-                fclose(file);
-                file = NULL;
-              }
-              HeapFree(GetProcessHeap(), 0, pTokenUser);
-            }
-            CloseHandle(hToken);
-          }
-          if (pSD)
-            LocalFree(pSD);
-        }
-#else
-        struct stat buf;
-        if (fstat(fileno(file), &buf) == 0 && buf.st_uid != getuid())
-        {
-          fclose(file);
-          file = NULL;
-        }
-#endif
-      }
-    }
-    else
-    {
-      file = NULL;
-    }
-  }
-
-  if (file == NULL)
-  {
-    wdir = false;
-
-    // if not in the working directory, then check the home directory
-    if (Static::home_dir != NULL && *flag_config != '~' && *flag_config != PATHSEPCHR)
-    {
-      // check the home directory for the configuration file, parse only if not parsed before
-      config_file.assign(Static::home_dir).append(PATHSEPSTR).append(flag_config);
-      if (flag_config_files.find(config_file) != flag_config_files.end() ||
-          fopen_smart(&file, config_file.c_str(), "r") != 0)
-        file = NULL;
-    }
-
-#if defined(WITH_XDG_CONFIG_HOME) && !defined(OS_WIN)
-    // if the default configuration file is to be used, then check XDG_CONFIG_HOME/ugrep/config first
-    if (file == NULL && strcmp(flag_config, ".ugrep") == 0)
-    {
-      // get XDG_CONFIG_HOME path, defaults to $HOME/.config/ugrep/config when present
-      const char *xdg_config_home = getenv("XDG_CONFIG_HOME");
-      if (xdg_config_home == NULL || *xdg_config_home == '\0')
-        xdg_config_home = ".config";
-
-      // check if $XDG_CONFIG_HOME/ugrep/config or $HOME/.config/ugrep/config is present to parse
-      config_file.assign(xdg_config_home).append(PATHSEPSTR).append("ugrep").append(PATHSEPSTR).append("config");
-      if (flag_config_files.find(config_file) != flag_config_files.end() ||
-          fopen_smart(&file, config_file.c_str(), "r") != 0)
-        file = NULL;
-    }
-#endif
-  }
-
-  // parse config file
-  if (file != NULL)
-  {
-    // add config file path to the set
-    flag_config_files.insert(config_file);
-
-    reflex::BufferedInput input(file);
-
-    std::string line;
-    size_t lineno = 1;
-    bool errors = false;
-
-    while (true)
-    {
-      // read the next line
-      if (getline(input, line))
-        break;
-
-      trim(line);
-
-      // parse option or skip empty lines and comments
-      if (!line.empty() && line.front() != '#')
-      {
-        // construct an option argument to parse as argv[]
-        line.insert(0, "--");
-        const char *arg = line.c_str();
-        const char *args[2] = { NULL, arg };
-
-        Static::warnings = 0;
-
-        // warn about invalid options but do not exit
-        flag_usage_warnings = true;
-
-        options(pattern_args, 2, args);
-
-        if (Static::warnings > 0 ||
-            flag_bool || flag_fuzzy || flag_mode != Mode::UNSP ||
-            flag_any_line || flag_count || flag_files_with_matches || flag_files_without_match ||
-            flag_invert_match || flag_line_regexp || flag_only_line_number || flag_only_matching ||
-            flag_replace || flag_text || flag_word_regexp)
-        {
-          // reject invalid options and options that don't make sense for config
-          std::cerr << "ugrep: error in config file " << config_file << " at line " << lineno << '\n';
-          errors = true;
-        }
-        else if (line.compare(0, 8, "--config") == 0)
-        {
-          // parse a config file, but do not recurse more than one level deep
-          if (recurse)
-          {
-            std::cerr << "ugrep: error in config file " << config_file << " recursion at line " << lineno << '\n';
-            errors = true;
-          }
-          else
-          {
-            // save flag and pathname
-            const char *this_config = flag_config;
-            std::string this_file;
-            this_file.swap(config_file);
-
-            // load config to include in this config
-            flag_config = line.size() == 8 ? NULL : line.c_str() + 9;
-            load_config(pattern_args, true);
-
-            // restore flag and pathname
-            config_file.swap(this_file);
-            flag_config = this_config;
-          }
-        }
-      }
-
-      ++lineno;
-    }
-
-    // silently ignore some options that don't make sense for config, clashing and confusing to allow
-    flag_file.clear();
-    flag_from.clear();
-    flag_match = false;
-    flag_max_count = 0;
-    flag_max_files = 0;
-    flag_max_line = 0;
-    flag_max_size = 0;
-    flag_min_line = 0;
-    flag_min_size = 0;
-    flag_pager = NULL;
-    flag_query = false;
-    flag_quiet = false;
-    flag_regexp.clear();
-    flag_save_config = NULL;
-    if (wdir)
-    {
-      flag_view = NULL;
-      flag_filter.clear();
-      flag_filter_magic_label.clear();
-    }
-
-    if (ferror(file))
-      error("error while reading", config_file.c_str());
-
-    if (file != stdin)
-      fclose(file);
-
-    if (errors)
-      exit(EXIT_ERROR);
-  }
-  else if (strcmp(flag_config, ".ugrep") != 0)
-  {
-    error("option --config: cannot read", flag_config);
-  }
-
-  flag_usage_warnings = false;
-}
-
-// save a configuration file after loading it first when present
-static void save_config()
-{
-  bool exists = false;
-
-  // rename old config file to .old when present and not standard input
-  if (strcmp(flag_save_config, "-") != 0)
-  {
-    std::string config_old(flag_save_config);
-    config_old.append(".old");
-    if (std::rename(flag_save_config, config_old.c_str()) == 0)
-    {
-      exists = true;
-      errno = EEXIST;
-      warning("saved old configuration file to", config_old.c_str());
-    }
-  }
-
-  FILE *file = NULL;
-
-  // if not saved to standard output ("-"), then inform user
-  if (!flag_no_messages && strcmp(flag_save_config, "-") != 0)
-  {
-    fprintf(Static::errout, "ugrep: %s configuration file %s", exists ? "updating" : "saving", flag_save_config);
-
-    if (!flag_config_files.empty())
-    {
-      fprintf(Static::errout, " with options based on");
-      for (const auto& i : flag_config_files)
-        fprintf(Static::errout, " %s", i.c_str());
-    }
-
-    fprintf(Static::errout, "\n");
-  }
-
-  if (fopen_smart(&file, flag_save_config, "w") != 0)
-  {
-    usage("cannot save configuration file ", flag_save_config);
-
-    return;
-  }
-
-  if (strcmp(flag_save_config, ".ugrep") == 0)
-    fprintf(file, "# ugrep configuration used by ug and ugrep --config.\n");
-  else if (strcmp(flag_save_config, "-") == 0)
-    fprintf(file, "# ugrep configuration\n");
-  else
-    fprintf(file, "# ugrep configuration used with --config=%s or ---%s.\n", flag_save_config, flag_save_config);
-
-  fprintf(file, "\
-#\n\
-# A long option is defined per line with an optional `=' and its argument,\n\
-# when applicable.  Options that change patterns and search modes are ignored.\n\
-# Empty lines and lines starting with a `#' are ignored.\n\
-#\n\
-# Try `ug --help' or `ug --help WHAT' for help with options.\n\n");
-
-  fprintf(file, "### TERMINAL DISPLAY ###\n\n");
-
-  fprintf(file, "# Custom color scheme, overrides default GREP_COLORS parameters\n");
-  if (flag_colors != NULL)
-    fprintf(file, "colors=%s\n", flag_colors);
-  else
-    fprintf(file, "# colors=\n");
-  fprintf(file, "\
-# The argument is a colon-separated list of one or more parameters `sl='\n\
-# (selected line), `cx=' (context line), `mt=' (matched text), `ms=' (match\n\
-# selected), `mc=' (match context), `fn=' (file name), `ln=' (line number),\n\
-# `cn=' (column number), `bn=' (byte offset), `se=' (separator), `qp=' (TUI\n\
-# prompt), `qe=' (TUI errors), `qr=' (TUI regex), `qm=' (TUI regex meta\n\
-# characters), `ql=' (TUI regex lists and literals), `qb=' (TUI regex braces).\n\
-# Parameter values are ANSI SGR color codes or `k' (black), `r' (red), `g'\n\
-# (green), `y' (yellow), `b' (blue), `m' (magenta), `c' (cyan), `w' (white), or\n\
-# leave empty for no color.\n\
-# Upper case specifies background colors.\n\
-# A `+' qualifies a color as bright.\n\
-# A foreground and a background color may be combined with font properties `n'\n\
-# (normal), `f' (faint), `h' (highlight), `i' (invert), `u' (underline).\n\
-# Parameter `hl' enables file name hyperlinks (same as --hyperlink).\n\
-# Parameter `rv' reverses the `sl=' and `cx=' parameters when option -v is\n\
-# used.\n\
-#\n\
-# The ugrep default color scheme:\n\
-#   colors=cx=33:mt=1;31:fn=1;35:ln=1;32:cn=1;32:bn=1;32:se=36:qp=1;32:qe=1;37;41:qm=1;32:ql=36:qb=1;35\n\
-# The GNU grep and ripgrep default color scheme:\n\
-#   colors=sl=37:cx=33:mt=1;31:fn=35:ln=32:cn=32:bn=32:se=36:qp=1;32:qe=1;37;41:qm=1;32:ql=36:qb=1;35\n\
-# The silver searcher default color scheme:\n\
-#   colors=mt=30;43:fn=1;32:ln=1;33:cn=1;33:bn=1;33:qp=1;32:qe=1;37;41:qm=1;32:ql=36:qb=1;35\n\
-# Underlined bright green matches with shaded background on bright selected lines:\n\
-#   colors=sl=1:cx=33:ms=1;4;32;100:mc=1;4;32:fn=1;32;100:ln=1;32:cn=1;32:bn=1;32:se=36:qp=1;32:qe=1;37;41:qm=1;32:ql=36:qb=1;35\n\
-# Inverted bright yellow matches and TUI regex syntax highlighting with background colors:\n\
-#   colors=cx=hb:ms=hiy:mc=hic:fn=hi+y+K:ln=hg:cn=hg:bn=hg:se=c:gp=hg:qr=hwB:qm=hwG:ql=hwC:qb=hwM\n\
-# Only change the TUI regex syntax highlighting to use background colors:\n\
-#   colors=gp=hg:qr=hwB:qm=hwG:ql=hwC:qb=hwM\n\n");
-
-  fprintf(file, "# Enable color output to the terminal\n%s\n\n", flag_color != NULL ? "color" : "no-color");
-  if (flag_hyperlink != NULL && *flag_hyperlink == '\0')
-    fprintf(file, "# Enable hyperlinks in color output\nhyperlink\n\n");
-  else if (flag_hyperlink != NULL)
-    fprintf(file, "# Enable hyperlinks in color output\nhyperlink=%s\n\n", flag_hyperlink);
-  fprintf(file, "# Enable query TUI confirmation prompts, default: confirm\n%sno-confirm\n\n", flag_confirm ? "# " : "");
-  fprintf(file, "# Split query TUI screen on startup, default: no-split\n%ssplit\n\n", flag_split ? "" : "# ");
-  fprintf(file, "# Default query TUI response delay in units of 100ms, default: delay=4\n");
-  if (flag_delay == DEFAULT_QUERY_DELAY)
-    fprintf(file, "# delay=4\n\n");
-  else
-    fprintf(file, "delay=%zu\n\n", flag_delay);
-
-  fprintf(file, "# Enable query TUI file viewing command with CTRL-Y or F2, default: view\n");
-  if (flag_view != NULL && *flag_view == '\0')
-    fprintf(file, "# view=less\n\n");
-  else if (flag_view != NULL)
-    fprintf(file, "view=%s\n\n", flag_view);
-  else
-    fprintf(file, "no-view\n\n");
-
-  fprintf(file, "# Enable pretty output to the terminal, default: pretty\n%s\n\n", flag_pretty != NULL ? "pretty" : "no-pretty");
-
-  fprintf(file, "# Enable directory tree output to the terminal for -l (--files-with-matches) and -c (--count)\n%s\n\n", flag_tree ? "tree" : "no-tree");
-
-  if (flag_heading.is_defined() && flag_heading != (flag_pretty != NULL))
-    fprintf(file, "# Enable headings (enabled with --pretty)\n%s\n\n", flag_heading ? "heading" : "no-heading");
-
-  if (flag_break.is_defined() && flag_break != (flag_pretty != NULL))
-    fprintf(file, "# Enable break after matching files (enabled with --pretty)\n%s\n\n", flag_break ? "break" : "no-break");
-
-  if (flag_initial_tab.is_defined() && flag_initial_tab != (flag_pretty != NULL))
-    fprintf(file, "# Enable initial tab (enabled with --pretty)\n%s\n\n", flag_initial_tab ? "initial-tab" : "no-initial-tab");
-
-  if (flag_line_number.is_defined() && flag_line_number != (flag_pretty != NULL))
-    fprintf(file, "# Enable line numbers (enabled with --pretty)\n%s\n\n", flag_line_number ? "line-number" : "no-line-number");
-
-  if (flag_column_number.is_defined())
-    fprintf(file, "# Enable column numbers\n%s\n\n", flag_column_number ? "column-number" : "no-column-number");
-
-  if (flag_byte_offset.is_defined())
-    fprintf(file, "# Enable byte offsets\n%s\n\n", flag_byte_offset ? "byte-offset" : "no-byte-offset");
-
-  if (strcmp(flag_binary_files, "hex") == 0)
-    fprintf(file, "# Hex output\nhex\n\n");
-  else if (strcmp(flag_binary_files, "with-hex") == 0)
-    fprintf(file, "# Output with hex for binary matches\nwith-hex\n\n");
-
-  if (flag_hexdump != NULL)
-    fprintf(file, "# Hex dump (columns, no space breaks, no character column, no hex spacing)\nhexdump=%s\n\n", flag_hexdump);
-
-  if (flag_group_separator == NULL)
-    fprintf(file, "# Disable group separator for contexts\nno-group-separator\n\n");
-  else if (strcmp(flag_group_separator, "--") != 0)
-    fprintf(file, "# Group separator for contexts\ngroup-separator=%s\n\n", flag_group_separator);
-
-  fprintf(file, "### SEARCH PATTERNS ###\n\n");
-
-  fprintf(file, "# Enable case-insensitive search, default: no-ignore-case\n%signore-case\n\n", flag_ignore_case.is_undefined() ? "# " : flag_ignore_case ? "" : "no-");
-  fprintf(file, "# Enable smart case, default: no-smart-case\n%ssmart-case\n\n", flag_smart_case.is_undefined() ? "# " : flag_smart_case ? "" : "no-");
-  fprintf(file, "# Enable empty pattern matches, default: no-empty\n%sempty\n\n", flag_empty.is_undefined() ? "# " : flag_empty ? "" : "no-");
-  fprintf(file, "# Force option -c (--count) to return nonzero matches with --min-count=1, default: --min-count=0\n");
-  if (flag_min_count == 0)
-    fprintf(file, "# min-count=1\n\n");
-  else
-    fprintf(file, "min-count=%zu\n\n", flag_min_count);
-
-  fprintf(file, "### SEARCH TARGETS ###\n\n");
-
-  fprintf(file, "# Case-insensitive glob matching, default: no-glob-ignore-case\n%sglob-ignore-case\n\n", flag_glob_ignore_case ? "" : "# ");
-  fprintf(file, "# Search hidden files and directories, default: no-hidden\n%shidden\n\n", flag_hidden ? "" : "# ");
-  fprintf(file, "# Ignore binary files, default: no-ignore-binary\n%signore-binary\n\n", strcmp(flag_binary_files, "without-match") == 0 ? "" : "# ");
-  if (!flag_include_fs.empty())
-  {
-    fprintf(file, "# Include specific file systems only\n");
-    for (const auto& fs : flag_include_fs)
-      fprintf(file, "include-fs=%s\n", fs.c_str());
-    fprintf(file, "\n");
-  }
-  if (!flag_exclude_fs.empty())
-  {
-    fprintf(file, "# Exclude specific file systems\n");
-    for (const auto& fs : flag_exclude_fs)
-      fprintf(file, "exclude-fs=%s\n", fs.c_str());
-    fprintf(file, "\n");
-  }
-  if (!flag_include_dir.empty())
-  {
-    fprintf(file, "# Include specific directories only\n");
-    for (const auto& d : flag_include_dir)
-      fprintf(file, "include-dir=%s\n", d.c_str());
-    fprintf(file, "\n");
-  }
-  if (!flag_exclude_dir.empty())
-  {
-    fprintf(file, "# Exclude specific directories\n");
-    for (const auto& d : flag_exclude_dir)
-      fprintf(file, "exclude-dir=%s\n", d.c_str());
-    fprintf(file, "\n");
-  }
-  if (!flag_include.empty())
-  {
-    fprintf(file, "# Include specific files only\n");
-    for (const auto& f : flag_include)
-      fprintf(file, "include=%s\n", f.c_str());
-    fprintf(file, "\n");
-  }
-  if (!flag_exclude.empty())
-  {
-    fprintf(file, "# Exclude specific files\n");
-    for (const auto& f : flag_exclude)
-      fprintf(file, "exclude-dir=%s\n", f.c_str());
-    fprintf(file, "\n");
-  }
-  fprintf(file, "# Enable decompression and archive search, default: no-decompress\n%sdecompress\n\n", flag_decompress ? "" : "# ");
-  fprintf(file, "# Maximum decompression and de-archiving nesting levels, default: zmax=1\nzmax=%zu\n\n", flag_zmax);
-  if (flag_dereference)
-    fprintf(file, "# Dereference symlinks, default: no-dereference\ndereference\n\n");
-  else if (flag_dereference_files)
-    fprintf(file, "# Dereference symlinks to files, not directories, default: no-dereference-files\ndereference-files\n\n");
-  fprintf(file, "# Search devices, default: devices=skip\n%sdevices=%s\n\n", flag_devices == NULL ? "# " : "", flag_devices == NULL ? "skip" : flag_devices);
-  if (flag_directories == NULL || strcmp(flag_directories, "read") == 0)
-    fprintf(file, "# Warn when searching directories specified on the command line (like grep) with directories=read\n%sdirectories=read\n\n", flag_directories == NULL ? "# " : "");
-  if (flag_max_depth > 0)
-    fprintf(file, "# Recursively search directories up to %zu levels deep\nmax-depth=%zu\n\n", flag_max_depth, flag_max_depth);
-  if (flag_ignore_files.empty())
-  {
-    fprintf(file, "# Ignore files and directories specified in .gitignore, default: no-ignore-files\n# ignore-files\n\n");
-  }
-  else
-  {
-    fprintf(file, "# Ignore files and directories specified in .gitignore, default: no-ignore-files\n");
-    for (const auto& ignore : flag_ignore_files)
-      fprintf(file, "ignore-files=%s\n", ignore.c_str());
-    fprintf(file, "\n");
-  }
-
-  if (!flag_filter.empty())
-  {
-    fprintf(file, "# Filter search with file format conversion tools\nfilter=%s\n\n", flag_filter.c_str());
-    if (!flag_filter_magic_label.empty())
-    {
-      fprintf(file, "# Filter by file signature magic bytes\n");
-      for (const auto& label : flag_filter_magic_label)
-        fprintf(file, "filter-magic-label=%s\n", label.c_str());
-      fprintf(file, "# Warning: filter-magic-label significantly reduces performance!\n\n");
-    }
-  }
-
-  fprintf(file, "### OUTPUT ###\n\n");
-
-  if (flag_separator != NULL)
-    fprintf(file, "# Separator, default: none specified to output a `:'\nseparator=%s\n\n", flag_separator);
-
-  fprintf(file, "# Sort the list of files and directories searched and matched, default: sort\n");
-  if (flag_sort != NULL)
-    fprintf(file, "sort=%s\n\n", flag_sort);
-  else
-    fprintf(file, "# sort\n\n");
-
-  if (ferror(file))
-    error("cannot save", flag_save_config);
-
-  if (file != stdout)
-    fclose(file);
-
-  if (!flag_file_type.empty() || !flag_file_extension.empty() || !flag_file_magic.empty() || !flag_glob.empty() || !flag_iglob.empty())
-    warning("options --file-type, --file-extension, --file-magic, --glob and --iglob are not saved to", flag_save_config);
-}
-
 // the callback table of the Rust options parser (ffi/options.rs), the order of the list numbers mirrors Rust's List
 struct OptionsEnv
 {
@@ -5204,10 +4732,9 @@ size_t options_screen_width(void *)
 
 } // namespace
 
-// parse the command-line options, implemented in Rust on the settings struct
-void options(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, int argc, const char **argv)
+// fill the callback table of the Rust options parser, pattern_args is the context
+static void config_options_env(OptionsEnv& env, PatternArgs& pattern_args)
 {
-  OptionsEnv env;
   env.ctx = &pattern_args;
   env.usage = options_usage;
   env.help = options_help;
@@ -5235,7 +4762,351 @@ void options(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, int a
 #else
   env.os_win = 0;
 #endif
+}
+
+// parse the command-line options, implemented in Rust on the settings struct
+void options(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, int argc, const char **argv)
+{
+  OptionsEnv env;
+  config_options_env(env, pattern_args);
   ugrep_core_options(&env, argc, argv);
+}
+
+// the callback table of the Rust load_config/save_config (ffi/config.rs)
+struct ConfigEnv
+{
+  const OptionsEnv *opts;
+  void *(*open)(const char *, int);
+  int (*next_line)(void *);
+  const char *(*line_text)(void *);
+  const char *(*prefix_line)(void *);
+  int (*file_error)(void *);
+  void (*close)(void *);
+  int (*files_contains)(const char *);
+  void (*files_insert)(const char *);
+  size_t (*files_len)();
+  const char *(*files_get)(size_t);
+  const char *(*home_dir)();
+  void (*warnings_reset)();
+  size_t (*warnings)();
+  void (*write)(int, const char *, size_t);
+  void (*error)(const char *, const char *);
+  void (*warning)(const char *, const char *);
+  void (*exit_error)();
+  void (*regexp_clear)();
+  const char *(*filter)();
+  size_t (*list_len)(int);
+  const char *(*list_get)(int, size_t);
+  int (*rename_old)(const char *, const char *);
+  void *(*save_open)(const char *);
+  void (*save_write)(void *, const char *, size_t);
+  int (*save_error)(void *);
+  void (*save_close)(void *);
+  size_t default_query_delay;
+  int path_sep;
+  int xdg;
+};
+
+extern "C" void ugrep_core_load_config(const ConfigEnv *env, int recurse);
+extern "C" void ugrep_core_save_config(const ConfigEnv *env);
+
+namespace
+{
+
+// an open config file with its buffered input and the current line
+struct ConfigFile
+{
+  ConfigFile(FILE *f) : file(f), input(f) { }
+  FILE *file;
+  reflex::BufferedInput input;
+  std::string line;
+};
+
+void *config_open(const char *filename, int check_owner)
+{
+  FILE *file = NULL;
+
+  if (fopen_smart(&file, filename, "r") != 0)
+    return NULL;
+
+  if (file != NULL && file != stdin && check_owner)
+  {
+    // check if we own this config file located in the working directory
+#ifdef OS_WIN_OR_MINGW
+    HANDLE hFile = reinterpret_cast<HANDLE>(_get_osfhandle(_fileno(file)));
+    PSID pSidOwner = NULL;
+    PSECURITY_DESCRIPTOR pSD = NULL;
+    if (GetSecurityInfo(hFile, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION, &pSidOwner, NULL, NULL, NULL, &pSD) == ERROR_SUCCESS)
+    {
+      HANDLE hToken = NULL;
+      if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
+      {
+        DWORD dwBufferSize = 0;
+        GetTokenInformation(hToken, TokenUser, NULL, 0, &dwBufferSize);
+        PTOKEN_USER pTokenUser = reinterpret_cast<PTOKEN_USER>(HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwBufferSize));
+        if (pTokenUser != NULL)
+        {
+          if (!GetTokenInformation(hToken, TokenUser, pTokenUser, dwBufferSize, &dwBufferSize) ||
+              !EqualSid(pSidOwner, pTokenUser->User.Sid))
+          {
+            fclose(file);
+            file = NULL;
+          }
+          HeapFree(GetProcessHeap(), 0, pTokenUser);
+        }
+        CloseHandle(hToken);
+      }
+      if (pSD)
+        LocalFree(pSD);
+    }
+#else
+    struct stat buf;
+    if (fstat(fileno(file), &buf) == 0 && buf.st_uid != getuid())
+    {
+      fclose(file);
+      file = NULL;
+    }
+#endif
+  }
+
+  if (file == NULL)
+    return NULL;
+
+  return new ConfigFile(file);
+}
+
+int config_next_line(void *handle)
+{
+  ConfigFile *cf = static_cast<ConfigFile*>(handle);
+
+  // read the next line
+  if (getline(cf->input, cf->line))
+    return 0;
+
+  trim(cf->line);
+
+  return 1;
+}
+
+const char *config_line_text(void *handle)
+{
+  return static_cast<ConfigFile*>(handle)->line.c_str();
+}
+
+// construct an option argument to parse as argv[]
+const char *config_prefix_line(void *handle)
+{
+  ConfigFile *cf = static_cast<ConfigFile*>(handle);
+
+  cf->line.insert(0, "--");
+
+  return cf->line.c_str();
+}
+
+int config_file_error(void *handle)
+{
+  return ferror(static_cast<ConfigFile*>(handle)->file);
+}
+
+void config_close(void *handle)
+{
+  ConfigFile *cf = static_cast<ConfigFile*>(handle);
+
+  if (cf->file != stdin)
+    fclose(cf->file);
+
+  delete cf;
+}
+
+int config_files_contains(const char *path)
+{
+  return flag_config_files.find(path) != flag_config_files.end();
+}
+
+void config_files_insert(const char *path)
+{
+  flag_config_files.insert(path);
+}
+
+size_t config_files_len()
+{
+  return flag_config_files.size();
+}
+
+const char *config_files_get(size_t index)
+{
+  auto i = flag_config_files.begin();
+  std::advance(i, index);
+  return i->c_str();
+}
+
+const char *config_home_dir()
+{
+  return Static::home_dir;
+}
+
+void config_warnings_reset()
+{
+  Static::warnings = 0;
+}
+
+size_t config_warnings()
+{
+  return Static::warnings;
+}
+
+void config_write(int sink, const char *data, size_t len)
+{
+  if (sink == 0)
+    std::cerr.write(data, len);
+  else
+    fwrite(data, 1, len, Static::errout);
+}
+
+void config_error(const char *message, const char *arg)
+{
+  error(message, arg);
+}
+
+void config_warning(const char *message, const char *arg)
+{
+  warning(message, arg);
+}
+
+void config_exit_error()
+{
+  exit(EXIT_ERROR);
+}
+
+void config_regexp_clear()
+{
+  flag_regexp.clear();
+}
+
+const char *config_filter()
+{
+  return flag_filter.c_str();
+}
+
+const std::string& config_list_item(const std::vector<std::string>& v, size_t index)
+{
+  return v[index];
+}
+
+size_t config_list_len(int list)
+{
+  if (list == 16)
+    return flag_ignore_files.size();
+  return options_list(list)->size();
+}
+
+const char *config_list_get(int list, size_t index)
+{
+  if (list == 16)
+  {
+    auto i = flag_ignore_files.begin();
+    std::advance(i, index);
+    return i->c_str();
+  }
+  return config_list_item(*options_list(list), index).c_str();
+}
+
+int config_rename_old(const char *path, const char *config_old)
+{
+  if (std::rename(path, config_old) != 0)
+    return 0;
+
+  errno = EEXIST;
+  warning("saved old configuration file to", config_old);
+
+  return 1;
+}
+
+void *config_save_open(const char *filename)
+{
+  FILE *file = NULL;
+
+  if (fopen_smart(&file, filename, "w") != 0)
+    return NULL;
+
+  return file;
+}
+
+void config_save_write(void *file, const char *data, size_t len)
+{
+  fwrite(data, 1, len, static_cast<FILE*>(file));
+}
+
+int config_save_error(void *file)
+{
+  return ferror(static_cast<FILE*>(file));
+}
+
+void config_save_close(void *file)
+{
+  if (file != stdout)
+    fclose(static_cast<FILE*>(file));
+}
+
+void config_env_init(ConfigEnv& cenv, const OptionsEnv& env)
+{
+  cenv.opts = &env;
+  cenv.open = config_open;
+  cenv.next_line = config_next_line;
+  cenv.line_text = config_line_text;
+  cenv.prefix_line = config_prefix_line;
+  cenv.file_error = config_file_error;
+  cenv.close = config_close;
+  cenv.files_contains = config_files_contains;
+  cenv.files_insert = config_files_insert;
+  cenv.files_len = config_files_len;
+  cenv.files_get = config_files_get;
+  cenv.home_dir = config_home_dir;
+  cenv.warnings_reset = config_warnings_reset;
+  cenv.warnings = config_warnings;
+  cenv.write = config_write;
+  cenv.error = config_error;
+  cenv.warning = config_warning;
+  cenv.exit_error = config_exit_error;
+  cenv.regexp_clear = config_regexp_clear;
+  cenv.filter = config_filter;
+  cenv.list_len = config_list_len;
+  cenv.list_get = config_list_get;
+  cenv.rename_old = config_rename_old;
+  cenv.save_open = config_save_open;
+  cenv.save_write = config_save_write;
+  cenv.save_error = config_save_error;
+  cenv.save_close = config_save_close;
+  cenv.default_query_delay = DEFAULT_QUERY_DELAY;
+  cenv.path_sep = PATHSEPCHR;
+#if defined(WITH_XDG_CONFIG_HOME) && !defined(OS_WIN)
+  cenv.xdg = 1;
+#else
+  cenv.xdg = 0;
+#endif
+}
+
+} // namespace
+
+// load config file specified or the default .ugrep, located in the working directory or home directory
+static void load_config(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, bool recurse = false)
+{
+  OptionsEnv env;
+  config_options_env(env, pattern_args);
+  ConfigEnv cenv;
+  config_env_init(cenv, env);
+  ugrep_core_load_config(&cenv, recurse);
+}
+
+// save a configuration file after loading it first when present
+static void save_config()
+{
+  PatternArgs pattern_args;
+  OptionsEnv env;
+  config_options_env(env, pattern_args);
+  ConfigEnv cenv;
+  config_env_init(cenv, env);
+  ugrep_core_save_config(&cenv);
 }
 
 // parse the command-line options and initialize
