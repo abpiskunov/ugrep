@@ -5,7 +5,8 @@
 //! The bodies are stubs until the Port tasks (`panic!`; panic is abort in this workspace, so a call aborts the process). They are
 //! only reachable when the C++ is built with `CPP_RUST_IMPL_OUTPUT=rust`.
 //!
-//! Shape of the seam: every function is a pure function of its inputs. C++ keeps the `Output` object (buffer,
+//! Shape of the seam: every function is a pure function of its inputs (except `--tree` headers, which stay in C++
+//! because they take the Sync lock and update the process-wide `Output::Tree` state). C++ keeps the `Output` object (buffer,
 //! `Sync`, hex-dump state, `FILE*`), builds a plain-data snapshot per call, and appends the returned bytes to its
 //! buffer with `Output::str`. The Rust side reads the option state it already owns (`settings`, `color`).
 
@@ -58,7 +59,7 @@ pub fn dump_line(_bytes: &[i16], _prevb: &[i16], _pstar: bool, _offset: usize) -
 }
 
 /// `Output::header(pathname, partname, heading, lineno, matcher, byte_offset, separator, newline)`.
-/// `window` is the matcher's line (see `OutputMatch`); `matcher.present` false is a NULL matcher; the separator is
+/// `window` is the matcher's line when the format needs it (see `OutputMatch`); `matcher.present` false is a NULL matcher; the separator is
 /// `args.has_separator` and `separator`.
 pub fn header_line(
     _pathname: &[u8],
@@ -72,7 +73,8 @@ pub fn header_line(
     not_ported("header_line")
 }
 
-/// `Output::header(pathname, partname)` (--files-with-matches, --count).
+/// `Output::header(pathname, partname)` (--files-with-matches, --count). Not used with `--tree`: the facade keeps
+/// that branch in C++ (it takes the Sync lock and updates the process-wide `Output::Tree` state).
 pub fn header_file(_pathname: &[u8], _partname: &[u8], _ctx: &OutputCtx) -> OutputHeaderResult {
     not_ported("header_file")
 }

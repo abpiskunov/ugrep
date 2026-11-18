@@ -226,17 +226,23 @@ Facade (members of `Output`, in `src/output.cpp`, end of file): `color`, `header
 
 ### Decision: matcher handoff = plain-data snapshot (not a callback table)
 
-Rust cannot own `reflex::AbstractMatcher`. C++ builds `OutputMatch` per call: first, last, size, wsize, lineno, lineno_end,
-columno, lines, accept, begin/text/end as offsets into `window` (the bytes `bol()..max(eol(), end())`, passed beside it), fuzzy
-`edits`/`distance` (dynamic_cast to FuzzyMatcher), and `groups` (`group_id()`/`group_next_id()` enumerated once, each with name
-and `(*matcher)[id]` as offset from `text()` and size). Reason: the accessors are cheap and stable during a call; a callback table
-would cost one crossing per accessor (about 15 per match) and make Rust call back into C++ (re-entrancy). `eol()` is called
-before `bol()` as the C++ requires. Cost to measure at Port: the group enumeration runs for every `format()` match
-(`groups` is not yet lazy); header/format are the only users. The caller-visible matcher state is not changed.
+Rust cannot own `reflex::AbstractMatcher`. C++ builds `OutputMatch` per call. Always: first, last, size, wsize, lineno, accept and
+`begin`/`end` as offsets into `window`. `text()` is never called (it writes a NUL at `txt_[len_]`, inside the window); `begin()`
+is used for `text_off` and the capture offsets. The rest is computed only under the flags or format characters the C++ checks
+(`output_rust::scan_format` mirrors the `format_cpp` parse): `eol()` (may refill and grow the buffer, so callers' pointers such as
+`to`/`begin` in ugrep.cpp could dangle) only for `%O %Q` and `%C %V %J %X %Y` without `-o`, or `%{+N}` forms; `bol()` for those and `%{-N}`;
+`columno` for `%K %k` (and `-k` headers: `flag_column_number`); `lines`/`lineno_end` for `%L %l` and the same-line check; fuzzy
+`edits`/`distance` for `%Z`; `groups` (a `Vec` per call) only for `%G %g %[..] %0-%9`. The window is `bol()..max(eol(), end())` when
+`has_bol`/`has_eol`, else `begin()..end()`. Reason: the accessors are cheap and stable during a call; a callback table
+would cost one crossing per accessor and make Rust call back into C++ (re-entrancy). `eol()` is called before `bol()` as the
+C++ requires, and the pointers are read after it. The matcher and its buffer are not changed by the snapshot.
 
 ### Decision: bytes out, C++ keeps the buffer (this stage)
 
-Every seam function is pure: inputs are slices plus small structs, output is `Vec<u8>` that the facade appends with `Output::str`.
+Every seam function is pure except the `--tree` header: inputs are slices plus small structs, output is `Vec<u8>` that the facade appends with `Output::str`.
+`header(pathname, partname)` with `flag_tree` stays in C++ (`header_cpp`): it takes the Sync lock with `acquire()` (ordered mode waits for
+the worker's turn) and reads and writes the process-wide `Output::Tree::path`/`depth`, so the facade does not call Rust for it.
+If the Port moves it, the facade must `acquire()` first, pass `Tree::path`/`depth` in, return the new values and write them back under the lock.
 `Output` (Buffer, Sync, Dump state, `FILE*`, `mode_`, `lineno_`) stays in C++: it is embedded by value in `Grep`, its inline
 primitives (`chr`, `str`, `num`, `nl`, `hex`, `uri`, `mat`, `try_flush`) are hot and stay inline, so **no per-token bridge crossing**:
 one crossing per header, per format, per emitted data item (`quote`...`xml`) and per hex-dump line. The Rust side reads the options
@@ -256,7 +262,8 @@ Known differences the Port must settle (listed, not decided here):
 
 ### Decision: threading (cpp-rust-concurrency)
 
-This stage adds no Rust thread state: the seam functions are stateless and thread-neutral, so they are safe from any `GrepWorker`.
+This stage adds no Rust thread state: the seam functions are stateless and thread-neutral, so they are safe from any `GrepWorker`
+(the `--tree` header is not a seam function: it stays C++ because of the Sync lock and the `Tree` statics).
 `Sync` (UNORDERED/ORDERED, `acquire/try_acquire/release/finish/cancel`, STOP) and the buffers stay C++ until Port Unit A. The shape
 planned for Unit A: `Sync` as `Mutex + Condvar` with a slot counter, `Output` `Send` per worker (one per thread, never shared),
 `std::unique_lock` ownership mapped to a guard stored in the worker's `Output`; `cancel()` sets an atomic `eof` and wakes waiters.

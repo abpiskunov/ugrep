@@ -42,7 +42,7 @@ use signatures as sig;
 #[cxx::bridge(namespace = "ugrep_rust")]
 mod ffi {
     /// One group capture of the matcher: `group_id()`/`group_next_id()` entry and `(*matcher)[index]`.
-    /// `offset` is relative to the start of `OutputMatch::text_off` (`cap.first - matcher->text()`).
+    /// `offset` is relative to `OutputMatch::begin_off` (`cap.first - matcher->begin()`).
     struct OutputCapture {
         index: usize,
         has_name: bool,
@@ -53,10 +53,16 @@ mod ffi {
     }
 
     /// Plain-data snapshot of a `reflex::AbstractMatcher` match, built by C++ per call (Rust cannot own the matcher).
-    /// Offsets are relative to `window`, the bytes `bol()..max(eol(), end())` passed next to it.
-    /// `groups` is filled only when the format needs captures (`%G`, `%[`, `%g`, `%H`...).
+    /// Offsets are relative to `window`, passed next to it. The window starts at `bol()` when `has_bol` (else at
+    /// `begin()`) and ends at `max(eol(), end())` when `has_eol` (else at `end()`). C++ sets them only when the
+    /// format or flags need the line, as the inline `mat`/`quote` overloads do, because `eol()` may refill the buffer.
+    /// `columno`, `lines`, `lineno_end`, `edits`/`distance` and `groups` are filled only when the format characters
+    /// or flags that read them are present (`%K %k`, `%L %l`, `%Z`, `%G %g %[..] %1-%9`); otherwise they are zero/empty.
+    /// `text()` is never called (it writes a NUL into the buffer); `text_off` equals `begin_off`.
     struct OutputMatch {
         present: bool,
+        has_bol: bool,
+        has_eol: bool,
         first: usize,
         last: usize,
         size: usize,

@@ -2488,7 +2488,9 @@ void Output::color(const char *arg)
 void Output::header(const char *pathname, const std::string& partname, bool& heading, size_t lineno, reflex::AbstractMatcher *matcher, size_t byte_offset, const char *sep, bool newline)
 {
   output_rust::Window window;
-  ugrep_rust::OutputMatch m = output_rust::snapshot(matcher, window);
+  output_rust::Need need;
+  need.columno = flag_column_number;
+  ugrep_rust::OutputMatch m = output_rust::snapshot(matcher, window, need);
   ugrep_rust::OutputArgs args{};
   args.heading = heading;
   args.lineno = lineno;
@@ -2511,6 +2513,12 @@ void Output::header(const char *pathname, const std::string& partname, bool& hea
 
 void Output::header(const char *pathname, const std::string& partname)
 {
+  // --tree takes the Sync lock and updates the process-wide Tree::path and Tree::depth: kept in C++ under the lock
+  if (flag_tree)
+  {
+    header_cpp(pathname, partname);
+    return;
+  }
   ugrep_rust::OutputHeaderResult r = ugrep_rust::output_header_file(
       output_rust::slice(pathname),
       output_rust::slice(partname),
@@ -2542,7 +2550,8 @@ void Output::format(const char *format, size_t matches)
 bool Output::format(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t *matching, reflex::AbstractMatcher *matcher, bool& heading, bool body, bool next)
 {
   output_rust::Window window;
-  ugrep_rust::OutputMatch m = output_rust::snapshot(matcher, window);
+  output_rust::Need need = output_rust::scan_format(format, body && lineno_ > 0);
+  ugrep_rust::OutputMatch m = output_rust::snapshot(matcher, window, need);
   ugrep_rust::OutputArgs args{};
   args.matches = matches;
   args.has_matching = matching != NULL;
