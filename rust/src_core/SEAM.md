@@ -204,3 +204,6 @@ The ugrep.cpp ~9166-10482 range (Grep::ugrep, select, recurse, Static helpers) a
 ## ugrep.cpp options and main/wmain retained (D-src_core-options-main-retained)
 
 The ugrep.cpp ~4670-4765 (main/wmain) and ~5282-6354 (options, option_regexp/and/andnot/not/all_files) ranges stay C++. No seam signature, facade, tap, recorded trace or unit record exists; options only writes C++-owned flag_* globals (D-src_core-globals-retained), and main installs signal handlers and exit paths. Porting it later needs its own Prepare seam (flag snapshot in, resolved options out) + Behavior follow-up.
+
+## S2a: options parsing in Rust (D-S2a-options)
+Options parsing is in rust/src_core/src/options.rs. src/ugrep.cpp keeps thin `options()` and `trim_pathname_arg()` wrappers that call the C-ABI `ugrep_options` / `ugrep_trim_pathname_arg` (rust/src_core/src/ffi/options.rs). The remaining C++ pieces (usage, help, version, tui_screen_getsize, the pattern list, the flag_* vector options, flag_filter, flag_ignore_files, Static::arg_pattern/arg_files) are reached through the `UgrepOptionsEnv` callback table; its field order must match `Env` in ffi/options.rs and the vector ids must match `Vector`.

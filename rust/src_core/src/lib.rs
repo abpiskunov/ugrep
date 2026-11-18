@@ -11,6 +11,10 @@ pub mod signatures;
 pub mod settings;
 #[path = "ffi/settings.rs"]
 pub mod settings_ffi;
+// option parsing (options(), option_*, set_depth*, argument helpers) and its C-ABI entries
+pub mod options;
+#[path = "ffi/options.rs"]
+pub mod options_ffi;
 // the C-ABI entry of `init` (argv pointers cannot cross the cxx bridge)
 #[path = "ffi/init.rs"]
 pub mod init_ffi;

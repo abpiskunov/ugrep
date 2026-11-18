@@ -1,0 +1,15 @@
+schema: cpp-rust-unit/1
+unit: options
+component: src_core
+functions: []
+cpp_files: [src/ugrep.cpp]
+rust_files: rust/src_core/src/options.rs
+rust_crate_name: src_core
+harness_crate_name: src_core-harness
+depends_on: [settings]
+status: ported
+notes:
+  - 'S2a: options(), option_regexp/and/andnot/not/all_files, set_depth, set_depth_long, getoptarg, getloptarg, strarg, strtonum, strtopos, strtopos2, strtosize, strtofuzzy and trim_pathname_arg are ported faithfully to rust/src_core/src/options.rs (safe parser) and rust/src_core/src/ffi/options.rs (the only unsafe). The C++ bodies are deleted from src/ugrep.cpp.'
+  - 'Boundary: C++ keeps a thin `options()` and `trim_pathname_arg()` that call the extern "C" `ugrep_options` / `ugrep_trim_pathname_arg`. What stays C++ (usage, help, version, tui_screen_getsize, the pattern list, the flag_* std::vector<std::string> options, flag_filter, flag_ignore_files, Static::arg_pattern, Static::arg_files) is reached through the `UgrepOptionsEnv` callback table declared in ugrep.cpp; its field order must equal `Env` in ffi/options.rs. Option state is written to Settings via settings_ffi::cfg.'
+  - 'Preserved C++ behavior (no catalog differences): usage() returns during config parsing (flag_usage_warnings), so the Rust continues after every usage call; C strtoull semantics (strtonum("") is 0 without error, a leading - wraps); -Z at end of string takes the fuzzy branch; ---foo is a no-op in options(); --depth= with an empty value swallows the next word (Q-core-6); getoptarg/getloptarg advance i even at the end of argv. load_config passes argv[0] = NULL, read as empty and never used.'
+  - 'Gates: no seam is recorded for src_core (the seam was removed at Cleanup), so the unit gate seam-replay cannot evaluate; it needs an operator plan amendment. Evidence: cleanup src_core PASS (build-default, linked, surface 1809 cases 0 divergent, settings-layout, policy), clippy -D warnings, cargo test (options unit tests). See the task test_report.'

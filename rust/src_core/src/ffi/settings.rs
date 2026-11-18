@@ -16,6 +16,19 @@ impl SettingsCell {
     }
 }
 
+/// Run `f` on the settings. The `&mut` lives only for `f`, which must not call back into C++.
+pub fn cfg<R>(f: impl FnOnce(&mut Settings) -> R) -> R {
+    // SAFETY: option parsing is single-threaded and C++ code does not run while `f` does.
+    f(unsafe { &mut *UGREP_SETTINGS.as_ptr() })
+}
+
+/// Whether `flag_binary_files` is set to `s`; false for NULL.
+pub fn binary_files_is(s: &[u8]) -> bool {
+    let p = cfg(|c| c.flag_binary_files);
+    // SAFETY: settings hold NULL or NUL-terminated strings that live for the process.
+    !p.is_null() && unsafe { std::ffi::CStr::from_ptr(p) }.to_bytes() == s
+}
+
 #[export_name = "ugrep_settings"]
 pub static UGREP_SETTINGS: SettingsCell = SettingsCell(UnsafeCell::new(Settings::DEFAULT));
 
