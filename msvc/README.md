@@ -51,6 +51,14 @@ a folder named `pcre2-10.39`), then I would run
 - Download [ZSTD from GitHub](https://github.com/facebook/zstd/releases), e.g.
   [zstd-1.5.0.tar.gz](https://github.com/facebook/zstd/releases/download/v1.5.0/zstd-1.5.0.tar.gz).
   Extract, then rename folder to `zstd`.
+- Download [Brotli from GitHub](https://github.com/google/brotli/releases), e.g.
+  [brotli-1.1.0](https://github.com/google/brotli/archive/refs/tags/v1.1.0.tar.gz)
+  (decoder: `brotli.vcxproj` builds `c/common` and `c/dec`). Extract, then
+  rename folder to `brotli`.
+- Download [bzip3 from GitHub](https://github.com/iczelia/bzip3/releases), e.g.
+  [bzip3-1.5.1.tar.gz](https://github.com/iczelia/bzip3/releases/download/1.5.1/bzip3-1.5.1.tar.gz)
+  (`bzip3.vcxproj` builds `src/libbz3.c`). Extract, then rename folder to
+  `bzip3`.
 
 You should now be able to build the Pcre-Debug and Pcre-Release configurations.
 The resulting binary will be in
