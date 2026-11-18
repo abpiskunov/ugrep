@@ -1089,6 +1089,229 @@ behaviors:
     evidence: ["case:hm-abort-index-nosuch", "case:hm-abort-format-bad", "case:hm-abort-regex-nested"]
     origin: capture
 
+  - id: B-src_core-161
+    statement: "Plain output of a match line is `[FILE:][LINE:][COLUMN:][OFFSET:]TEXT` in that order (options -H, -n, -k, -b), `:` after a matching line and `-` after a context line, context groups that are not adjacent are separated by `--`; match lines are LF terminated like the input line"
+    kind: normal
+    status: observed
+    evidence: ["case:out-m-plain-t-k-5", "case:out-m-plain-t-on-8", "case:out-cx-0-1-", "case:out-cx-0-0-br"]
+    origin: capture
+  - id: B-src_core-162
+    statement: "`-T` (initial tab) pads the numbers to a fixed width (line 6, column 3, offset 7 characters) before a tab that precedes the text: `     1:  1:      0:<TAB>foo bar`; `--tabs=N` changes the tab stops"
+    kind: normal
+    status: observed
+    evidence: ["case:out-sp-0-t", "case:out-sp-1-t", "case:out-sp-2-t"]
+    origin: capture
+  - id: B-src_core-163
+    statement: "`--separator=S`, `--group-separator=S` and `--no-group-separator` are recorded with -C, -T, -o, -v, `--color`, `--xml`, `--json` and `--csv`; `--tabs=N` is recorded with -T"
+    kind: normal
+    status: observed
+    evidence: ["case:out-sp-0-", "case:out-sp-3-", "case:out-sp-4-", "case:out-sp-5-"]
+    origin: capture
+  - id: B-src_core-164
+    statement: "Context options: `-A NUM`, `-B NUM`, `-C NUM`, `-y` and `-NUM` print lines around matches once (overlapping ranges merge, `--` between groups), `-m NUM` stops after the NUM-th match of a file but still prints its trailing context, `-v` and `-o` combine with context"
+    kind: normal
+    status: observed
+    evidence: ["case:out-cx-1-1-v", "case:out-cx-2-3-o", "case:out-cxmc-1", "case:out-cxy-1"]
+    origin: capture
+  - id: B-src_core-165
+    statement: "`--color=always` writes ANSI sequences with the default colours: file name `ESC[1;35m`, line/column/offset numbers `ESC[1;32m`, separators `ESC[36m`, the match `ESC[1;31m`, the rest of a matching line `ESC[1;37m`, a context line `ESC[33m`; every coloured piece ends with `ESC[m`"
+    kind: normal
+    status: observed
+    evidence: ["case:out-m0-color-t", "case:out-m0-color-t", "case:out-m1-color-t", "case:out-m-color-t-none-0", "case:out-col-0-v"]
+    origin: capture
+  - id: B-src_core-166
+    statement: "`--colors=SPEC` changes the sequences of the parts `sl cx mt ms mc fn ln cn bn se` (SGR codes or colour letters; an empty value means no sequence) and the flags `rv`, `ne`, `hl`; `GREP_COLORS`, `GREP_COLOR`, `UGREP_COLORS` and `NO_COLOR` in the environment were recorded with `--color=always` and `--color=auto`; the recorded sequences are in the cited cases"
+    kind: normal
+    status: observed
+    evidence: ["case:out-col-0-v", "case:out-col-4-p", "case:out-col-9-p", "case:out-col-10-p"]
+    origin: capture
+  - id: B-src_core-167
+    statement: "`--color=always` with `-c`, `-l` colours the file name `ESC[1;35m` and the separator `ESC[36m` (`NAME:COUNT`); the colour cases with -L, --heading, -X, -o, -v, -T, -C and -n record the sequences of each part"
+    kind: normal
+    status: observed
+    evidence: ["case:out-col-0-l", "case:out-col-0-c2", "case:out-col-0-h", "case:out-col-0-o"]
+    origin: capture
+  - id: B-src_core-168
+    statement: "`--json` outputs `[ { \"file\": NAME, \"matches\": [ { \"line\": N, \"column\": N, \"offset\": N, \"match\": TEXT }, ... ] } ]` with two-space indentation; the file name appears with -H or several files, `line` with -n, `column` with -k and `offset` with -b, `-o` outputs one entry per match; text is escaped (`\\\"`, `\\\\`, `\\t`, `\\u00XX` for control characters)"
+    kind: normal
+    status: observed
+    evidence: ["case:out-m1-json-t", "case:out-esc-json-1-", "case:out-esc-json-2-n", "case:out-esc-json-4-n"]
+    origin: capture
+  - id: B-src_core-169
+    statement: "`--xml` outputs `<grep>` with `<file name=\"NAME\">` and `<match line=\"N\" column=\"N\" offset=\"N\">TEXT</match>` elements; the attributes follow -H, -n, -k and -b as for JSON; `&`, `<`, `>` and `\"` are written as `&amp;`, `&lt;`, `&gt;`, `&quot;` and control characters as `&#N;`"
+    kind: normal
+    status: observed
+    evidence: ["case:out-esc-xml-1-o", "case:out-esc-xml-2-n", "case:out-esc-xml-3-n", "case:out-m1-xml-t2"]
+    origin: capture
+  - id: B-src_core-170
+    statement: "`--csv` outputs one record per match line: `FILE,LINE,COLUMN,OFFSET,MATCH` with the first four values only when -H, -n, -k or -b ask for them; values are in double quotes, a `\"` is doubled, a backslash is doubled and a control character is written as `\\xNN`"
+    kind: normal
+    status: observed
+    evidence: ["case:out-esc-csv-1-", "case:out-esc-csv-2-o", "case:out-esc-csv-4-v", "case:out-m1-csv-t2"]
+    origin: capture
+  - id: B-src_core-171
+    statement: "`--cpp` outputs a C++ `const struct grep { const char *file; size_t line; size_t column; size_t offset; const char *match; } matches[]` initializer with a `// FILE` comment per file, one `{ \"FILE\", LINE, COLUMN, OFFSET, \"TEXT\" }` per match (C string escapes for `\"`, backslash and control characters) and a closing `{ NULL, 0, 0, 0, NULL }` line"
+    kind: normal
+    status: observed
+    evidence: ["case:out-esc-cpp-1-", "case:out-esc-cpp-2-", "case:out-m-cpp-t-none-0"]
+    origin: capture
+  - id: B-src_core-172
+    statement: "`--label` and file names in the structured formats: a `\"` is written `\\\"` in JSON, `&quot;` in XML, `\\\"` in CSV (the match text uses a doubled `\"\"` in CSV) and `\\\"` in the C++ output"
+    kind: normal
+    status: hypothesis
+    evidence: ["case:out-lab-json-2", "case:out-lab-xml-2", "case:out-lab-csv-2", "case:out-lab-cpp-2"]
+    origin: capture
+    suspicious: true
+    why: "CSV escapes a quote in the file name with a backslash but in the match text by doubling it; a CSV reader cannot parse both with one rule"
+  - id: B-src_core-173
+    statement: "On a file with a NUL byte the plain format prints `Binary file NAME matches` (CRLF line ending, B-src_core-158), while `--json`, `--csv` and `--xml` output the matched line with the NUL escaped (`\\u0000`, `\\x00`, `&#0;`) and `-X` outputs the hex dump of the match"
+    kind: edge-case
+    status: observed
+    evidence: ["case:out-bf-0-", "case:out-bf-1-n", "case:out-bf-2-o", "case:out-m-plain-bin-o-7"]
+    origin: capture
+  - id: B-src_core-174
+    statement: "`--binary-files=TYPE` is recorded for `binary`, `text`, `hex`, `with-matches`, `without-match` and an invalid TYPE with -n, -c, -l, -o, colour, JSON, XML, CSV, `--format`, -q, -C, -r, -I and -a on a text file and two files with NUL bytes"
+    kind: normal
+    status: observed
+    evidence: ["case:out-bf-0-", "case:out-bf-1-n", "case:out-bf-2-o", "case:out-bf-4-c"]
+    origin: capture
+  - id: B-src_core-175
+    statement: "`-X` (`--hex`) writes a hex dump of the matches and matching lines: `OFFSET  16 hex octets in two groups of 8  |text|` per line with 8 digit hexadecimal offsets, `--` for octets that are not part of the output and a `.` for unprintable octets; every line ends with CRLF; `-W`, `-o`, `-v`, context options, `-m`, `-z`, `--color` and `--width` change what is dumped"
+    kind: normal
+    status: observed
+    evidence: ["case:out-hx-0-", "case:out-hx-1-", "case:out-hx-3-", "case:out-hx-0-c1"]
+    origin: capture
+  - id: B-src_core-176
+    statement: "`--hexdump=[1-8][a][bch][A[NUM]][B[NUM]][C[NUM]]` sets the number of 8 octet columns and the `a`, `b`, `c`, `h` and A/B/C modifiers; with -n, -H, -k and -b each dump is introduced by a `FILE:LINE:COLUMN:OFFSET:` line (`-` for context) with CRLF"
+    kind: normal
+    status: observed
+    evidence: ["case:out-hx-3-", "case:out-hx-5-", "case:out-hx-6-", "case:out-hx-7-"]
+    origin: capture
+  - id: B-src_core-177
+    statement: "`--format=FORMAT` fields recorded in the cases: %n line number, %k column, %b byte offset, %e end offset, %d match size, %w match width, %m number of matches, %M number of matching lines, %f %a %p %h file name forms, %s separator, %t tab, %o match, %O line, %~ newline (CRLF in this build, B-src_core-158), %% and %[41]U code point; `%zz` outputs `z` (empty %z field), `%` at the end and an unterminated `%[` or `%{` are accepted"
+    kind: normal
+    status: observed
+    evidence: ["case:out-f-3--A", "case:out-f-5--B", "case:out-f-10--e", "case:out-ff-1-"]
+    origin: capture
+  - id: B-src_core-178
+    statement: "`--format` field arguments: `%{N}n` pads the number to N characters on the left (`%{-5}n` gives no padding), `%[TEXT]F %[TEXT]H %[TEXT]N %[TEXT]K %[TEXT]B %[TEXT]T %[TEXT]S` and `%[TEXT]< %[TEXT]>` are recorded for every field with -H, -n, -k, -b, -T, -o, -v, -c, -l, -X and -W, as are `%[N]#`, `%[N]b`, `%[A|B]v` capture fields (empty without -P, which is not available in this build)"
+    kind: normal
+    status: observed
+    evidence: ["case:out-f-6-n-B", "case:out-f-12--F", "case:out-f-30-n-N", "case:out-f-40--S"]
+    origin: capture
+  - id: B-src_core-179
+    statement: "`--format` fields %J %V %X %Y %C output the matching line and %j %v %x %y %c the matched pattern as JSON, CSV, XML, hex and C++ string; for the output of the line fields see the cases"
+    kind: normal
+    status: observed
+    evidence: ["case:out-ff-9-", "case:out-ff-10-", "case:out-ff-11-", "case:out-ff-12-"]
+    origin: capture
+  - id: B-src_core-180
+    statement: "`--format` combines with -o (match instead of line), -v, -c, -l, -X, -W, -z, `--heading`, `--break`, `--color=always`, multi-line patterns and binary files; the format is applied per match line and `%~` or the text the user wrote is the only line ending"
+    kind: normal
+    status: observed
+    evidence: ["case:out-ff-0-o", "case:out-ff-0-v", "case:out-ff-0-ml", "case:out-ff-0-bin"]
+    origin: capture
+  - id: B-src_core-181
+    statement: "`--replace=FORMAT` outputs each matching line with every match replaced by FORMAT (the same fields), non-matching text is kept; with -o only the replacements are output, one after the other"
+    kind: normal
+    status: observed
+    evidence: ["case:out-r-0-", "case:out-rf-0-", "case:out-rf-0-o", "case:out-rn-0-"]
+    origin: capture
+  - id: B-src_core-182
+    statement: "`--heading` writes the file name alone on a line (CRLF) before the matches of the file and `--break` a blank line (CRLF) after the matches of each file; `--break` alone gives `NAME:TEXT` lines followed by the blank CRLF line; the match lines themselves keep their LF"
+    kind: normal
+    status: observed
+    evidence: ["case:out-hd-0-0", "case:out-hd-3-0", "case:out-hd-4-0", "case:out-hd-6-0"]
+    origin: capture
+  - id: B-src_core-183
+    statement: "`--tree` with -l, -c or -L outputs the files in a directory tree (the `--color`, `-0`, `--ascii`, `-v` and `--null` variants are recorded)"
+    kind: normal
+    status: observed
+    evidence: ["case:out-hd-21-0", "case:out-hd-22-0", "case:out-hd-23-0", "case:out-hdd-21-0"]
+    origin: capture
+  - id: B-src_core-184
+    statement: "`-c`, `-l` and `-L` print `NAME:COUNT`, `NAME` and `NAME` lines (CRLF line ends, B-src_core-158) and combine with --json, --xml, --csv and --cpp to the same structured output as for matching lines"
+    kind: normal
+    status: observed
+    evidence: ["case:out-hd-33-0", "case:out-hd-38-0", "case:out-hd-39-0", "case:out-hd-40-0"]
+    origin: capture
+  - id: B-src_core-185
+    statement: "Input with CRLF line endings is recorded for every format (plain, -n, -o, -c, JSON, XML, CSV, C++, -X, colour, `--format`, `--replace`, -v, -C, -b, -U, -z, -T); the `--json` match text keeps the `\\r` of the line, and the line ending of an output line is the one of this build (B-src_core-158)"
+    kind: edge-case
+    status: observed
+    evidence: ["case:out-crlf-0-foo", "case:out-crlf-1-foo", "case:out-crlf-4-foo", "case:out-crlf-10-foo"]
+    origin: capture
+  - id: B-src_core-186
+    statement: "A last line without a line ending: the plain output of stdin `foo` with -n is `1:foo` followed by CRLF (`\\r\\n`), while a line that has its LF is output with a bare LF; XML and the `%~` of --format give LF and CRLF as for other lines"
+    kind: edge-case
+    status: hypothesis
+    evidence: ["case:out-nonl-plain", "case:out-nonl-xml", "case:out-nonl-format", "case:out-nonl-color"]
+    origin: capture
+    suspicious: true
+    why: "the output line ending of a last line that has none is CRLF in the plain format but lines that have one are bare LF (B-src_core-158 covers the rule for counts and names, not for this case)"
+  - id: B-src_core-187
+    statement: "`--width=N` truncates each output line to N visible characters in the plain, -o, colour, JSON, XML, CSV, `--format %O` and hex outputs (the cases cover N=0,1,5,20,40,80,200); `--max-line=N` is recorded with N=1,10,50,100000"
+    kind: normal
+    status: observed
+    evidence: ["case:out-w-1-", "case:out-w-5-", "case:out-w-20-", "case:out-w-40-"]
+    origin: capture
+  - id: B-src_core-188
+    statement: "`--line-buffered` is recorded with the plain, -n, colour, JSON, XML, CSV, hex, `--format`, -o, -v and `-J4 --sort=name -r` outputs"
+    kind: normal
+    status: observed
+    evidence: ["case:out-lb-c"]
+    origin: capture
+  - id: B-src_core-189
+    statement: "With `-J N` for N from 1 to 16 and `--sort=name` the output of a 15 file directory (plain, -n, -c, -l, -L, colour, heading, JSON, XML, CSV, hex, `--format`, context, -v, -o, -m, -q, --tree, -z, `--ungroup`) is the same bytes for every N, files in sorted order; without `--sort` or `-J1` the order of whole files is thread timing"
+    kind: normal
+    status: observed
+    evidence: ["case:out-th-1-", "case:out-th-2-", "case:out-th-4-", "case:out-th-8-"]
+    origin: capture
+  - id: B-src_core-190
+    statement: "Cancel and stop options: `-m NUM` stops each file after NUM matches, `-q` writes nothing and stops at the first match (exit 0), `-l` with `-m1` and `--max-files=1` stop after the first file; `-q` with a missing file exits 2, as the help text says (2 on an error or any warning even when lines were printed); the same cases give the same bytes with -J1 and -J3 --sort=name"
+    kind: normal
+    status: observed
+    evidence: ["case:out-st-m1", "case:out-th-1-q", "case:out-th-4-ql"]
+    origin: capture
+  - id: B-src_core-191
+    statement: "`-Z` fuzzy matches are output like exact matches in every format and `%Z` is the edit distance cost; `-z` searches NUL separated records and is recorded with -o, -n, -b, JSON, XML, CSV, -X, --format, -v, colour and context"
+    kind: normal
+    status: observed
+    evidence: ["case:out-z-Zf", "case:out-z-Zc", "case:out-zt-Zf", "case:out-zt-best"]
+    origin: capture
+  - id: B-src_core-192
+    statement: "`--replace=FORMAT` with the `%n` field and without -n prints the number of the match line in the output (1, 2, 3 for lines 1, 4, 6): the real line number appears only when -n or a `--max-line` option is given, `--format=%n` always gives the real line number"
+    kind: edge-case
+    status: hypothesis
+    evidence: ["case:out-rn2-replace-n-plain", "case:out-rn2-replace-n-with-n", "case:out-rn2-replace-n-maxline", "case:out-r-65-5_n"]
+    origin: capture
+    suspicious: true
+    why: "`--replace=<%n>` without -n outputs a running count of the matching lines (1, 2, 3), not the line number (1, 4, 6), while `--format=%n`, `-n`, or `--max-line` give the real line number; the line number printed by --replace depends on unrelated options"
+  - id: B-src_core-193
+    statement: "`--format=%l` under `-v` outputs the letter `l`, `%n` the real line number and `%k`, `%b` the column and offset of the non-matching line"
+    kind: edge-case
+    status: hypothesis
+    evidence: ["case:out-rn2-format-n-invert"]
+    origin: capture
+    suspicious: true
+    why: "`%l` (last line number of a match, documented) outputs a literal `l` under -v, while %n, %k and %b work"
+  - id: B-src_core-194
+    statement: "`--color=always` with `--width` cuts a line inside a match and still outputs an empty colour sequence pair for the match: `ESC[1;31mESC[m` after the cut text"
+    kind: edge-case
+    status: hypothesis
+    evidence: ["case:out-w-5-c", "case:out-w-20-c", "case:out-w-1-c"]
+    origin: capture
+    suspicious: true
+    why: "the width cut leaves an empty match colour sequence `ESC[1;31mESC[m` at the end of a coloured line"
+  - id: B-src_core-195
+    statement: "`-o` with `--replace=FORMAT` writes the replacements back to back with no separator and no final newline: `<foo><foo>`"
+    kind: edge-case
+    status: hypothesis
+    evidence: ["case:out-rn2-replace-n-only", "case:out-r-0-", "case:out-rf-0-o"]
+    origin: capture
+    suspicious: true
+    why: "`--replace` with `-o` outputs no line ending, so the next file's output or the shell prompt continues the same line"
+
 openQuestions: []
 
 uncovered:
@@ -1097,7 +1320,7 @@ uncovered:
   - {region: "src/cnf.cpp CNF::compile", reason: unreachable, note: "no caller in src/"}
   - {region: "-P (perl) paths: have_pcre2=1 in cnf_flags, perl-mode CNF::anchor and CNF::report", reason: platform-only, note: "build-config limitation: the recorded build has have_pcre2=0, every -P case exits 2 with `option -P is not available in this build configuration`"}
   - {region: "src/ugrep.cpp save_config, set_depth_long, option_and/andnot/not/all_files, is_output, read_line, modified_time, rev_comp_by_*, JobQueue::steal_job/move_job, Binary/Grep handlers", reason: deferred, note: "reachable from the CLI in principle; cases to reach them are a Behavior follow-up (coverage 60.7% lines, 81.9% functions at this task's end)"}
-  - {region: "src/output.cpp color, capture and most format/colour/hex/json output paths", reason: deferred, note: "output.cpp lines 42.5%; needs a Behavior follow-up with more output cases"}
+  - {region: "src/output.cpp color, capture and most format/colour/hex/json output paths", reason: deferred, note: "output.cpp lines 42.5% at the C++ seam; rounds 19-22 (generator migration/harness/src_core/gen_output.py, quiet_output.py) record the Output surface cases against the product build; the component is cleaned, so there is no C++ coverage to measure"}
   - {region: "src/ugrep.cpp Windows-only vs POSIX branches", reason: platform-only, note: "recorded on Windows x64 only"}
   - {region: "src/ugrep.cpp terminal(): --pager and --color=auto/--pretty=auto with a terminal (isatty stdout/stderr, NO_COLOR, COLORTERM, TERM checks, pager pipe)", reason: platform-only, note: "needs a pty/ConPTY, the harness always pipes stdout; proposed mask: none (covered by the pipe cases only); Triage decision; follow-up pty harness"}
   - {region: "src/ugrep.cpp terminal(): Windows VT console mode setup and /dev/null quiet detection", reason: platform-only, note: "console handles only exist with a terminal; /dev/null check is POSIX only; proposed mask: none"}
@@ -1130,3 +1353,8 @@ discovery:
     - {round: 16, source: llm-proposed, new_cases: 561, new_coverage: 0, new_behaviors: 36, note: "help, --help WHAT, --version, usage, warning, error/abort, is_directory, cannot_decompress and exit codes; generator migration/harness/src_core/gen_help_main.py; recorded 3x twice, flaky 0, C++ against itself 0 divergent; help text saved in migration/corpus/src_core/help/help.txt"}
     - {round: 17, source: surface-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "quiet_help_main.py seed 1: 150 hm-* cases with independent flags, 0 differ from the recorded observation, 0 flaky"}
     - {round: 18, source: surface-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "quiet_help_main.py seed 2: 150 hm-* cases with other independent flags, 0 differ from the recorded observation, 0 flaky"}
+    - {round: 19, source: llm-proposed, new_cases: 2043, new_coverage: 0, new_behaviors: 35, note: "Output: plain, colour, hex dump, JSON, XML, CSV, C++, --format fields and %[...] arguments, --replace, context, separators, heading/break/tree, binary files, CRLF input, --width, --line-buffered, -J 1..16 with --sort=name, -m/-q/-l/--max-files; generator migration/harness/src_core/gen_output.py (3925 candidates, 1906 with an observation no recorded case had, 33 flaky dropped, 170 thread cases forced past the duplicate check); recorded 3x on the product build, flaky 0; unordered multi-file candidates are run with -J1 because the order is thread timing (--max-files with -J>1 races: not recorded)"}
+    - {round: 20, source: surface-proposed, new_cases: 10, new_coverage: 0, new_behaviors: 0, note: "quiet_output.py seed 1 (--tabs=8, --max-line, --no-hidden added to 150 out-* cases): 1 differed (out-r-65-5_n, --replace with %n and --max-line), admitted with 9 %n/%l cases (out-rn2-*), recorded 5x, flaky 0; 3 suspicious behaviors (--replace %n counter, %l under -v, last line without LF) listed for Triage"}
+    - {round: 21, source: surface-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "quiet_output.py seed 2: 150 out-* cases with independent flags, 0 differ from the recorded observation, 0 flaky"}
+    - {round: 22, source: surface-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "quiet_output.py seed 3 (--no-config, -J1, --no-ignore-files): 150 variants, 0 differ, 0 flaky"}
+    - {round: 23, source: surface-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "quiet_output.py seed 4: 150 variants, 0 differ, 0 flaky; C++ against itself 0 divergent"}
