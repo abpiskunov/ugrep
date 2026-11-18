@@ -95,9 +95,9 @@ impl SysHost<'_> {
     }
 }
 
-// SAFETY: callers pass a pointer to a NUL-terminated string that outlives the call.
 #[cfg(test)]
 pub(crate) fn test_c_bytes(p: *const c_char) -> Vec<u8> {
+    // SAFETY: callers pass a pointer to a NUL-terminated string that outlives the call.
     unsafe { CStr::from_ptr(p) }.to_bytes().to_vec()
 }
 
@@ -221,6 +221,7 @@ pub unsafe extern "C" fn ugrep_core_terminal(env: *const TerminalEnv) {
     // SAFETY: the caller passes a valid table (see above).
     let env = unsafe { &*env };
     // SAFETY: the table is valid; the settings are accessed from the main thread before the workers start.
+    // The usage callback re-enters C++, which only reads flag_usage_warnings and then exits (accepted in decisions.md).
     let (consts, settings) = unsafe { (consts(env), &mut *UGREP_SETTINGS.as_ptr()) };
     terminal::terminal(settings, &mut SysHost(env), &consts);
 }
