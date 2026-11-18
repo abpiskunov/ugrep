@@ -65,7 +65,8 @@ mod ffi {
     /// Plain-data snapshot of a `reflex::AbstractMatcher` match, built by C++ per call (Rust cannot own the matcher).
     /// Offsets are relative to `window`, passed next to it. The window starts at `bol()` when `has_bol` (else at
     /// `begin()`), or earlier when a group capture begins before that, and ends at `max(eol(), end())` when `has_eol`
-    /// (else at `end()`). C++ sets them only when the
+    /// (else at `end()`). `bol_off` and `eol_off` are the line bounds before that widening: the line of the match is
+    /// `window[bol_off..eol_off]`. C++ sets them only when the
     /// format or flags need the line, as the inline `mat`/`quote` overloads do, because `eol()` may refill the buffer.
     /// `columno`, `lines`, `lineno_end`, `edits`/`distance` and `groups` are filled only when the format characters
     /// or flags that read them are present (`%K %k`, `%L %l`, `%Z`, `%G %g %[..] %1-%9`); otherwise they are zero/empty.
@@ -86,6 +87,8 @@ mod ffi {
         begin_off: usize,
         text_off: usize,
         end_off: usize,
+        bol_off: usize,
+        eol_off: usize,
         has_fuzzy: bool,
         edits: usize,
         distance: usize,
@@ -612,7 +615,7 @@ fn output_truncate_lines(data: &[u8], skip: bool, cols: usize, ansi: u8) -> ffi:
     ffi::OutputTruncResult { bytes, skip: st.skip, cols: st.cols, ansi: st.ansi }
 }
 fn output_format_count(format: &[u8], matches: usize, ctx: &ffi::OutputCtx) -> Vec<u8> {
-    output_format::format_count(&output_ffi::opts(&[], &[], &[]), format, matches, ctx)
+    output_format::format_count(output_ffi::format_opts(), format, matches, ctx)
 }
 
 fn output_format_match(
@@ -624,7 +627,7 @@ fn output_format_match(
     matcher: &ffi::OutputMatch,
     ctx: &ffi::OutputCtx,
 ) -> ffi::OutputFormatResult {
-    output_format::format_match(&output_ffi::opts(&[], &[], &[]), format, (pathname, partname), window, args, matcher, ctx)
+    output_format::format_match(output_ffi::format_opts(), format, (pathname, partname), window, args, matcher, ctx)
 }
 
 fn output_format_invert(
@@ -635,5 +638,5 @@ fn output_format_invert(
     args: &ffi::OutputArgs,
     ctx: &ffi::OutputCtx,
 ) -> ffi::OutputFormatResult {
-    output_format::format_invert(&output_ffi::opts(&[], &[], &[]), format, (pathname, partname), line, args, ctx)
+    output_format::format_invert(output_ffi::format_opts(), format, (pathname, partname), line, args, ctx)
 }

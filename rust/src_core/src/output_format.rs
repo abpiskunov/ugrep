@@ -567,21 +567,28 @@ impl Mt<'_> {
         } else if width > 0 {
             let k = usize::try_from(width).unwrap_or(0);
             if plus {
-                let rest = sl(self.w, m.end_off, self.w.len());
+                let rest = sl(self.w, m.end_off, m.eol_off);
                 sl(rest, 0, utf8pos(rest, k))
             } else {
                 let s = self.matched();
                 sl(s, 0, utf8pos(s, k))
             }
         } else {
-            let b = utf8back(self.w, m.begin_off, neg(width));
-            sl(self.w, b, m.begin_off)
+            let line = self.line();
+            let at = m.begin_off.saturating_sub(m.bol_off);
+            let b = utf8back(line, at, neg(width));
+            sl(line, b, at)
         }
+    }
+
+    /// The line of the match, `bol()` to `eol()`: the window may be wider because of captures outside the line.
+    fn line(&self) -> &[u8] {
+        sl(self.w, self.m.bol_off, self.m.eol_off)
     }
 
     /// The line of the match (`bol()` to `eol()`) cut as the inline `quote`, `cpp`, ... overloads do for width `w`.
     fn line_cut(&self, w: i32) -> &[u8] {
-        let line = self.w;
+        let line = self.line();
         if w > 0 {
             sl(line, 0, utf8pos(line, usize::try_from(w).unwrap_or(0)))
         } else if w < 0 {
@@ -853,7 +860,7 @@ fn mat(f: &mut Fmt, mt: &Mt, w: i32) {
             f.out.str(s);
         }
     } else {
-        let line = mt.w;
+        let line = mt.line();
         let (mut b, mut e) = (0usize, line.len());
         if o.hex_all || (o.with_hex && !isutf8(line)) {
             if w > 0 && usize::try_from(w).is_ok_and(|k| b + k < e) {
@@ -1091,6 +1098,8 @@ mod tests {
             begin_off: 0,
             text_off: 0,
             end_off: 0,
+            bol_off: 0,
+            eol_off: 0,
             has_fuzzy: false,
             edits: 0,
             distance: 0,
@@ -1154,6 +1163,8 @@ mod tests {
             begin_off: 3,
             text_off: 3,
             end_off: 8,
+            bol_off: 0,
+            eol_off: 11,
             has_eol: true,
             has_bol: true,
             ..om()
@@ -1182,8 +1193,44 @@ mod tests {
         o.only_matching = true;
         let window = b"foo=bar";
         let groups = vec![OutputCapture { index: 1, has_name: true, name: b"k".to_vec(), found: true, listed: true, offset: 0, size: 3 }];
-        let m = OutputMatch { size: 7, begin_off: 0, end_off: 7, groups, ..om() };
+        let m = OutputMatch { size: 7, begin_off: 0, end_off: 7, eol_off: 7, groups, ..om() };
         let r = format_match(&o, b"%G|%[k]o|%[1]b|%1|%j", (b"f", b""), window, &args(), &m, &ctx());
         assert_eq!(r.bytes, b"k|foo|0|foo|\"foo=bar\"");
+    }
+
+    #[test]
+    fn lookaround_capture_outside_the_line() {
+        let o = opts();
+        // `a(?=(b\nc))` on "xab\nc": the window is widened to hold the capture, the line is not
+        let window = b"xab\nc";
+        let groups = vec![OutputCapture { index: 1, has_name: false, name: Vec::new(), found: true, listed: true, offset: 2, size: 3 }];
+        let m = OutputMatch {
+            size: 1,
+            begin_off: 1,
+            text_off: 1,
+            end_off: 2,
+            bol_off: 0,
+            eol_off: 3,
+            has_bol: true,
+            has_eol: true,
+            groups,
+            ..om()
+        };
+        let r = format_match(&o, b"%O|%1", (b"f", b""), window, &args(), &m, &ctx());
+        assert_eq!(r.bytes, b"xab|b\nc");
+        // `(?<=(x\n))y` on "x\ny": the previous line does not leak into %O or %{-N}o
+        let m = OutputMatch {
+            size: 1,
+            begin_off: 2,
+            text_off: 2,
+            end_off: 3,
+            bol_off: 2,
+            eol_off: 3,
+            has_bol: true,
+            has_eol: true,
+            ..om()
+        };
+        let r = format_match(&o, b"%O|%{-3}o", (b"f", b""), b"x\ny", &args(), &m, &ctx());
+        assert_eq!(r.bytes, b"y|");
     }
 }

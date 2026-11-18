@@ -105,7 +105,8 @@ inline Need scan_format(const char *format, bool body_lines)
       ++s;
     }
     int c = *s;
-    if (has_arg)
+    // only the fields that read captures need the group walk (b d e o # q c v j x y G g 0-9)
+    if (has_arg && c != '\0' && strchr("bdeo#qcvjxyGg0123456789", c) != NULL)
       need.groups = true;
     switch (c)
     {
@@ -208,6 +209,9 @@ inline ugrep_rust::OutputMatch snapshot(reflex::AbstractMatcher *matcher, Window
     b = matcher->bol();
     m.has_bol = true;
   }
+  // the line bounds before the window is widened for captures
+  const char *line_b = b;
+  const char *line_e = e;
   // captures of every group the pattern defines, in group_id()/group_next_id() order (group 0 is the match itself)
   // a capture may start before begin() (PCRE2 lookbehind) or end after end(): widen the window to hold it
   std::vector<const char*> cap_first;
@@ -263,6 +267,8 @@ inline ugrep_rust::OutputMatch snapshot(reflex::AbstractMatcher *matcher, Window
   }
   window.data = b;
   window.size = static_cast<size_t>(e - b);
+  m.bol_off = static_cast<size_t>(line_b - b);
+  m.eol_off = static_cast<size_t>(line_e - b);
   m.first = matcher->first();
   m.last = matcher->last();
   m.size = matcher->size();

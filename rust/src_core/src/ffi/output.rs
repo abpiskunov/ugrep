@@ -29,6 +29,12 @@ fn flag(v: i32) -> bool {
     v == 1
 }
 
+/// The `Opts` of the format calls (no `--hyperlink` strings), built once: the settings are final when output starts.
+pub fn format_opts() -> &'static Opts<'static> {
+    static OPTS: std::sync::OnceLock<Opts<'static>> = std::sync::OnceLock::new();
+    OPTS.get_or_init(|| opts(&[], &[], &[]))
+}
+
 /// Builds the `Opts` snapshot from `ugrep_settings` and the `--hyperlink` strings that C++ passes.
 pub fn opts<'a>(hyperlink_prefix: &'a [u8], hyperlink_host: &'a [u8], hyperlink_path: &'a [u8]) -> Opts<'a> {
     // SAFETY: the settings are written by C++ option parsing before any output is produced and are only read here;

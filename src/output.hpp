@@ -147,14 +147,14 @@ class Output {
       lock->owned = ugrep_output_sync_finish(lock->handle, lock->owned, slot);
     }
 
-    void cancel()
+    void cancel(Lock *lock)
     {
-      ugrep_output_sync_cancel(handle);
+      ugrep_output_sync_cancel(lock->handle);
     }
 
-    bool cancelled()
+    bool cancelled(Lock *lock)
     {
-      return ugrep_output_sync_cancelled(handle);
+      return ugrep_output_sync_cancelled(lock->handle);
     }
 
     size_t next; // ORDERED: next slot assigned to thread
@@ -580,13 +580,13 @@ class Output {
     eof = true;
 
     if (sync != NULL)
-      sync->cancel();
+      sync->cancel(lock_);
   }
 
   // true if output was cancelled()
   bool cancelled()
   {
-    return sync != NULL && sync->cancelled();
+    return sync != NULL && sync->cancelled(lock_);
   }
 
   // output color when set
