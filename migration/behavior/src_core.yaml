@@ -405,7 +405,8 @@ behaviors:
   - id: B-src_core-058
     statement: "`--depth=` and `--max-depth=` with an empty value take the next command line word as the argument: the pattern is consumed and the message reads `invalid argument --depth=foo`"
     kind: error
-    status: observed
+    status: bug-preserve
+    decision: Q-core-6
     suspicious: true
     why: "an empty `=` value silently swallows the next word; the error text names the swallowed pattern, not an empty argument"
     evidence: ["case:opc-depth-eq-empty", "case:opc-depth-max-empty-eq"]
@@ -443,7 +444,8 @@ behaviors:
   - id: B-src_core-064
     statement: "`-A -1` is accepted and prints all following lines as context (the negative value wraps to a huge unsigned count); `--context=-1` is accepted by the parser and the search then fails with `warning: exception while searching`, exit 2"
     kind: edge-case
-    status: observed
+    status: bug-preserve
+    decision: Q-core-7
     suspicious: true
     why: "negative context is not rejected: one form wraps silently, the other throws inside the search (sibling Q-core-1 -m negative accepted)"
     evidence: ["case:opc-ctx-17", "case:opc-ctx-37"]
@@ -457,7 +459,8 @@ behaviors:
   - id: B-src_core-066
     statement: "`---foo` is read as `--` followed by option `-foo`'s tail and fails with `option --config: cannot read foo`"
     kind: edge-case
-    status: observed
+    status: bug-preserve
+    decision: Q-core-8
     suspicious: true
     why: "the error names --config although no config option was given; looks like a mis-parse of the option name"
     evidence: ["case:opc-err-triple-dash"]
@@ -483,7 +486,8 @@ behaviors:
   - id: B-src_core-070
     statement: "A directory named with several trailing slashes or `//` inside keeps them and mixes `/` with the native separator in every reported path (`d///\\a.txt`, `d//s/\\b.txt`)"
     kind: edge-case
-    status: observed
+    status: bug-preserve
+    decision: Q-core-9
     suspicious: true
     why: "only one trailing slash is trimmed; the output path spelling differs from the path of the same directory given as `d`; the native separator is Windows-only"
     evidence: ["case:opc-trim-slashes", "case:opc-trim-double", "case:opc-trim-two-dirs"]
@@ -539,7 +543,8 @@ behaviors:
   - id: B-src_core-079
     statement: "`--save-config=DIR` with an existing directory reports `saved old configuration file to DIR.old: File exists`, `saving` and exit 0 although nothing was written"
     kind: edge-case
-    status: observed
+    status: bug-preserve
+    decision: Q-core-10
     suspicious: true
     why: "success exit status and a message about an old file although the target is a directory and no configuration was saved"
     evidence: ["case:opc-save-to-dir"]
