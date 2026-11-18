@@ -28,6 +28,9 @@ const EXCLUDE_FS_END: &str = "            --exclude-fs=MOUNTS take priority over
 const INCLUDE_FS_END: &str = "            priority over --include-fs=MOUNTS.  This option may be repeated.\n";
 const GREP_PATH_LINE: &str = "            exist, the GREP_PATH environment variable is used as path to FILE.\n";
 const HIDDEN_WIN: &str = "Search Windows system and hidden files";
+// the recorded (Windows) values of DEFAULT_PAGER_COMMAND and DEFAULT_IGNORE_FILE in the help text
+const PAGER_RECORDED: &str = "            defined or `more'.  Enables --heading and --line-buffered.\n";
+const IGNORE_RECORDED: &str = "            `.gitignore'.  Matching files and directories located in the\n";
 const FUZZY_OPT: &str = "    -Z[best][+-~][MAX], --fuzzy[=";
 const DECOMPRESS_OPT: &str = "    -z, --decompress\n";
 const NOT_AVAILABLE: &str = "            This option is not available in this build configuration of ugrep.\n";
@@ -60,6 +63,10 @@ pub struct BuildConfig<'a> {
     pub statfs: bool,
     /// `GREP_PATH` of the build, if defined
     pub grep_path: Option<&'a [u8]>,
+    /// `DEFAULT_PAGER_COMMAND`
+    pub default_pager: &'a [u8],
+    /// `DEFAULT_IGNORE_FILE`
+    pub default_ignore_file: &'a [u8],
     /// `flag_grep` at the time of the call
     pub grep: bool,
 }
@@ -109,6 +116,10 @@ pub fn help_text(cfg: &BuildConfig) -> String {
             let line = format!("{GREP_PATH_LINE}            If that fails, looks for FILE in {}.\n", String::from_utf8_lossy(path));
             text = text.replacen(GREP_PATH_LINE, &line, 1);
         }
+        let pager = String::from_utf8_lossy(cfg.default_pager);
+        text = text.replacen(PAGER_RECORDED, &format!("            defined or `{pager}'.  Enables --heading and --line-buffered.\n"), 1);
+        let ignore = String::from_utf8_lossy(cfg.default_ignore_file);
+        text = text.replacen(IGNORE_RECORDED, &format!("            `{ignore}'.  Matching files and directories located in the\n"), 1);
         if !cfg.os_win_or_mingw {
             text = text.replacen(HIDDEN_WIN, "Search hidden files", 1);
         }
@@ -197,10 +208,15 @@ fn find_bytes(hay: &[u8], needle: &[u8], from: usize) -> Option<usize> {
 /// the text (the exception is then reported as `ugrep: error: invalid string position`).
 pub struct HelpOut {
     pub out: Vec<u8>,
-    pub past_end: bool,
+    pub past_end: Option<PastEnd>,
 }
 
-pub const PAST_END_MESSAGE: &[u8] = b"invalid string position";
+/// The arguments of the C++ `std::string::at(n)` that threw: `n` is the position, `size` the length of the text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PastEnd {
+    pub n: usize,
+    pub size: usize,
+}
 
 pub fn help_what(what: Option<&[u8]>, cfg: &BuildConfig) -> HelpOut {
     let mut what = what;
@@ -229,7 +245,7 @@ pub fn help_what(what: Option<&[u8]>, cfg: &BuildConfig) -> HelpOut {
         _ => {
             let mut out = text.into_bytes();
             out.extend_from_slice(HELP_TRAILER.as_bytes());
-            return HelpOut { out, past_end: false };
+            return HelpOut { out, past_end: None };
         }
     };
 
@@ -251,7 +267,7 @@ pub fn help_what(what: Option<&[u8]>, cfg: &BuildConfig) -> HelpOut {
                     match s.get(i + j) {
                         Some(&c) if (what[j] ^ c) & !0x20 == 0 => j += 1,
                         Some(_) => break,
-                        None => return HelpOut { out, past_end: true },
+                        None => return HelpOut { out, past_end: Some(PastEnd { n: i + j, size: s.len() }) },
                     }
                 }
                 let at_end = j == what.len();
@@ -293,7 +309,7 @@ pub fn help_what(what: Option<&[u8]>, cfg: &BuildConfig) -> HelpOut {
     if let Some(t) = topic {
         out.extend_from_slice(t.as_bytes());
     }
-    HelpOut { out, past_end: false }
+    HelpOut { out, past_end: None }
 }
 
 /// `usage()`: the text for standard error. When `message` is not `NULL`; `arg` and `valid` may be absent.
@@ -468,13 +484,15 @@ mod tests {
         os_win_or_mingw: true,
         statfs: false,
         grep_path: None,
+        default_pager: b"more",
+        default_ignore_file: b".gitignore",
         grep: false,
     };
 
     #[test]
     fn recorded_text_is_reproduced_for_the_recorded_configuration() {
         let full = help_what(None, &BASE);
-        assert!(!full.past_end);
+        assert!(full.past_end.is_none());
         assert_eq!(String::from_utf8(full.out).unwrap(), HELP_RECORDED);
     }
 
@@ -528,11 +546,22 @@ mod tests {
     }
 
     #[test]
+    fn pager_and_ignore_file_names_are_substituted() {
+        assert!(help_text(&BASE).contains("defined or `more'."));
+        let t = help_text(&BuildConfig { default_pager: b"less", default_ignore_file: b".myignore", ..BASE });
+        assert!(t.contains("defined or `less'.  Enables --heading"));
+        assert!(!t.contains("defined or `more'"));
+        assert!(t.contains("            `.myignore'.  Matching files"));
+        assert!(!t.contains("`.gitignore'"));
+    }
+
+    #[test]
     fn what_past_the_end_of_the_text_is_reported() {
         let r = help_what(Some(b"occurred.**x"), &BASE);
-        assert!(r.past_end);
-        assert_eq!(PAST_END_MESSAGE, b"invalid string position");
-        assert!(!help_what(Some(b"nosuchword"), &BASE).past_end);
+        let past = r.past_end.expect("past the end");
+        assert!(past.n >= past.size);
+        assert_eq!(past.size, help_text(&BASE).len());
+        assert!(help_what(Some(b"nosuchword"), &BASE).past_end.is_none());
     }
 
     #[test]

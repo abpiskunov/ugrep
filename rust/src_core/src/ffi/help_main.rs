@@ -49,6 +49,12 @@ pub struct DiagEnv {
     pub statfs: c_int,
     /// `GREP_PATH`, or NULL when undefined
     pub grep_path: *const c_char,
+    /// `DEFAULT_PAGER_COMMAND`
+    pub default_pager: *const c_char,
+    /// `DEFAULT_IGNORE_FILE`
+    pub default_ignore_file: *const c_char,
+    /// the text of the `std::out_of_range` of `std::string(size, ' ').at(n)`, into a buffer of the given size
+    pub past_end_text: extern "C" fn(*mut c_void, usize, usize, *mut c_char, usize),
 }
 
 /// Mirrors `struct CoreMainEnv` of src/ugrep.cpp.
@@ -114,6 +120,10 @@ fn config(env: &DiagEnv) -> BuildConfig<'_> {
         statfs: env.statfs != 0,
         // SAFETY: the table holds NULL or a NUL-terminated string that outlives it.
         grep_path: unsafe { bytes(env.grep_path) },
+        // SAFETY: the table holds NUL-terminated strings that outlive it.
+        default_pager: unsafe { bytes(env.default_pager) }.unwrap_or(b""),
+        // SAFETY: as above.
+        default_ignore_file: unsafe { bytes(env.default_ignore_file) }.unwrap_or(b""),
         grep: setting!(flag_grep),
     }
 }
@@ -161,6 +171,14 @@ fn errno_text(env: &DiagEnv, errnum: c_int) -> Vec<u8> {
     unsafe { CStr::from_ptr(buf.as_ptr()) }.to_bytes().to_vec()
 }
 
+fn past_end_text(env: &DiagEnv, p: hm::PastEnd) -> Vec<u8> {
+    let mut buf = [0 as c_char; 512];
+    (env.past_end_text)(env.ctx, p.n, p.size, buf.as_mut_ptr(), buf.len());
+    buf[buf.len() - 1] = 0;
+    // SAFETY: `buf` is NUL-terminated above.
+    unsafe { CStr::from_ptr(buf.as_ptr()) }.to_bytes().to_vec()
+}
+
 /// `usage()`: returns the exit status, or -1 when the C++ continues (reading a configuration file).
 ///
 /// # Safety
@@ -191,9 +209,10 @@ pub unsafe extern "C" fn ugrep_core_help(env: *const DiagEnv, what: *const c_cha
         let (env, what) = unsafe { (&*env, bytes(what)) };
         let help = hm::help_what(what, &config(env));
         write_cout(env, &help.out);
-        if help.past_end {
+        if let Some(p) = help.past_end {
             // C++ `str.at()` threw out_of_range, which main() reports as an error
-            write_errout(env, &with_colors(|c| hm::abort_what_text(c, Some(b"error: "), hm::PAST_END_MESSAGE)));
+            let what = past_end_text(env, p);
+            write_errout(env, &with_colors(|c| hm::abort_what_text(c, Some(b"error: "), &what)));
         }
         EXIT_ERROR
     })

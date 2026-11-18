@@ -11487,6 +11487,9 @@ struct CoreDiagEnv
   int os_win_or_mingw;
   int statfs;
   const char *grep_path;
+  const char *default_pager;
+  const char *default_ignore_file;
+  void (*past_end_text)(void *, size_t, size_t, char *, size_t);
 };
 
 // the callback table of the Rust main, the field order mirrors Rust's MainEnv
@@ -11540,6 +11543,24 @@ void diag_strerror(void *, int errnum, char *buf, size_t size)
   strncpy(buf, errmsg, size - 1);
   buf[size - 1] = '\0';
 #endif
+}
+
+// the text of the std::out_of_range exception of std::string::at(), as produced by the C++ standard library
+void diag_past_end(void *, size_t n, size_t size, char *buf, size_t bufsize)
+{
+  try
+  {
+    std::string(size, ' ').at(n);
+  }
+
+  catch (std::out_of_range& e)
+  {
+    strncpy(buf, e.what(), bufsize - 1);
+    buf[bufsize - 1] = '\0';
+    return;
+  }
+
+  buf[0] = '\0';
 }
 
 CoreDiagEnv diag_env()
@@ -11640,6 +11661,9 @@ CoreDiagEnv diag_env()
 #else
   env.grep_path = NULL;
 #endif
+  env.default_pager = DEFAULT_PAGER_COMMAND;
+  env.default_ignore_file = DEFAULT_IGNORE_FILE;
+  env.past_end_text = diag_past_end;
   return env;
 }
 
