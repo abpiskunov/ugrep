@@ -88,12 +88,6 @@ fn nz(s: &[u8]) -> Vec<u8> {
     v
 }
 
-/// True when `path` starts with `~` but there is no home directory to expand it: opening it must fail like a
-/// file that cannot be opened (fopen_smart sets errno = ENOENT).
-fn tilde_without_home(path: &[u8], home: Option<&[u8]>) -> bool {
-    path.first() == Some(&b'~') && home.is_none()
-}
-
 fn text(env: &mut impl ConfigEnv, p: *const c_char) -> Option<Vec<u8>> {
     if p.is_null() {
         None
@@ -119,7 +113,7 @@ pub fn load_config<E: ConfigEnv>(s: &mut Settings, env: &mut E, k: ConfigConsts,
     let mut config_file = flag_config.clone();
     let mut file: Option<E::File> = None;
 
-    if wdir && !tilde_without_home(&flag_config, env.home_dir().as_deref()) {
+    if wdir {
         file = env.open(&nz(&flag_config), true);
     }
 
@@ -617,8 +611,7 @@ pub fn save_config<E: ConfigEnv>(s: &mut Settings, env: &mut E, k: ConfigConsts)
         env.write(Sink::Errout, &msg);
     }
 
-    let opened = if tilde_without_home(&save, env.home_dir().as_deref()) { None } else { env.save_open(&nz(&save)) };
-    let Some(file) = opened else {
+    let Some(file) = env.save_open(&nz(&save)) else {
         env.usage("cannot save configuration file ", Some(&save), None);
         return;
     };
@@ -640,13 +633,132 @@ pub fn save_config<E: ConfigEnv>(s: &mut Settings, env: &mut E, k: ConfigConsts)
 
 #[cfg(test)]
 mod tests {
-    use super::tilde_without_home;
+    use super::*;
+
+    const ENOENT: i32 = 2;
+
+    /// Mimics `fopen_smart`: a `~` path without a home directory fails with errno = ENOENT.
+    #[derive(Default)]
+    struct Mock {
+        home: Option<Vec<u8>>,
+        strings: Vec<(*const c_char, Vec<u8>)>,
+        errno: i32,
+        opened: Vec<Vec<u8>>,
+        errors: Vec<(String, i32)>,
+        usages: Vec<(String, i32)>,
+    }
+
+    impl Mock {
+        fn fopen(&mut self, path: Z<'_>) -> Option<()> {
+            self.opened.push(path.to_vec());
+            if path.first() == Some(&b'~') && self.home.is_none() {
+                self.errno = ENOENT;
+                return None;
+            }
+            Some(())
+        }
+    }
+
+    impl ConfigEnv for Mock {
+        type File = ();
+
+        fn usage(&mut self, message: &str, _arg: Option<&[u8]>, _valid: Option<&str>) {
+            self.usages.push((message.to_string(), self.errno));
+        }
+        fn list_clear(&mut self, _list: List) {}
+        fn list_empty(&mut self, _list: List) -> bool {
+            true
+        }
+        fn filter_clear(&mut self) {}
+        fn c_string(&mut self, p: *const c_char) -> Vec<u8> {
+            self.strings.iter().find(|(q, _)| *q == p).map(|(_, v)| v.clone()).unwrap_or_default()
+        }
+        fn open(&mut self, path: Z<'_>, _check_owner: bool) -> Option<()> {
+            self.fopen(path)
+        }
+        fn next_line(&mut self, _file: ()) -> bool {
+            false
+        }
+        fn line_text(&mut self, _file: ()) -> Vec<u8> {
+            Vec::new()
+        }
+        fn prefix_line(&mut self, _file: ()) -> *const c_char {
+            std::ptr::null()
+        }
+        fn file_error(&mut self, _file: ()) -> bool {
+            false
+        }
+        fn close(&mut self, _file: ()) {}
+        fn files_contains(&mut self, _path: Z<'_>) -> bool {
+            false
+        }
+        fn files_insert(&mut self, _path: Z<'_>) {}
+        fn files_len(&mut self) -> usize {
+            0
+        }
+        fn files_get(&mut self, _index: usize) -> Vec<u8> {
+            Vec::new()
+        }
+        fn home_dir(&mut self) -> Option<Vec<u8>> {
+            self.home.clone()
+        }
+        fn warnings_reset(&mut self) {}
+        fn warnings(&mut self) -> usize {
+            0
+        }
+        fn write(&mut self, _sink: Sink, _bytes: &[u8]) {}
+        fn error(&mut self, message: &str, _arg: Z<'_>) {
+            self.errors.push((message.to_string(), self.errno));
+        }
+        fn warning(&mut self, _message: &str, _arg: Z<'_>) {}
+        fn exit_error(&mut self) -> ! {
+            panic!("exit(EXIT_ERROR)")
+        }
+        fn parse_option(&mut self, _settings: &mut Settings, _arg: *const c_char) {}
+        fn regexp_clear(&mut self) {}
+        fn filter(&mut self) -> Vec<u8> {
+            Vec::new()
+        }
+        fn list_len(&mut self, _list: List) -> usize {
+            0
+        }
+        fn list_get(&mut self, _list: List, _index: usize) -> Vec<u8> {
+            Vec::new()
+        }
+        fn rename_old(&mut self, _path: Z<'_>, _old: Z<'_>) -> bool {
+            false
+        }
+        fn save_open(&mut self, path: Z<'_>) -> Option<()> {
+            self.fopen(path)
+        }
+        fn save_write(&mut self, _file: (), _bytes: &[u8]) {}
+        fn save_error(&mut self, _file: ()) -> bool {
+            false
+        }
+        fn save_close(&mut self, _file: ()) {}
+    }
+
+    const K: ConfigConsts = ConfigConsts { default_query_delay: 3, path_sep: b'\\', xdg: false };
 
     #[test]
-    fn tilde_path_without_home_cannot_be_opened() {
-        assert!(tilde_without_home(b"~\\h.cfg", None));
-        assert!(tilde_without_home(b"~", None));
-        assert!(!tilde_without_home(b"~\\h.cfg", Some(b"C:\\u")));
-        assert!(!tilde_without_home(b"h.cfg", None));
+    fn load_config_tilde_path_without_home_cannot_read() {
+        let mut s = Settings::DEFAULT;
+        s.flag_config = c"~\\h.cfg".as_ptr();
+        let mut env = Mock::default();
+        env.strings.push((s.flag_config, b"~\\h.cfg".to_vec()));
+        load_config(&mut s, &mut env, K, false);
+        assert_eq!(env.opened, vec![b"~\\h.cfg\0".to_vec()]);
+        assert_eq!(env.errors, vec![("option --config: cannot read".to_string(), ENOENT)]);
+    }
+
+    #[test]
+    fn save_config_tilde_path_without_home_cannot_save() {
+        let mut s = Settings::DEFAULT;
+        s.flag_save_config = c"~\\x".as_ptr();
+        let mut env = Mock::default();
+        env.strings.push((s.flag_save_config, b"~\\x".to_vec()));
+        save_config(&mut s, &mut env, K);
+        assert_eq!(env.opened, vec![b"~\\x\0".to_vec()]);
+        assert_eq!(env.usages, vec![("cannot save configuration file ".to_string(), ENOENT)]);
     }
 }
