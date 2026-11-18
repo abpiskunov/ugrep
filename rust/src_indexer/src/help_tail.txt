@@ -1,0 +1,15 @@
+    --zmax=NUM
+            When used with option -z (--decompress), indexes the contents of
+            compressed files and archives stored within archives by up to NUM
+            expansion levels deep.  The default --zmax=1 only permits indexing
+            uncompressed files stored in cpio, pax, tar, zip and 7z archives;
+            compressed files and archives are detected as binary files and are
+            effectively ignored.  Specify --zmax=2 to index compressed files
+            and archives stored in cpio, pax, tar, zip and 7z archives.  NUM
+            may range from 1 to 99 for up to 99 decompression and de-archiving
+            steps.  Increasing NUM values gradually degrades performance.
+
+    The ugrep-indexer utility exits with one of the following values:
+    0      Indexes are up to date.
+    1      Indexing check -c detected missing and outdated index files.
+

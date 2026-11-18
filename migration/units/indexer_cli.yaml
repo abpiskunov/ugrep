@@ -1,0 +1,16 @@
+schema: cpp-rust-unit/1
+unit: indexer_cli
+component: src_indexer
+functions: [src_indexer.options]
+cpp_files: [src/ugrep-indexer.cpp, src/ugrep-indexer_facade.cpp, src/ugrep-indexer_seam.h, src/indexer_rust.hpp]
+rust_files: rust/src_indexer/src/indexer_cli.rs
+rust_crate_name: src_indexer
+harness_crate_name: src_indexer-harness
+depends_on: [indexer_walk]
+status: ported
+notes:
+  - 'Scope: version, help, usage, cannot_decompress, warning, strtonum, strtopos, option parsing, load_config and main of ugrep-indexer. Rust owns the option state (IndexerFlags, built by options() and by load_config); no C++ reads flag_*. The facade, the seam header and indexer_rust.hpp are deleted; src/ugrep-indexer.cpp is a thin main calling ugrep_indexer_main (rust/src_indexer/src/ffi/entry.rs).'
+  - 'Bug-preserve kept: Q-indexer-1 (accuracy 10/11 read as 1), Q-indexer-2 (usage errors exit 0); Q-indexer-3 and Q-indexer-4 live in the walk.'
+  - 'Help text is two include_str! files (help_head.txt, help_tail.txt) with the codec list and platform in between; the codecs come from build.rs (UGREP_INDEXER_CODECS) and the platform from PLATFORM. Version is CARGO_PKG_VERSION (7.8.5), no longer the C++ UGREP_VERSION define.'
+  - 'options() does not exit the process: it returns Exit{exited:true, exit_code:0}; run() is the Rust main.'
+  - 'Gate: see the test_report of the task for the GATE lines and report paths.'

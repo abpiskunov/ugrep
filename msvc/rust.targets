@@ -32,12 +32,15 @@
          may call them (feature codecs). Base-* configurations link none, and the Rust zstream is built without codec calls. -->
     <RustCargoFeatures Condition="!$(Configuration.StartsWith('Base-'))">codecs</RustCargoFeatures>
     <RustCargoFeatureArg Condition="'$(RustCargoFeatures.Trim())'!=''">--features &quot;$(RustCargoFeatures.Trim())&quot;</RustCargoFeatureArg>
+    <!-- ugrep.vcxproj references the brotli and bzip3 projects and defines HAVE_LIBBROTLI/HAVE_LIBBZIP3 in the same configurations,
+         so the Rust zstream may call them there (D-S6-1); the Base-* configurations and ugrep-indexer link none of them. -->
+    <RustCodecLibsEnv Condition="'$(MSBuildProjectName)'=='ugrep' And !$(Configuration.StartsWith('Base-'))">;CPP2RUST_CODEC_LIBS=zlib,bz2,lzma,lz4,zstd,viiz,brotlidec,brotlicommon,bzip3</RustCodecLibsEnv>
   </PropertyGroup>
 
   <!-- /MT in the Base configurations: the Rust side must use the static CRT too. -->
   <!-- Before ClCompile: the facade includes the header cargo generates for the cxx bridge. -->
   <Target Name="CargoBuildUmbrella" BeforeTargets="ClCompile" Condition="'$(RustLinkUmbrella)'=='true'">
     <Exec Command="cargo build --release --locked -p rust_umbrella $(RustCargoFeatureArg) --manifest-path &quot;$(RustRoot)Cargo.toml&quot; --target-dir &quot;$(RustTargetDir)&quot;"
-          EnvironmentVariables="RUSTFLAGS=-C target-feature=+crt-static;CPP2RUST_CODECS_FROM_LINKER=1" />
+          EnvironmentVariables="RUSTFLAGS=-C target-feature=+crt-static;CPP2RUST_CODECS_FROM_LINKER=1$(RustCodecLibsEnv)" />
   </Target>
 </Project>

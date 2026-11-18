@@ -346,15 +346,19 @@ AX_CHECK_LZ4LIB([], [echo "optional liblz4 not found: install if you want ugrep 
 
 AX_CHECK_ZSTDLIB([], [echo "optional libzstd not found: install if you want ugrep option -z to search .zst files"])
 
-# the Rust zstream does not decode .br and .bz3: brotli and bzip3 are neither detected, defined nor linked
-AC_ARG_WITH(brotli,
-  [AS_HELP_STRING([--with-brotli],
-                  [not supported by the Rust build: .br files cannot be searched])],
-  [AS_IF([test "x$withval" != "xno"], [AC_MSG_WARN([--with-brotli ignored: the Rust build does not support .br files])])])
+AX_CHECK_BROTLILIB([], [echo "optional brotli library not found: install if you want ugrep option -z to search .br files"])
+
 AC_ARG_WITH(bzip3,
   [AS_HELP_STRING([--with-bzip3],
-                  [not supported by the Rust build: .bz3 files cannot be searched])],
-  [AS_IF([test "x$withval" != "xno"], [AC_MSG_WARN([--with-bzip3 ignored: the Rust build does not support .bz3 files])])])
+                  [to enable bzip3 library to decompress .bz3 files])],
+  [with_bzip3_library="$withval"],
+  [with_bzip3_library=""])
+if test "x$with_bzip3_library" != "x"; then
+  if test "x$with_bzip3" = "xyes"; then
+    unset with_bzip3
+  fi
+  AX_CHECK_BZIP3LIB([], [echo "optional libbzip3 not found: install if you want ugrep option -z to search .bz3 files"])
+fi
 
 AC_ARG_ENABLE(7zip,
   [AS_HELP_STRING([--disable-7zip],
@@ -395,6 +399,14 @@ for lib in z bz2 lzma lz4 zstd viiz; do
       ;;
   esac
 done
+# the macros define HAVE_LIBBROTLI/HAVE_LIBBZIP3 on the same conditions tested here, but add -lbrotlidec -lbrotlienc to LIBS;
+# the Rust decoder needs brotlicommon, so derive the list from the macro results
+if test "x$brotli_cv_libbrotli" = "xyes" && test "x$brotli_cv_brotli_h" = "xyes"; then
+  rust_codec_libs="${rust_codec_libs:+$rust_codec_libs,}brotlidec,brotlicommon"
+fi
+if test "x$bzip3_cv_libbzip3" = "xyes" && test "x$bzip3_cv_libbz3_h" = "xyes" && test "x$bzip3_cv_libbz3_v150" = "xyes"; then
+  rust_codec_libs="${rust_codec_libs:+$rust_codec_libs,}bzip3"
+fi
 RUST_FEATURES=""
 if test "x$rust_codec_libs" != "x"; then
   RUST_FEATURES="--features codecs"
