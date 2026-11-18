@@ -1,0 +1,19 @@
+schema: cpp-rust-unit/1
+unit: options
+component: src_core
+functions: [src_core.options, src_core.option_regexp, src_core.option_and, src_core.option_andnot, src_core.option_not, src_core.option_all_files, src_core.set_depth, src_core.set_depth_long, src_core.getoptarg, src_core.getloptarg, src_core.strarg, src_core.strtonum, src_core.strtopos, src_core.strtopos2, src_core.strtosize, src_core.strtofuzzy]
+cpp_files: [src/ugrep.cpp]
+rust_files: rust/src_core/src/options.rs rust/src_core/src/ffi/options.rs
+rust_crate_name: src_core
+harness_crate_name: src_core-harness
+depends_on: [settings]
+status: ported
+notes:
+  - 'options() is a thin shim in src/ugrep.cpp: it fills a struct OptionsEnv (callback table) and calls the Rust entry ugrep_core_options (ffi/options.rs, #[export_name]). The parser in options.rs works on the S1 Settings struct (ugrep_settings) through an Env trait; the C++-owned containers (flag_file ..., flag_filter, flag_ignore_files, pattern_args, arg_strings, Static::arg_pattern/arg_files) and usage/help/version/tui_screen_getsize stay in C++ and are reached by callbacks. set_color, trim and trim_pathname_arg stay C++.'
+  - 'The C++ bodies of options, option_regexp/and/andnot/not/all_files, set_depth, set_depth_long, getoptarg, getloptarg, strarg, strtonum, strtopos, strtopos2, strtosize and strtofuzzy are deleted; nothing else called them.'
+  - 'No recorded seam exists for options (D-unit-cleaned); the unit is judged by the surface corpus (option and config cases). 7 Rust unit tests in options.rs cover clusters, legacy forms, --and/--not, ranges, depth, fuzzy and number parsing.'
+  - 'suspected C++ bug (kept, not fixed): strtofuzzy loops forever in config mode (usage returns) for an invalid digit-less string such as the config line fuzzy=x.'
+  - 'suspected C++ bug (Rust clamps instead of UB): strtofuzzy skips 4 characters after a leading b even when the string is shorter than best.'
+  - 'faithful quirk: -Z as the last character of a cluster takes the strtofuzzy branch because strchr("+-~", 0) is non-NULL.'
+  - 'unsafe is confined to ffi/options.rs (callback table, C strings, settings access).'
+  - 'unit-cleaned gate: GATE unit-cleaned options: PASS  (migration/out\gates\unit-cleaned\options\report.json); surface 1809 cases, divergent_cases=0; build-lint, rust-tests, build-default, policy PASS.'
