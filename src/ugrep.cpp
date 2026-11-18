@@ -500,9 +500,13 @@ int fopen_smart(FILE **file, const char *filename, const char *mode)
   }
 
   if (*filename == '~')
+  {
+    if (Static::home_dir == NULL)
+      return errno = ENOENT;
     return fopenw_s(file, std::string(Static::home_dir).append(filename + 1).c_str(), mode);
+      }
 
-  return fopenw_s(file, filename, mode);
+      return fopenw_s(file, filename, mode);
 }
 
 // read a line from buffered input, returns true when eof
@@ -6606,7 +6610,10 @@ void terminal_cpp()
           if (flag_hyperlink == NULL)
           {
             if (grep_colors != NULL && strstr(grep_colors, "hl=") != NULL)
-              flag_hyperlink = grep_colors + 3;
+            {
+              arg_strings.emplace_back(grep_colors + 3);
+              flag_hyperlink = arg_strings.back().c_str();
+            }
             else if (flag_colors != NULL && strstr(flag_colors, "hl=") != NULL)
               flag_hyperlink = flag_colors + 3;
             else if (grep_colors != NULL && strstr(grep_colors, "hl") != NULL)

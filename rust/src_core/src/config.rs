@@ -88,6 +88,12 @@ fn nz(s: &[u8]) -> Vec<u8> {
     v
 }
 
+/// True when `path` starts with `~` but there is no home directory to expand it: opening it must fail like a
+/// file that cannot be opened (fopen_smart sets errno = ENOENT).
+fn tilde_without_home(path: &[u8], home: Option<&[u8]>) -> bool {
+    path.first() == Some(&b'~') && home.is_none()
+}
+
 fn text(env: &mut impl ConfigEnv, p: *const c_char) -> Option<Vec<u8>> {
     if p.is_null() {
         None
@@ -113,7 +119,7 @@ pub fn load_config<E: ConfigEnv>(s: &mut Settings, env: &mut E, k: ConfigConsts,
     let mut config_file = flag_config.clone();
     let mut file: Option<E::File> = None;
 
-    if wdir {
+    if wdir && !tilde_without_home(&flag_config, env.home_dir().as_deref()) {
         file = env.open(&nz(&flag_config), true);
     }
 
@@ -611,7 +617,8 @@ pub fn save_config<E: ConfigEnv>(s: &mut Settings, env: &mut E, k: ConfigConsts)
         env.write(Sink::Errout, &msg);
     }
 
-    let Some(file) = env.save_open(&nz(&save)) else {
+    let opened = if tilde_without_home(&save, env.home_dir().as_deref()) { None } else { env.save_open(&nz(&save)) };
+    let Some(file) = opened else {
         env.usage("cannot save configuration file ", Some(&save), None);
         return;
     };
@@ -628,5 +635,18 @@ pub fn save_config<E: ConfigEnv>(s: &mut Settings, env: &mut E, k: ConfigConsts)
     let unsaved = [List::FileType, List::FileExtension, List::FileMagic, List::Glob, List::Iglob];
     if unsaved.iter().any(|&l| !env.list_empty(l)) {
         env.warning("options --file-type, --file-extension, --file-magic, --glob and --iglob are not saved to", &nz(&save));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tilde_without_home;
+
+    #[test]
+    fn tilde_path_without_home_cannot_be_opened() {
+        assert!(tilde_without_home(b"~\\h.cfg", None));
+        assert!(tilde_without_home(b"~", None));
+        assert!(!tilde_without_home(b"~\\h.cfg", Some(b"C:\\u")));
+        assert!(!tilde_without_home(b"h.cfg", None));
     }
 }
