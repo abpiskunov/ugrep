@@ -15,6 +15,10 @@ pub mod settings_ffi;
 pub mod options;
 #[path = "ffi/options.rs"]
 pub mod options_ffi;
+// `load_config` and `save_config` of src/ugrep.cpp and their C-ABI entries
+pub mod config;
+#[path = "ffi/config.rs"]
+pub mod config_ffi;
 // `init()`: logic in Rust on the settings, C-ABI entry with the callbacks into the retained C++
 pub mod init;
 #[path = "ffi/init.rs"]
