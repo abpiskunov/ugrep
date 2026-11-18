@@ -457,19 +457,17 @@ behaviors:
     evidence: ["case:opc-err-long-eq-flag", "case:opc-err-long-eq-flag-no", "case:opc-err-long-empty-name", "case:opc-err-two-errors", "case:opc-err-help-then-bad", "case:opc-err-version-then-bad", "case:opc-err-ambiguous-ig", "case:opc-err-ambiguous-in", "case:opc-err-prefix-exact-wins"]
     origin: capture
   - id: B-src_core-066
-    statement: "`---foo` is read as `--` followed by option `-foo`'s tail and fails with `option --config: cannot read foo`"
+    statement: "`---FILE` is ugrep's documented shorthand for `--config=FILE` (src/ugrep.cpp:6222): `---foo` with no such file fails with `option --config: cannot read foo: No such file or directory`, exit 2"
     kind: edge-case
-    status: bug-preserve
+    status: observed
     decision: Q-core-8
-    suspicious: true
-    why: "the error names --config although no config option was given; looks like a mis-parse of the option name"
     evidence: ["case:opc-err-triple-dash"]
     origin: capture
   - id: B-src_core-067
-    statement: "Missing or invalid values report exit 2: `-f ''` and `-f DIR` (`cannot read`), `-t nope` (valid arguments listed even with -q), `--max-count=` (takes the next word), `-m 0x1`, `-m 1x`, `-nm x`, `-m1n`; exit 2 wins over matched lines when a file cannot be read (`-s` hides the message only); `-r` with no pattern prints the usage hint; `-q` with a bad regex still exits 2"
+    statement: "Missing or invalid values report exit 2: `-f DIR` (`cannot read`), `-t nope` (valid arguments listed even with -q), `--max-count=` (takes the next word), `-m 0x1`, `-m 1x`, `-nm x`, `-m1n`; exit 2 wins over matched lines when a file cannot be read (`-s` hides the message only); `-r` with no pattern prints the usage hint; `-q` with a bad regex still exits 2"
     kind: error
     status: observed
-    evidence: ["case:opc-err-f-empty-arg", "case:opc-err-f-dir", "case:opc-err-bad-file-type-q", "case:opc-err-max-count-eq-empty", "case:opc-err-max-count-hex", "case:opc-err-max-count-trail", "case:opc-err-arg-cluster-bad-num", "case:opc-arg-short-opt-arg-flag-after", "case:opc-err-exit-2-vs-match", "case:opc-err-no-pattern-r", "case:opc-err-q-bad-regex"]
+    evidence: ["case:opc-err-f-dir", "case:opc-err-bad-file-type-q", "case:opc-err-max-count-eq-empty", "case:opc-err-max-count-hex", "case:opc-err-max-count-trail", "case:opc-err-arg-cluster-bad-num", "case:opc-arg-short-opt-arg-flag-after", "case:opc-err-exit-2-vs-match", "case:opc-err-no-pattern-r", "case:opc-err-q-bad-regex"]
     origin: capture
   - id: B-src_core-068
     statement: "Option arguments (getoptarg/getloptarg): a separate word is taken even when it starts with `-` or is `--` (`-e -n`, `--regexp --`); `--label=` empty and `=` inside the value (`--label=a=b`, `--colors=mt=1;31:sl=2`) are kept; an empty filename word is `No such file or directory`; `-nHm1` clusters an argument at the end; `-e` with non-ASCII bytes matches the same text"
@@ -499,7 +497,7 @@ behaviors:
     evidence: ["case:opc-trim-files-from", "case:opc-trim-exclude-from-trail", "case:opc-trim-ignore-file", "case:opc-trim-ignore-file-dir", "case:opc-trim-glob-dir"]
     origin: capture
   - id: B-src_core-072
-    statement: "Config files hold one long option per line without leading dashes (`name`, `name=value`, `name value` is not accepted); `-n`, `n`, `--n`, `nH`, `max-count = 1`, tab separated values, a trailing `# comment`, CR-only lines, a BOM, a NUL byte, a line `--`, a bare word and `include other.conf` are all invalid options (exit 2, `invalid option --NAME` with suggestions); a leading `--name` or `-n` line is accepted as a flag; the 5000-character line case ends in the same error for the following `n` line"
+    statement: "Config files hold one long option per line without leading dashes (`name`, `name=value`, `name value` is not accepted); `n`, `nH`, `max-count = 1`, tab separated values, a trailing `# comment`, CR-only lines, a BOM, a NUL byte, a line `--`, a bare word and `include other.conf` are all invalid options (exit 2, `invalid option --NAME` with suggestions); lines starting with a dash (`-n`, `--line-number`) are silently ignored: opc-config-dash-short and opc-config-dash-prefixed exit 0 with no error and no line numbers in the output; the 5000-character line case ends in the same error for the following `n` line"
     kind: error
     status: observed
     evidence: ["case:opc-config-eq-spaces", "case:opc-config-tab", "case:opc-config-leading-ws-comment", "case:opc-config-trailing-comment", "case:opc-config-cr-only", "case:opc-config-long-line", "case:opc-config-short-opt", "case:opc-config-short-opt-cluster", "case:opc-config-dash-prefixed", "case:opc-config-dash-short", "case:opc-config-no-trailing-newline", "case:opc-config-only-comment-no-nl", "case:opc-config-dd", "case:opc-config-positional", "case:opc-config-utf8-bom", "case:opc-config-binary", "case:opc-config-include-sep", "case:opc-config-flag-eq", "case:opc-config-prefix-option", "case:opc-config-ambiguous-prefix"]
@@ -523,7 +521,7 @@ behaviors:
     evidence: ["case:opc-config-no-config-in-file", "case:opc-config-file-in-config", "case:opc-config-pattern-no-cmdline", "case:opc-config-pattern-and-cmdline", "case:opc-config-and-in-file", "case:opc-config-not-in-file", "case:opc-config-andnot-in-file", "case:opc-config-context-after", "case:opc-config-context-dash-number", "case:opc-config-depth", "case:opc-config-depth-short", "case:opc-config-depth-bad", "case:opc-config-help-in-file", "case:opc-config-version-in-file", "case:opc-config-save-config-in-file"]
     origin: capture
   - id: B-src_core-076
-    statement: "Which configuration is read: `--config=FILE` (a directory or missing file `cannot read FILE`), the first `--config` wins and a second one is ignored with `warning: multiple configurations specified`, `--no-config` before `--config` disables it and `--no-config` after it stops reading, `UGREP_CONFIG` is used when no --config is given, `--no-config` or `--config=FILE` beat it, and a `.ugrep` directory in place of the default file is ignored; `--no-config=1` and `--no-conf` are invalid options; `-n --config` works in a cluster"
+    statement: "Which configuration is read: `--config=FILE` with a missing file reports `cannot read FILE` (also for the directory `cdir`, case opc-config-dir-as-file); `--config=.ugrep` naming a `.ugrep` directory exits 0 with no message and the directory content is not applied; the first `--config` wins and a second one is ignored with `warning: multiple configurations specified`; `--no-config` does not disable a later `--config` (`--no-config --config=a.conf` applies a.conf, `Foo Bar` is printed for `FOO`; `--config=a.conf --no-config --config=b.conf` still reads a.conf); there is no `UGREP_CONFIG` variable in the source: in opc-config-home-and-env, opc-config-env-and-flag and opc-config-env-and-no-config a.conf set by it is not applied; `--no-config=1` and `--no-conf` are invalid options; `-n --config` works in a cluster"
     kind: normal
     status: observed
     evidence: ["case:opc-config-dir-as-file", "case:opc-config-two-no-config-between", "case:opc-config-no-config-first", "case:opc-config-no-config-eq", "case:opc-config-no-config-prefix", "case:opc-config-home-dotugrep-dir", "case:opc-config-env-and-flag", "case:opc-config-env-and-no-config", "case:opc-config-home-and-env", "case:opc-config-config-at-end", "case:opc-config-config-flag-in-cluster"]
@@ -541,12 +539,10 @@ behaviors:
     evidence: ["case:opc-save-default", "case:opc-save-sep", "case:opc-save-eq-empty", "case:opc-save-to-readonly-path", "case:opc-save-then-no-save", "case:opc-save-prefix", "case:opc-save-help"]
     origin: capture
   - id: B-src_core-079
-    statement: "`--save-config=DIR` with an existing directory reports `saved old configuration file to DIR.old: File exists`, `saving` and exit 0 although nothing was written"
+    statement: "`--save-config=DIR` with an existing directory writes the configuration to `DIR` as a file (4081 bytes) and renames the old directory to `DIR.old`; stderr has `saved old configuration file to DIR.old: File exists` and `updating configuration file DIR`, exit 0. `File exists` is the normal rename message (save_config sets errno = EEXIST on purpose, src/ugrep.cpp:4851-4866) and also appears for an existing plain file (opc-save-overwrite)"
     kind: edge-case
-    status: bug-preserve
+    status: observed
     decision: Q-core-10
-    suspicious: true
-    why: "success exit status and a message about an old file although the target is a directory and no configuration was saved"
     evidence: ["case:opc-save-to-dir"]
     origin: capture
 

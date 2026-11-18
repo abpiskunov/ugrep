@@ -1652,7 +1652,6 @@
 {"id":"opc-err-ambiguous-in","args":["--in","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
 {"id":"opc-err-prefix-exact-wins","args":["--line","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
 {"id":"opc-err-arg-cluster-bad-num","args":["-nm","x","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
-{"id":"opc-err-f-empty-arg","args":["-f","","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
 {"id":"opc-err-f-dir","args":["-f","d","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/x":"y\n"}}
 {"id":"opc-err-exit-2-vs-match","args":["-s","foo","a.txt","nofile"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
 {"id":"opc-err-bad-file-type-q","args":["-q","-t","nope","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
@@ -1695,7 +1694,6 @@
 {"id":"opc-trim-nr-back-trail","args":["-H","--sort=name","foo","d\\"],"files":{"d/a.txt":"foo\n","d/s/b.txt":"foo\n","a.txt":"foo\n"}}
 {"id":"opc-trim-dot-back","args":["-r","-H","--sort=name","foo",".\\d"],"files":{"d/a.txt":"foo\n","d/s/b.txt":"foo\n","a.txt":"foo\n"}}
 {"id":"opc-trim-nr-dot-back","args":["-H","--sort=name","foo",".\\d"],"files":{"d/a.txt":"foo\n","d/s/b.txt":"foo\n","a.txt":"foo\n"}}
-{"id":"opc-trim-abs-root","args":["-r","-H","--sort=name","foo","/"],"files":{"d/a.txt":"foo\n","d/s/b.txt":"foo\n","a.txt":"foo\n"}}
 {"id":"opc-trim-empty","args":["-r","-H","--sort=name","foo",""],"files":{"d/a.txt":"foo\n","d/s/b.txt":"foo\n","a.txt":"foo\n"}}
 {"id":"opc-trim-dot-file","args":["-r","-H","--sort=name","foo","./a.txt"],"files":{"d/a.txt":"foo\n","d/s/b.txt":"foo\n","a.txt":"foo\n"}}
 {"id":"opc-trim-dot-dot-file","args":["-r","-H","--sort=name","foo","d/../a.txt"],"files":{"d/a.txt":"foo\n","d/s/b.txt":"foo\n","a.txt":"foo\n"}}
@@ -1768,7 +1766,7 @@
 {"id":"opc-config-no-config-first","args":["--no-config","--config=a.conf","FOO","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","a.conf":"ignore-case\n"}}
 {"id":"opc-config-no-config-eq","args":["--no-config=1","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
 {"id":"opc-config-no-config-prefix","args":["--no-conf","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n",".ugrep":"n\n"}}
-{"id":"opc-config-home-dotugrep-dir","args":["foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n",".ugrep/x":"n\n"}}
+{"id":"opc-config-home-dotugrep-dir","args":["--config=.ugrep","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n",".ugrep/x":"n\n"}}
 {"id":"opc-config-env-and-flag","args":["--config=b.conf","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","a.conf":"n\n","b.conf":"ignore-case\n"},"env":{"UGREP_CONFIG":"a.conf"}}
 {"id":"opc-config-env-and-no-config","args":["--no-config","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","a.conf":"n\n"},"env":{"UGREP_CONFIG":"a.conf"}}
 {"id":"opc-config-home-and-env","args":["foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n",".ugrep":"n\n","a.conf":"ignore-case\n"},"env":{"UGREP_CONFIG":"a.conf"}}

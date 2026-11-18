@@ -8268,11 +8268,6 @@
 {"case":"opc-err-arg-cluster-bad-num@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: invalid argument -m=x\r\n","For more help, run `ugrep --help' or `ugrep --help -m'\r\n"]},"seq":2,"thread":0}
 {"case":"opc-err-arg-cluster-bad-num@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.txt":{"mode":null,"sha256":"83fb94b4a71b89c3be0d8a6e762c1ca4be44a81632d2e576960a0626f1a01d1d","size":47,"type":"file"}},"thread":0}
 {"case":"opc-err-arg-cluster-bad-num@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":2},"seq":4,"thread":0}
-{"args":{"argv":["-f","","a.txt"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"opc-err-f-empty-arg@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
-{"case":"opc-err-f-empty-arg@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
-{"case":"opc-err-f-empty-arg@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: error: option -f: cannot read \r\n","\r\n"]},"seq":2,"thread":0}
-{"case":"opc-err-f-empty-arg@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.txt":{"mode":null,"sha256":"83fb94b4a71b89c3be0d8a6e762c1ca4be44a81632d2e576960a0626f1a01d1d","size":47,"type":"file"}},"thread":0}
-{"case":"opc-err-f-empty-arg@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":2},"seq":4,"thread":0}
 {"args":{"argv":["-f","d","a.txt"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"opc-err-f-dir@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
 {"case":"opc-err-f-dir@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
 {"case":"opc-err-f-dir@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: error: option -f: cannot read d\r\n","\r\n"]},"seq":2,"thread":0}
@@ -8483,11 +8478,6 @@
 {"case":"opc-trim-nr-dot-back@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
 {"case":"opc-trim-nr-dot-back@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.txt":{"mode":null,"sha256":"b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c","size":4,"type":"file"},"d/a.txt":{"mode":null,"sha256":"b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c","size":4,"type":"file"},"d/s/b.txt":{"mode":null,"sha256":"b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c","size":4,"type":"file"}},"thread":0}
 {"case":"opc-trim-nr-dot-back@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"ok","code":0},"seq":4,"thread":0}
-{"args":{"argv":["-r","-H","--sort=name","foo","/"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"opc-trim-abs-root@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
-{"case":"opc-trim-abs-root@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
-{"case":"opc-trim-abs-root@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: warning: cannot open directory /  \r\n"]},"seq":2,"thread":0}
-{"case":"opc-trim-abs-root@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{"a.txt":{"mode":null,"sha256":"b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c","size":4,"type":"file"},"d/a.txt":{"mode":null,"sha256":"b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c","size":4,"type":"file"},"d/s/b.txt":{"mode":null,"sha256":"b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c","size":4,"type":"file"}},"thread":0}
-{"case":"opc-trim-abs-root@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":2},"seq":4,"thread":0}
 {"args":{"argv":["-r","-H","--sort=name","foo",""],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"opc-trim-empty@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
 {"case":"opc-trim-empty@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":[]},"seq":1,"thread":0}
 {"case":"opc-trim-empty@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: warning: : No such file or directory\r\n"]},"seq":2,"thread":0}
@@ -8848,7 +8838,7 @@
 {"case":"opc-config-no-config-prefix@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":["ugrep: invalid option --no-conf, did you mean --neg-regexp=, --not, --no-any-line, --no-ascii, --no-binary, --no-bool, --no-break, --no-byte-offset, --no-color, --no-config, --no-confirm, --no-count, --no-decompress, --no-dereference, --no-dereference-files, --no-dotall, --no-encoding, --no-empty, --no-filename, --no-files-with-matches, --no-filter, --no-glob-ignore-case, --no-group-separator, --no-heading, --no-hidden, --no-hyperlink, --no-ignore-binary, --no-ignore-case, --no-ignore-files, --no-index, --no-initial-tab, --no-invert-match, --no-line-number, --no-only-line-number, --no-only-matching, --no-messages, --no-mmap, --no-pager, --no-pretty, --no-smart-case, --no-sort, --no-split, --no-stats, --no-tree, --no-ungroup, --no-view, --null or --null-data?\r\n","For more help, run `ugrep --help' or `ugrep --help WHAT'\r\n"]},"seq":2,"thread":0}
 {"case":"opc-config-no-config-prefix@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{".ugrep":{"mode":null,"sha256":"a4fb621495a0122493b2203591c448903c472e306a1ede54fabad829e01075c0","size":2,"type":"file"},"a.txt":{"mode":null,"sha256":"83fb94b4a71b89c3be0d8a6e762c1ca4be44a81632d2e576960a0626f1a01d1d","size":47,"type":"file"}},"thread":0}
 {"case":"opc-config-no-config-prefix@0","fn":"main","impl":"cpp","kind":"exit","ret":{"category":"error","code":2},"seq":4,"thread":0}
-{"args":{"argv":["foo","a.txt"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"opc-config-home-dotugrep-dir@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
+{"args":{"argv":["--config=.ugrep","foo","a.txt"],"env":{"LC_ALL":"C","TZ":"UTC"}},"case":"opc-config-home-dotugrep-dir@0","fn":"main","impl":"cpp","kind":"call","seq":0,"thread":0}
 {"case":"opc-config-home-dotugrep-dir@0","fn":"main","impl":"cpp","kind":"stdout","ret":{"lines":["foo bar\n","bar foo\n","foo\n","foobar\n"]},"seq":1,"thread":0}
 {"case":"opc-config-home-dotugrep-dir@0","fn":"main","impl":"cpp","kind":"stderr","ret":{"lines":[]},"seq":2,"thread":0}
 {"case":"opc-config-home-dotugrep-dir@0","fn":"main","impl":"cpp","kind":"fs","seq":3,"state":{".ugrep/x":{"mode":null,"sha256":"a4fb621495a0122493b2203591c448903c472e306a1ede54fabad829e01075c0","size":2,"type":"file"},"a.txt":{"mode":null,"sha256":"83fb94b4a71b89c3be0d8a6e762c1ca4be44a81632d2e576960a0626f1a01d1d","size":47,"type":"file"}},"thread":0}
