@@ -15,6 +15,18 @@
     </ClCompile>
   </ItemDefinitionGroup>
 
+  <!-- Prepare seam (src_core terminal group and init): sub-switches, cpp by default; see rust/src_core/SEAM.md. -->
+  <ItemDefinitionGroup Condition="'$(CPP_RUST_IMPL_SRC_CORE_TERMINAL)'=='rust'">
+    <ClCompile>
+      <PreprocessorDefinitions>CPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(CPP_RUST_IMPL_SRC_CORE_INIT)'=='rust'">
+    <ClCompile>
+      <PreprocessorDefinitions>CPP_RUST_IMPL_SRC_CORE_INIT_RUST=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
   <!-- Cleanup: the legacy C++ bodies of the ported units are deleted, so the umbrella is always linked. -->
   <ItemDefinitionGroup Condition="'$(RustLinkUmbrella)'=='true'">
     <ClCompile>

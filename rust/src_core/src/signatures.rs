@@ -243,6 +243,52 @@ pub mod cnf {
     }
 }
 
+/// Part of a line that `trim` keeps: `line[begin..end]`, white space (`isspace`, C locale) removed from both ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrimRange {
+    pub begin: usize,
+    pub end: usize,
+}
+
+/// Seam functions of the terminal group and `init` (src/ugrep.cpp, Prepare seam "init/terminal/hyperlink/set_color/trim").
+/// They work on `ugrep_settings` (S1) directly; the C++ they need is listed in `SEAM.md` (callbacks). Stubs until the Ports.
+pub mod ui {
+    use super::TrimRange;
+    use std::os::raw::c_char;
+
+    /// `terminal()`: TTY check, `flag_tty_term`, color defaults and `GREP_COLORS`, pager and query decisions.
+    pub fn terminal() {
+        todo!("Port: terminal")
+    }
+
+    /// `set_terminal_hyperlink()`: `--hyperlink` prefix, host and working directory (host/path are opaque C++ strings).
+    pub fn set_terminal_hyperlink() {
+        todo!("Port: set_terminal_hyperlink")
+    }
+
+    /// `set_color(colors, parameter, color)`: `colors` and `parameter` are C strings without NUL, `color` is the
+    /// `char[COLORLEN]` buffer the C++ owns; the result is NUL-terminated inside `color`.
+    pub fn set_color(colors: &[u8], parameter: &[u8], color: &mut [u8]) {
+        let _ = (colors, parameter, color);
+        todo!("Port: set_color")
+    }
+
+    /// `trim(line)`: the range of `line` left after removing white space from both ends.
+    pub fn trim(line: &[u8]) -> TrimRange {
+        let _ = line;
+        todo!("Port: trim")
+    }
+
+    /// `init(argc, argv)`: parses options into `ugrep_settings` and the opaque C++ containers.
+    ///
+    /// `argv` is the process argument vector (`argc` entries, valid NUL-terminated strings that live for the whole
+    /// process: the settings keep pointers into them, and `trim_pathname_arg` modifies them in place).
+    pub fn init(argv: &mut [*const c_char]) {
+        let _ = argv;
+        todo!("Port: init")
+    }
+}
+
 /// Facade function of `Stats` (src/stats.cpp).
 pub mod stats {
     use super::{Bytes, StatsInput};

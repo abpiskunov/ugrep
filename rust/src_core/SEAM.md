@@ -123,6 +123,42 @@ headers are listed in `src/Makefile.am`/`.in`; no autotools Rust glue exists for
 
 ## Units judged by the surface corpus, not the seam replay
 
+## S2b seam: init, terminal, set_terminal_hyperlink, set_color, trim (Prepare seam, supersedes the retained notes for these functions)
+
+Context. S1 made the `flag_*`, `color_*`, `match_*` scalars Rust-owned (`ugrep_settings`, `settings.rs`), so the functions below work on that struct directly: no snapshot crossing and no flag write-back. Since Cleanup, `CPP_RUST_IMPL_SRC_CORE` is inert (CNF/Stats have no C++ body), so it cannot select these functions; two sub-switches do (same pattern as D-zstream-switch). Default `cpp`; behavior is unchanged.
+
+| Function | Facade (src/ugrep.cpp, end of file) | C++ body kept as | Rust entry | Switch |
+|---|---|---|---|---|
+| `terminal()` | `terminal()` | `terminal_cpp()` | `ugrep_rust::core_terminal()` | `CPP_RUST_IMPL_SRC_CORE_TERMINAL` |
+| `set_terminal_hyperlink()` | same name | `set_terminal_hyperlink_cpp()` | `core_set_terminal_hyperlink()` | `..._TERMINAL` |
+| `set_color(colors, parameter, color[COLORLEN])` | same name | `set_color_cpp()` | `core_set_color(&[u8], &[u8], &mut [u8])` (the buffer is `COLORLEN` bytes) | `..._TERMINAL` |
+| `trim(std::string&)` | same name | `trim_cpp()` | `core_trim(&[u8]) -> TrimRange{begin,end}`; the facade erases outside the range | `..._TERMINAL` |
+| `init(argc, argv)` | same name | `init_cpp()` | C ABI `ugrep_core_init(int, const char**)` (`ffi/init.rs`; argv pointers are stored in the settings, so they cannot be copied across cxx) | `CPP_RUST_IMPL_SRC_CORE_INIT` |
+
+Types and signatures: `rust/src_core/src/signatures.rs` module `ui` (stubs: `todo!()` until the Ports; a Port does not change a signature). Build: msbuild `/p:CPP_RUST_IMPL_SRC_CORE_TERMINAL=rust` and/or `/p:CPP_RUST_IMPL_SRC_CORE_INIT=rust` define `CPP_RUST_IMPL_SRC_CORE_{TERMINAL,INIT}_RUST` (`msvc/rust.targets`); autotools builds the cpp path (`CPPFLAGS=-DCPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST` selects Rust by hand). The tap was deleted at Cleanup, so no tap macros were added; the replay is the surface corpus.
+
+Not switched here: `find_text_preview`. `Grep::find_text_preview` is a member of `Grep` (RE-flex matcher, `Output`) and `ugrep_find_text_preview` only builds a `Grep` around the cloned matchers; there is no facade that does not drag `Grep` across. It stays C++ until `Grep` is ported (flag for Planning; the Port A unit should drop it or depend on the Grep port).
+
+### Callbacks the Rust bodies need (extern C++, not declared yet)
+
+Declared in the Port tasks as `extern "C++"` in the bridge (or C ABI), implemented in a C++ shim; nothing is declared now so the stubs link without them.
+
+Terminal group:
+- `Static::output_stat`, `Static::output_stat_regular`, `Static::output_stat_result` (read/write; `fstat` of stdout, `stat` of `/dev/null`) and `Static::NEVER/ALWAYS/AUTO` constants (values of the color/pager tri-state).
+- `flag_hyperlink_host` and `flag_hyperlink_path` (`std::string`, opaque C++): accessors `hyperlink_host_set(bytes)`, `hyperlink_path_set(bytes)`, and `hyperlink_*_get()`. The OS calls (`isatty`, `getenv`, `getcwd`, `gethostname`, `WSAStartup`) are made from Rust.
+- `warning(msg, arg)`, `error(msg, arg)`, `abort(msg)`: process exit paths in C++ (`exit(EXIT_ERROR)`), plus `color_off/color_error/color_high` (already in settings).
+
+`init`:
+- `CNF`/`Static::bcnf`, `Static::arg_pattern`, `Static::arg_files`, `Static::filter_magic_pattern`, `Static::magic_matcher` (RE-flex objects, never cross).
+- `load_config`/`save_config`, `import_globs`, `fopen_smart`, `trim_pathname_arg` (modifies argv in place), `stat_fs` and `fsid_to_uint64`.
+- `usage(...)` (16 call sites), `error`, `abort`, `warning`, `exit`.
+- The opaque containers: `flag_exclude*`, `flag_include*`, `flag_file`, `flag_glob`, `flag_ignore_files`, `flag_regexp`, `flag_filter`, `flag_config_files` and the other `std::vector<std::string>` options: C++ shims `vec_push(name, bytes)`, `vec_clear(name)`, `str_set(name, bytes)`.
+- If the S2 siblings (options, config, help/errors) have merged before the init Port, call their Rust entries instead.
+
+Known C++ quirk for Triage (preserve until classified): init tests `argv[1]`, not `argv[i]`, for `-e/-g/-N/--regexp` near the start of the option loop.
+
+## Units judged by the surface corpus, not the seam replay (older note)
+
 - `src_core.ugrep`, `terminal` and `set_terminal_hyperlink` are tapped for call order only and are not replayed. The driver, options, init and terminal parts of ugrep.cpp therefore have no seam cases: their Port units are judged by the surface corpus (migration/corpus/src_core, 1097 cases) and the switch gate, so expect the unit gate's seam-replay check to have nothing to compare for them.
 - `cnf_anchor` writes `flag_empty`, which the tap does not record; the seam compares the anchored pattern only.
 

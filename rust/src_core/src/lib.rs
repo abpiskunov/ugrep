@@ -11,6 +11,9 @@ pub mod signatures;
 pub mod settings;
 #[path = "ffi/settings.rs"]
 pub mod settings_ffi;
+// the C-ABI entry of `init` (argv pointers cannot cross the cxx bridge)
+#[path = "ffi/init.rs"]
+pub mod init_ffi;
 
 use signatures as sig;
 
@@ -128,7 +131,21 @@ mod ffi {
         pathsep: u8,
     }
 
+    /// Part of the line `trim` keeps: `line[begin..end]` (`signatures::TrimRange`).
+    struct TrimRange {
+        begin: usize,
+        end: usize,
+    }
+
     extern "Rust" {
+        /// Seam function `src_core.terminal`: reads and writes `ugrep_settings` directly.
+        fn core_terminal();
+        /// Seam function `src_core.set_terminal_hyperlink`.
+        fn core_set_terminal_hyperlink();
+        /// Seam function `src_core.set_color`: `color` is the `char[COLORLEN]` the C++ passes.
+        fn core_set_color(colors: &[u8], parameter: &[u8], color: &mut [u8]);
+        /// Seam function `src_core.trim`: the facade erases what is outside the returned range.
+        fn core_trim(line: &[u8]) -> TrimRange;
         /// Seam function `src_core.cnf_compile`.
         fn cnf_compile(terms: Vec<CnfTerm>, pattern: &[u8], flags: &CnfFlags) -> CnfCompiled;
         /// Seam function `src_core.cnf_new_pattern`.
@@ -298,6 +315,23 @@ fn cnf_quote(pattern: &[u8]) -> Vec<u8> {
 fn cnf_anchor(pattern: &[u8], flags: &ffi::CnfFlags) -> ffi::CnfAnchored {
     let a = sig::cnf::anchor(pattern, &flags_in(flags));
     ffi::CnfAnchored { pattern: a.pattern, enable_empty: a.enable_empty }
+}
+
+fn core_terminal() {
+    sig::ui::terminal()
+}
+
+fn core_set_terminal_hyperlink() {
+    sig::ui::set_terminal_hyperlink()
+}
+
+fn core_set_color(colors: &[u8], parameter: &[u8], color: &mut [u8]) {
+    sig::ui::set_color(colors, parameter, color)
+}
+
+fn core_trim(line: &[u8]) -> ffi::TrimRange {
+    let r = sig::ui::trim(line);
+    ffi::TrimRange { begin: r.begin, end: r.end }
 }
 
 fn stats_report(input: &ffi::StatsInput) -> Vec<u8> {
