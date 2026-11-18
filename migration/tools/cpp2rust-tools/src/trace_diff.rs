@@ -20,7 +20,8 @@ noise: both inputs come from the SAME implementation (C++ run twice with differe
 --fns: keep only events whose enclosing inbound call ('in', else 'fn') is listed.
 --allow-unapproved: debugging only; never in a gate.
 Rewrite patterns use Rust regex syntax (no look-around, no back-references); a replacement may
-use \\1 or \\g<name> (Python style) or ${1} / ${name}.
+use \\1 or \\g<name> (Python style) or ${1} / ${name}. Rewrites also apply to output recorded as
+{\"hex\": ...} (not UTF-8): the pattern runs over the decoded bytes.
 Schema: references/trace-schema.md of the cpp-rust-comparison-toolkit skill.";
 
 const META: [&str; 10] = ["run", "impl", "case", "thread", "seq", "kind", "fn", "in", "order", "t"];
@@ -241,11 +242,31 @@ impl Masks {
                 }
                 Value::String(s)
             }
+            // Output that is not UTF-8 is recorded as {"hex": ...}. Rewrite its bytes, so a host
+            // name in a binary match line is masked like the same name in a text one.
+            Value::Object(o) if o.len() == 1 && !self.rewrites.is_empty() => match o.get("hex").and_then(Value::as_str).and_then(hex_decode) {
+                Some(mut b) => {
+                    for (rx, rep) in &self.rewrites {
+                        if let Ok(brx) = regex::bytes::Regex::new(rx.as_str()) {
+                            b = brx.replace_all(&b, rep.as_bytes()).into_owned();
+                        }
+                    }
+                    json!({"hex": b.iter().map(|x| format!("{x:02x}")).collect::<String>()})
+                }
+                None => Value::Object(o.iter().map(|(k, x)| (k.clone(), self.rewrite(x))).collect()),
+            },
             Value::Array(a) => Value::Array(a.iter().map(|x| self.rewrite(x)).collect()),
             Value::Object(o) => Value::Object(o.iter().map(|(k, x)| (k.clone(), self.rewrite(x))).collect()),
             other => other.clone(),
         }
     }
+}
+
+fn hex_decode(s: &str) -> Option<Vec<u8>> {
+    if s.len() % 2 != 0 {
+        return None;
+    }
+    (0..s.len()).step_by(2).map(|i| s.get(i..i + 2).and_then(|h| u8::from_str_radix(h, 16).ok())).collect()
 }
 
 /// Floats compare numerically with ints (1 == 1.0), and NaN equals NaN.
@@ -746,6 +767,18 @@ mod tests {
         let mut bad = base();
         bad[3]["state"] = json!({"count": 2});
         assert_eq!(divergent(&base(), &bad, &mut m), 1); // a mask does not hide a real difference
+    }
+
+    #[test]
+    fn rewrites_reach_output_recorded_as_hex() {
+        let mut m = Masks::empty();
+        m.rewrites = vec![(Regex::new(r"(\x1b\]8;;[A-Za-z0-9+.-]*://)[^/\x1b]+/").unwrap(), py_replacement(r"${1}<HOST>/"))];
+        let hex = |b: &[u8]| json!({"hex": b.iter().map(|x| format!("{x:02x}")).collect::<String>()});
+        let recorded = hex(b"\x1b]8;;file://CPC-anton/$WORK/b.bin\x1b\\b.bin\x00bar");
+        let ci = hex(b"\x1b]8;;file://runnervm/$WORK/b.bin\x1b\\b.bin\x00bar");
+        assert_eq!(m.rewrite(&recorded), m.rewrite(&ci), "the host is masked inside binary output too");
+        assert_eq!(m.rewrite(&recorded), hex(b"\x1b]8;;file://<HOST>/$WORK/b.bin\x1b\\b.bin\x00bar"));
+        assert_ne!(m.rewrite(&hex(b"\x00x")), m.rewrite(&hex(b"\x00y")), "other bytes still compare");
     }
 
     #[test]
