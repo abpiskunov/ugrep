@@ -346,58 +346,18 @@ AX_CHECK_LZ4LIB([], [echo "optional liblz4 not found: install if you want ugrep 
 
 AX_CHECK_ZSTDLIB([], [echo "optional libzstd not found: install if you want ugrep option -z to search .zst files"])
 
-# optional brotli (decoder) and bzip3, linked into the Rust zstream; auto-detected unless --without-*
-AC_ARG_WITH(brotli,
-  [AS_HELP_STRING([--without-brotli],
-                  [do not use libbrotlidec: .br files cannot be searched])],
-  [with_brotli="$withval"],
-  [with_brotli="yes"])
-if test "x$with_brotli" != "xno"; then
-  AC_CHECK_TOOL([PKG_CONFIG], [pkg-config], [no])
-  have_brotli=no
-  if test "x$PKG_CONFIG" != "xno" && $PKG_CONFIG --exists libbrotlidec libbrotlicommon 2>/dev/null; then
-    brotli_cflags=`$PKG_CONFIG --cflags libbrotlidec libbrotlicommon`
-    brotli_libs=`$PKG_CONFIG --libs libbrotlidec libbrotlicommon`
-    have_brotli=yes
-  else
-    AC_CHECK_LIB([brotlicommon], [BrotliGetDictionary], [
-      AC_CHECK_LIB([brotlidec], [BrotliDecoderCreateInstance], [
-        brotli_cflags=""
-        brotli_libs="-lbrotlidec -lbrotlicommon"
-        have_brotli=yes
-      ], [], [-lbrotlicommon])
-    ])
-  fi
-  if test "x$have_brotli" = "xyes"; then
-    CPPFLAGS="$CPPFLAGS $brotli_cflags"
-    LIBS="$brotli_libs $LIBS"
-    AC_DEFINE(HAVE_LIBBROTLI,1,[ Define if you have the libbrotlidec library])
-  elif test "x$with_brotli" = "xyes"; then
-    echo "optional libbrotlidec not found: install if you want ugrep option -z to search .br files"
-  else
-    AC_MSG_ERROR([--with-brotli was given but libbrotlidec was not found])
-  fi
-fi
+AX_CHECK_BROTLILIB([], [echo "optional brotli library not found: install if you want ugrep option -z to search .br files"])
 
 AC_ARG_WITH(bzip3,
-  [AS_HELP_STRING([--without-bzip3],
-                  [do not use libbzip3: .bz3 files cannot be searched])],
-  [with_bzip3="$withval"],
-  [with_bzip3="yes"])
-if test "x$with_bzip3" != "xno"; then
-  have_bzip3=no
-  AC_CHECK_LIB([bzip3], [bz3_new], [
-    have_bzip3=yes
-    LIBS="-lbzip3 $LIBS"
-    AC_DEFINE(HAVE_LIBBZIP3,1,[ Define if you have the libbzip3 library])
-  ])
-  if test "x$have_bzip3" != "xyes"; then
-    if test "x$with_bzip3" = "xyes"; then
-      echo "optional libbzip3 not found: install if you want ugrep option -z to search .bz3 files"
-    else
-      AC_MSG_ERROR([--with-bzip3 was given but libbzip3 was not found])
-    fi
+  [AS_HELP_STRING([--with-bzip3],
+                  [to enable bzip3 library to decompress .bz3 files])],
+  [with_bzip3_library="$withval"],
+  [with_bzip3_library=""])
+if test "x$with_bzip3_library" != "x"; then
+  if test "x$with_bzip3" = "xyes"; then
+    unset with_bzip3
   fi
+  AX_CHECK_BZIP3LIB([], [echo "optional libbzip3 not found: install if you want ugrep option -z to search .bz3 files"])
 fi
 
 AC_ARG_ENABLE(7zip,
@@ -430,7 +390,7 @@ if test "x$CARGO" = "x"; then
 fi
 # the Rust zstream calls only the codec libraries on the link line; the others are stubbed (like the C++ without HAVE_LIB*)
 rust_codec_libs=""
-for lib in z bz2 lzma lz4 zstd brotlidec brotlicommon bzip3 viiz; do
+for lib in z bz2 lzma lz4 zstd viiz; do
   case " $LIBS " in
     *" -l$lib "*)
       name=$lib
@@ -439,6 +399,18 @@ for lib in z bz2 lzma lz4 zstd brotlidec brotlicommon bzip3 viiz; do
       ;;
   esac
 done
+# the macros define HAVE_LIBBROTLI/HAVE_LIBBZIP3 and add -lbrotlidec -lbrotlienc / -lbzip3 to LIBS only on success;
+# the Rust decoder also needs brotlicommon
+case " $LIBS " in
+  *" -lbrotlidec "*)
+    rust_codec_libs="${rust_codec_libs:+$rust_codec_libs,}brotlidec,brotlicommon"
+    ;;
+esac
+case " $LIBS " in
+  *" -lbzip3 "*)
+    rust_codec_libs="${rust_codec_libs:+$rust_codec_libs,}bzip3"
+    ;;
+esac
 RUST_FEATURES=""
 if test "x$rust_codec_libs" != "x"; then
   RUST_FEATURES="--features codecs"
