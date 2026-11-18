@@ -95,6 +95,17 @@
       "Base-Release uses /MT; the Rust variant is built with +crt-static."
     ]
   },
+  "rechecks": [
+    {
+      "date": "2026-11-17",
+      "task": "S1 settings struct",
+      "rust": "rustc/cargo 1.99.1; components clippy, rustfmt, llvm-tools installed",
+      "git": "2.56.1",
+      "cpp": "MSVC v143 via migration/harness/build-cpp.ps1: ok (base 9f87c32 and S1)",
+      "autotools": "automake, autoreconf, make not available on this worker; src/Makefile.in updated by hand from the stats.cpp rules, configure unchanged (no configure.ac change)",
+      "result": "ready"
+    }
+  ],
   "known_limitations": [
     "tests/verify.sh is Linux oriented, aborts on the first failure and fails under Git Bash at `-Zio '' lorem.utf8.txt`; it has no test ids. It is not used as a gate. The recorded surface corpus (migration/corpus/<component>/surface) is the baseline witness.",
     "CI: .github/workflows/migration-gate.yml is added but has not run on a runner; local gate results are claims until CI agrees."

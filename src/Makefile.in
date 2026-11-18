@@ -114,7 +114,7 @@ PROGRAMS = $(bin_PROGRAMS)
 am_ugrep_OBJECTS = ugrep-ugrep.$(OBJEXT) ugrep-cnf.$(OBJEXT) \
 	ugrep-glob_facade.$(OBJEXT) ugrep-output.$(OBJEXT) \
 	ugrep-query.$(OBJEXT) ugrep-screen.$(OBJEXT) \
-	ugrep-stats.$(OBJEXT) ugrep-vkey.$(OBJEXT) \
+	ugrep-settings.$(OBJEXT) ugrep-stats.$(OBJEXT) ugrep-vkey.$(OBJEXT) \
 	ugrep-zopen_facade.$(OBJEXT)
 ugrep_OBJECTS = $(am_ugrep_OBJECTS)
 am__DEPENDENCIES_1 =
@@ -145,7 +145,7 @@ am__depfiles_remade =  \
 	$(top_builddir)/lib/$(DEPDIR)/ugrep_indexer-input.Po \
 	./$(DEPDIR)/ugrep-cnf.Po ./$(DEPDIR)/ugrep-glob_facade.Po \
 	./$(DEPDIR)/ugrep-output.Po ./$(DEPDIR)/ugrep-query.Po \
-	./$(DEPDIR)/ugrep-screen.Po ./$(DEPDIR)/ugrep-stats.Po \
+	./$(DEPDIR)/ugrep-screen.Po ./$(DEPDIR)/ugrep-settings.Po ./$(DEPDIR)/ugrep-stats.Po \
 	./$(DEPDIR)/ugrep-ugrep.Po ./$(DEPDIR)/ugrep-vkey.Po \
 	./$(DEPDIR)/ugrep-zopen_facade.Po \
 	./$(DEPDIR)/ugrep_indexer-glob_facade.Po \
@@ -396,6 +396,7 @@ ugrep_SOURCES = \
 	screen.hpp \
 	screen.cpp \
 	stats.hpp \
+	settings.cpp \
 	stats.cpp \
 	tui_entry.hpp \
 	vkey.hpp \
@@ -554,6 +555,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ugrep-output.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ugrep-query.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ugrep-screen.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ugrep-settings.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ugrep-stats.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ugrep-ugrep.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ugrep-vkey.Po@am__quote@ # am--include-marker
@@ -669,6 +671,19 @@ ugrep-screen.obj: screen.cpp
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o ugrep-screen.obj `if test -f 'screen.cpp'; then $(CYGPATH_W) 'screen.cpp'; else $(CYGPATH_W) '$(srcdir)/screen.cpp'; fi`
 
+ugrep-settings.o: settings.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT ugrep-settings.o -MD -MP -MF $(DEPDIR)/ugrep-settings.Tpo -c -o ugrep-settings.o `test -f 'settings.cpp' || echo '$(srcdir)/'`settings.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ugrep-settings.Tpo $(DEPDIR)/ugrep-settings.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='settings.cpp' object='ugrep-settings.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o ugrep-settings.o `test -f 'settings.cpp' || echo '$(srcdir)/'`settings.cpp
+
+ugrep-settings.obj: settings.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT ugrep-settings.obj -MD -MP -MF $(DEPDIR)/ugrep-settings.Tpo -c -o ugrep-settings.obj `if test -f 'settings.cpp'; then $(CYGPATH_W) 'settings.cpp'; else $(CYGPATH_W) '$(srcdir)/settings.cpp'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ugrep-settings.Tpo $(DEPDIR)/ugrep-settings.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='settings.cpp' object='ugrep-settings.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o ugrep-settings.obj `if test -f 'settings.cpp'; then $(CYGPATH_W) 'settings.cpp'; else $(CYGPATH_W) '$(srcdir)/settings.cpp'; fi`
 ugrep-stats.o: stats.cpp
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT ugrep-stats.o -MD -MP -MF $(DEPDIR)/ugrep-stats.Tpo -c -o ugrep-stats.o `test -f 'stats.cpp' || echo '$(srcdir)/'`stats.cpp
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ugrep-stats.Tpo $(DEPDIR)/ugrep-stats.Po
@@ -920,6 +935,7 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/ugrep-output.Po
 	-rm -f ./$(DEPDIR)/ugrep-query.Po
 	-rm -f ./$(DEPDIR)/ugrep-screen.Po
+	-rm -f ./$(DEPDIR)/ugrep-settings.Po
 	-rm -f ./$(DEPDIR)/ugrep-stats.Po
 	-rm -f ./$(DEPDIR)/ugrep-ugrep.Po
 	-rm -f ./$(DEPDIR)/ugrep-vkey.Po
@@ -979,6 +995,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/ugrep-output.Po
 	-rm -f ./$(DEPDIR)/ugrep-query.Po
 	-rm -f ./$(DEPDIR)/ugrep-screen.Po
+	-rm -f ./$(DEPDIR)/ugrep-settings.Po
 	-rm -f ./$(DEPDIR)/ugrep-stats.Po
 	-rm -f ./$(DEPDIR)/ugrep-ugrep.Po
 	-rm -f ./$(DEPDIR)/ugrep-vkey.Po

@@ -548,6 +548,7 @@
     <ClCompile Include="..\src\output.cpp" />
     <ClCompile Include="..\src\query.cpp" />
     <ClCompile Include="..\src\screen.cpp" />
+    <ClCompile Include="..\src\settings.cpp" />
     <ClCompile Include="..\src\stats.cpp" />
     <ClCompile Include="..\src\ugrep.cpp" />
     <ClCompile Include="..\src\vkey.cpp" />

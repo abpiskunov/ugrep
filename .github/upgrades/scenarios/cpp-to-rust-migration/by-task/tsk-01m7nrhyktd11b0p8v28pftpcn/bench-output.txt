@@ -1,0 +1,6 @@
+runs=15 input_bytes=28636727
+literal  base_median_ms=35.2 new_median_ms=36.5 ratio=1.038
+word     base_median_ms=34.0 new_median_ms=33.9 ratio=0.997
+regex    base_median_ms=37.8 new_median_ms=37.4 ratio=0.990
+icase    base_median_ms=33.6 new_median_ms=34.3 ratio=1.019
+output   base_median_ms=39.2 new_median_ms=38.0 ratio=0.968
