@@ -2414,3 +2414,564 @@
 {"id":"core-init-dir-arg-trim-dot-fs","args":["--sort=name","-r","foo","./"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","b.txt":"one foo\ntwo\nthree foo foo\n","sub/c.txt":"sub foo\nnothing\n","sub/d.log":"log foo\n","pats.txt":"foo\nbar\n"}}
 {"id":"core-hl-colors-hl-before-flag-H","args":["--sort=name","--color=always","--colors=hl=vscode+","-H","foo","a.txt","b.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","b.txt":"one foo\ntwo\nthree foo foo\n","sub/c.txt":"sub foo\nnothing\n","sub/d.log":"log foo\n","pats.txt":"foo\nbar\n"}}
 {"id":"core-hl-flag-over-colors-H","args":["--sort=name","--color=always","--hyperlink=a+","--colors=hl=b+","-H","foo","a.txt","b.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","b.txt":"one foo\ntwo\nthree foo foo\n","sub/c.txt":"sub foo\nnothing\n","sub/d.log":"log foo\n","pats.txt":"foo\nbar\n"},"env":{"GREP_COLORS":"hl=c"}}
+{"id":"hm-help","args":["--help"]}
+{"id":"hm-help-q","args":["-?"]}
+{"id":"hm-help-then-pattern","args":["--help","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-help-s","args":["-s","--help"]}
+{"id":"hm-help-color","args":["--color=always","--help"]}
+{"id":"hm-help-stdout-only","args":["--help","-q"]}
+{"id":"hm-help-config-none","args":["--no-config","--help"]}
+{"id":"hm-help-eq-empty","args":["--help="]}
+{"id":"hm-help-empty-what","args":["--help",""]}
+{"id":"hm-help-two","args":["--help","format","regexp"]}
+{"id":"hm-help-what-uppercase","args":["--help","FORMAT"]}
+{"id":"hm-help-what-prefix","args":["--help","col"]}
+{"id":"hm-help-what-nomatch","args":["--help","zzzz"]}
+{"id":"hm-help-what-dashes","args":["--help","--"]}
+{"id":"hm-help-what-dash","args":["--help","-"]}
+{"id":"hm-help-what-no","args":["--help","--no"]}
+{"id":"hm-help-what-no-filename","args":["--help","--no-filename"]}
+{"id":"hm-help-what-eq","args":["--help=format"]}
+{"id":"hm-help-what-eq-dash","args":["--help=--format"]}
+{"id":"hm-help-what-eq-no","args":["--help=--no-heading"]}
+{"id":"hm-help-what-text","args":["--help","binary files"]}
+{"id":"hm-help-what-percent","args":["--help","%"]}
+{"id":"hm-help-what-question","args":["--help","?"]}
+{"id":"hm-help-what-dot","args":["--help","."]}
+{"id":"hm-help-what-colon","args":["--help","ignore"]}
+{"id":"hm-help-what-long-unknown","args":["--help","--nosuchoption"]}
+{"id":"hm-help-what-and-more","args":["--help","context","-r","foo"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-help-after-bad","args":["--help","--no-such-option"]}
+{"id":"hm-help-pager","args":["--pager=cat","--help"]}
+{"id":"hm-help-pager-bad","args":["--pager=nosuchprogram_xyz","--help"]}
+{"id":"hm-help-what-l-after-context","args":["--help","--after-context"]}
+{"id":"hm-help-what-l-all","args":["--help","--all"]}
+{"id":"hm-help-what-l-and","args":["--help","--and"]}
+{"id":"hm-help-what-l-andnot","args":["--help","--andnot"]}
+{"id":"hm-help-what-l-any-line","args":["--help","--any-line"]}
+{"id":"hm-help-what-l-ascii","args":["--help","--ascii"]}
+{"id":"hm-help-what-l-basic-regexp","args":["--help","--basic-regexp"]}
+{"id":"hm-help-what-l-before-context","args":["--help","--before-context"]}
+{"id":"hm-help-what-l-binary","args":["--help","--binary"]}
+{"id":"hm-help-what-l-binary-files","args":["--help","--binary-files"]}
+{"id":"hm-help-what-l-bool","args":["--help","--bool"]}
+{"id":"hm-help-what-l-break","args":["--help","--break"]}
+{"id":"hm-help-what-l-byte-offset","args":["--help","--byte-offset"]}
+{"id":"hm-help-what-l-color","args":["--help","--color"]}
+{"id":"hm-help-what-l-colors","args":["--help","--colors"]}
+{"id":"hm-help-what-l-colour","args":["--help","--colour"]}
+{"id":"hm-help-what-l-colours","args":["--help","--colours"]}
+{"id":"hm-help-what-l-column-number","args":["--help","--column-number"]}
+{"id":"hm-help-what-l-config","args":["--help","--config"]}
+{"id":"hm-help-what-l-context","args":["--help","--context"]}
+{"id":"hm-help-what-l-context-separator","args":["--help","--context-separator"]}
+{"id":"hm-help-what-l-count","args":["--help","--count"]}
+{"id":"hm-help-what-l-cpp","args":["--help","--cpp"]}
+{"id":"hm-help-what-l-csv","args":["--help","--csv"]}
+{"id":"hm-help-what-l-decompress","args":["--help","--decompress"]}
+{"id":"hm-help-what-l-delay","args":["--help","--delay"]}
+{"id":"hm-help-what-l-depth","args":["--help","--depth"]}
+{"id":"hm-help-what-l-dereference-files","args":["--help","--dereference-files"]}
+{"id":"hm-help-what-l-dereference-recursive","args":["--help","--dereference-recursive"]}
+{"id":"hm-help-what-l-devices","args":["--help","--devices"]}
+{"id":"hm-help-what-l-directories","args":["--help","--directories"]}
+{"id":"hm-help-what-l-dotall","args":["--help","--dotall"]}
+{"id":"hm-help-what-l-empty","args":["--help","--empty"]}
+{"id":"hm-help-what-l-encoding","args":["--help","--encoding"]}
+{"id":"hm-help-what-l-exclude","args":["--help","--exclude"]}
+{"id":"hm-help-what-l-exclude-dir","args":["--help","--exclude-dir"]}
+{"id":"hm-help-what-l-exclude-from","args":["--help","--exclude-from"]}
+{"id":"hm-help-what-l-exclude-fs","args":["--help","--exclude-fs"]}
+{"id":"hm-help-what-l-extended-regexp","args":["--help","--extended-regexp"]}
+{"id":"hm-help-what-l-file","args":["--help","--file"]}
+{"id":"hm-help-what-l-file-extension","args":["--help","--file-extension"]}
+{"id":"hm-help-what-l-file-magic","args":["--help","--file-magic"]}
+{"id":"hm-help-what-l-file-type","args":["--help","--file-type"]}
+{"id":"hm-help-what-l-files","args":["--help","--files"]}
+{"id":"hm-help-what-l-files-with-matches","args":["--help","--files-with-matches"]}
+{"id":"hm-help-what-l-files-without-match","args":["--help","--files-without-match"]}
+{"id":"hm-help-what-l-filter","args":["--help","--filter"]}
+{"id":"hm-help-what-l-filter-magic-label","args":["--help","--filter-magic-label"]}
+{"id":"hm-help-what-l-fixed-strings","args":["--help","--fixed-strings"]}
+{"id":"hm-help-what-l-format","args":["--help","--format"]}
+{"id":"hm-help-what-l-free-space","args":["--help","--free-space"]}
+{"id":"hm-help-what-l-from","args":["--help","--from"]}
+{"id":"hm-help-what-l-fuzzy","args":["--help","--fuzzy"]}
+{"id":"hm-help-what-l-glob","args":["--help","--glob"]}
+{"id":"hm-help-what-l-glob-ignore-case","args":["--help","--glob-ignore-case"]}
+{"id":"hm-help-what-l-group-separator","args":["--help","--group-separator"]}
+{"id":"hm-help-what-l-heading","args":["--help","--heading"]}
+{"id":"hm-help-what-l-help","args":["--help","--help"]}
+{"id":"hm-help-what-l-hex","args":["--help","--hex"]}
+{"id":"hm-help-what-l-hexdump","args":["--help","--hexdump"]}
+{"id":"hm-help-what-l-hidden","args":["--help","--hidden"]}
+{"id":"hm-help-what-l-hyperlink","args":["--help","--hyperlink"]}
+{"id":"hm-help-what-l-iglob","args":["--help","--iglob"]}
+{"id":"hm-help-what-l-ignore-binary","args":["--help","--ignore-binary"]}
+{"id":"hm-help-what-l-ignore-case","args":["--help","--ignore-case"]}
+{"id":"hm-help-what-l-ignore-files","args":["--help","--ignore-files"]}
+{"id":"hm-help-what-l-include","args":["--help","--include"]}
+{"id":"hm-help-what-l-include-dir","args":["--help","--include-dir"]}
+{"id":"hm-help-what-l-include-from","args":["--help","--include-from"]}
+{"id":"hm-help-what-l-include-fs","args":["--help","--include-fs"]}
+{"id":"hm-help-what-l-index","args":["--help","--index"]}
+{"id":"hm-help-what-l-initial-tab","args":["--help","--initial-tab"]}
+{"id":"hm-help-what-l-invert-match","args":["--help","--invert-match"]}
+{"id":"hm-help-what-l-jobs","args":["--help","--jobs"]}
+{"id":"hm-help-what-l-json","args":["--help","--json"]}
+{"id":"hm-help-what-l-label","args":["--help","--label"]}
+{"id":"hm-help-what-l-line-buffered","args":["--help","--line-buffered"]}
+{"id":"hm-help-what-l-line-number","args":["--help","--line-number"]}
+{"id":"hm-help-what-l-line-regexp","args":["--help","--line-regexp"]}
+{"id":"hm-help-what-l-lines","args":["--help","--lines"]}
+{"id":"hm-help-what-l-match","args":["--help","--match"]}
+{"id":"hm-help-what-l-max-count","args":["--help","--max-count"]}
+{"id":"hm-help-what-l-max-files","args":["--help","--max-files"]}
+{"id":"hm-help-what-l-max-line","args":["--help","--max-line"]}
+{"id":"hm-help-what-l-max-size","args":["--help","--max-size"]}
+{"id":"hm-help-what-l-min-count","args":["--help","--min-count"]}
+{"id":"hm-help-what-l-min-line","args":["--help","--min-line"]}
+{"id":"hm-help-what-l-min-size","args":["--help","--min-size"]}
+{"id":"hm-help-what-l-mmap","args":["--help","--mmap"]}
+{"id":"hm-help-what-l-neg-regexp","args":["--help","--neg-regexp"]}
+{"id":"hm-help-what-l-no-config","args":["--help","--no-config"]}
+{"id":"hm-help-what-l-no-confirm","args":["--help","--no-confirm"]}
+{"id":"hm-help-what-l-no-dereference","args":["--help","--no-dereference"]}
+{"id":"hm-help-what-l-no-filename","args":["--help","--no-filename"]}
+{"id":"hm-help-what-l-no-group-separator","args":["--help","--no-group-separator"]}
+{"id":"hm-help-what-l-no-ignore-files","args":["--help","--no-ignore-files"]}
+{"id":"hm-help-what-l-no-messages","args":["--help","--no-messages"]}
+{"id":"hm-help-what-l-not","args":["--help","--not"]}
+{"id":"hm-help-what-l-null","args":["--help","--null"]}
+{"id":"hm-help-what-l-null-data","args":["--help","--null-data"]}
+{"id":"hm-help-what-l-only-line-number","args":["--help","--only-line-number"]}
+{"id":"hm-help-what-l-only-matching","args":["--help","--only-matching"]}
+{"id":"hm-help-what-l-pager","args":["--help","--pager"]}
+{"id":"hm-help-what-l-passthru","args":["--help","--passthru"]}
+{"id":"hm-help-what-l-perl-regexp","args":["--help","--perl-regexp"]}
+{"id":"hm-help-what-l-pretty","args":["--help","--pretty"]}
+{"id":"hm-help-what-l-query","args":["--help","--query"]}
+{"id":"hm-help-what-l-quiet","args":["--help","--quiet"]}
+{"id":"hm-help-what-l-range","args":["--help","--range"]}
+{"id":"hm-help-what-l-recursive","args":["--help","--recursive"]}
+{"id":"hm-help-what-l-regexp","args":["--help","--regexp"]}
+{"id":"hm-help-what-l-replace","args":["--help","--replace"]}
+{"id":"hm-help-what-l-save-config","args":["--help","--save-config"]}
+{"id":"hm-help-what-l-separator","args":["--help","--separator"]}
+{"id":"hm-help-what-l-silent","args":["--help","--silent"]}
+{"id":"hm-help-what-l-smart-case","args":["--help","--smart-case"]}
+{"id":"hm-help-what-l-sort","args":["--help","--sort"]}
+{"id":"hm-help-what-l-split","args":["--help","--split"]}
+{"id":"hm-help-what-l-stats","args":["--help","--stats"]}
+{"id":"hm-help-what-l-tabs","args":["--help","--tabs"]}
+{"id":"hm-help-what-l-tag","args":["--help","--tag"]}
+{"id":"hm-help-what-l-text","args":["--help","--text"]}
+{"id":"hm-help-what-l-tree","args":["--help","--tree"]}
+{"id":"hm-help-what-l-ungroup","args":["--help","--ungroup"]}
+{"id":"hm-help-what-l-version","args":["--help","--version"]}
+{"id":"hm-help-what-l-view","args":["--help","--view"]}
+{"id":"hm-help-what-l-width","args":["--help","--width"]}
+{"id":"hm-help-what-l-with-filename","args":["--help","--with-filename"]}
+{"id":"hm-help-what-l-with-hex","args":["--help","--with-hex"]}
+{"id":"hm-help-what-l-word-regexp","args":["--help","--word-regexp"]}
+{"id":"hm-help-what-l-xml","args":["--help","--xml"]}
+{"id":"hm-help-what-l-zmax","args":["--help","--zmax"]}
+{"id":"hm-help-what-s-x25","args":["--help","-%"]}
+{"id":"hm-help-what-s-x2e","args":["--help","-."]}
+{"id":"hm-help-what-s-0","args":["--help","-0"]}
+{"id":"hm-help-what-s-1","args":["--help","-1"]}
+{"id":"hm-help-what-s-2","args":["--help","-2"]}
+{"id":"hm-help-what-s-3","args":["--help","-3"]}
+{"id":"hm-help-what-s-9","args":["--help","-9"]}
+{"id":"hm-help-what-s-x3f","args":["--help","-?"]}
+{"id":"hm-help-what-s-x40","args":["--help","-@"]}
+{"id":"hm-help-what-s-A","args":["--help","-A"]}
+{"id":"hm-help-what-s-B","args":["--help","-B"]}
+{"id":"hm-help-what-s-C","args":["--help","-C"]}
+{"id":"hm-help-what-s-D","args":["--help","-D"]}
+{"id":"hm-help-what-s-E","args":["--help","-E"]}
+{"id":"hm-help-what-s-F","args":["--help","-F"]}
+{"id":"hm-help-what-s-G","args":["--help","-G"]}
+{"id":"hm-help-what-s-H","args":["--help","-H"]}
+{"id":"hm-help-what-s-I","args":["--help","-I"]}
+{"id":"hm-help-what-s-J","args":["--help","-J"]}
+{"id":"hm-help-what-s-K","args":["--help","-K"]}
+{"id":"hm-help-what-s-L","args":["--help","-L"]}
+{"id":"hm-help-what-s-M","args":["--help","-M"]}
+{"id":"hm-help-what-s-N","args":["--help","-N"]}
+{"id":"hm-help-what-s-O","args":["--help","-O"]}
+{"id":"hm-help-what-s-P","args":["--help","-P"]}
+{"id":"hm-help-what-s-Q","args":["--help","-Q"]}
+{"id":"hm-help-what-s-R","args":["--help","-R"]}
+{"id":"hm-help-what-s-S","args":["--help","-S"]}
+{"id":"hm-help-what-s-T","args":["--help","-T"]}
+{"id":"hm-help-what-s-U","args":["--help","-U"]}
+{"id":"hm-help-what-s-V","args":["--help","-V"]}
+{"id":"hm-help-what-s-W","args":["--help","-W"]}
+{"id":"hm-help-what-s-X","args":["--help","-X"]}
+{"id":"hm-help-what-s-Y","args":["--help","-Y"]}
+{"id":"hm-help-what-s-Z","args":["--help","-Z"]}
+{"id":"hm-help-what-s-a","args":["--help","-a"]}
+{"id":"hm-help-what-s-b","args":["--help","-b"]}
+{"id":"hm-help-what-s-c","args":["--help","-c"]}
+{"id":"hm-help-what-s-d","args":["--help","-d"]}
+{"id":"hm-help-what-s-e","args":["--help","-e"]}
+{"id":"hm-help-what-s-f","args":["--help","-f"]}
+{"id":"hm-help-what-s-g","args":["--help","-g"]}
+{"id":"hm-help-what-s-h","args":["--help","-h"]}
+{"id":"hm-help-what-s-i","args":["--help","-i"]}
+{"id":"hm-help-what-s-j","args":["--help","-j"]}
+{"id":"hm-help-what-s-k","args":["--help","-k"]}
+{"id":"hm-help-what-s-l","args":["--help","-l"]}
+{"id":"hm-help-what-s-m","args":["--help","-m"]}
+{"id":"hm-help-what-s-n","args":["--help","-n"]}
+{"id":"hm-help-what-s-o","args":["--help","-o"]}
+{"id":"hm-help-what-s-p","args":["--help","-p"]}
+{"id":"hm-help-what-s-q","args":["--help","-q"]}
+{"id":"hm-help-what-s-r","args":["--help","-r"]}
+{"id":"hm-help-what-s-s","args":["--help","-s"]}
+{"id":"hm-help-what-s-t","args":["--help","-t"]}
+{"id":"hm-help-what-s-u","args":["--help","-u"]}
+{"id":"hm-help-what-s-v","args":["--help","-v"]}
+{"id":"hm-help-what-s-w","args":["--help","-w"]}
+{"id":"hm-help-what-s-x","args":["--help","-x"]}
+{"id":"hm-help-what-s-y","args":["--help","-y"]}
+{"id":"hm-help-what-s-z","args":["--help","-z"]}
+{"id":"hm-help-eqwhat-after-context","args":["--help=after-context"]}
+{"id":"hm-help-nowhat-after-context","args":["--help","--no-after-context"]}
+{"id":"hm-help-eqwhat-ascii","args":["--help=ascii"]}
+{"id":"hm-help-nowhat-ascii","args":["--help","--no-ascii"]}
+{"id":"hm-help-eqwhat-bool","args":["--help=bool"]}
+{"id":"hm-help-nowhat-bool","args":["--help","--no-bool"]}
+{"id":"hm-help-eqwhat-colour","args":["--help=colour"]}
+{"id":"hm-help-nowhat-colour","args":["--help","--no-colour"]}
+{"id":"hm-help-eqwhat-context-separator","args":["--help=context-separator"]}
+{"id":"hm-help-nowhat-context-separator","args":["--help","--no-context-separator"]}
+{"id":"hm-help-eqwhat-delay","args":["--help=delay"]}
+{"id":"hm-help-nowhat-delay","args":["--help","--no-delay"]}
+{"id":"hm-help-eqwhat-directories","args":["--help=directories"]}
+{"id":"hm-help-nowhat-directories","args":["--help","--no-directories"]}
+{"id":"hm-help-eqwhat-exclude-dir","args":["--help=exclude-dir"]}
+{"id":"hm-help-nowhat-exclude-dir","args":["--help","--no-exclude-dir"]}
+{"id":"hm-help-eqwhat-file-extension","args":["--help=file-extension"]}
+{"id":"hm-help-nowhat-file-extension","args":["--help","--no-file-extension"]}
+{"id":"hm-help-eqwhat-files-without-match","args":["--help=files-without-match"]}
+{"id":"hm-help-nowhat-files-without-match","args":["--help","--no-files-without-match"]}
+{"id":"hm-help-eqwhat-free-space","args":["--help=free-space"]}
+{"id":"hm-help-nowhat-free-space","args":["--help","--no-free-space"]}
+{"id":"hm-help-eqwhat-group-separator","args":["--help=group-separator"]}
+{"id":"hm-help-nowhat-group-separator","args":["--help","--no-group-separator"]}
+{"id":"hm-help-eqwhat-hidden","args":["--help=hidden"]}
+{"id":"hm-help-nowhat-hidden","args":["--help","--no-hidden"]}
+{"id":"hm-help-eqwhat-ignore-files","args":["--help=ignore-files"]}
+{"id":"hm-help-nowhat-ignore-files","args":["--help","--no-ignore-files"]}
+{"id":"hm-help-eqwhat-index","args":["--help=index"]}
+{"id":"hm-help-nowhat-index","args":["--help","--no-index"]}
+{"id":"hm-help-eqwhat-label","args":["--help=label"]}
+{"id":"hm-help-nowhat-label","args":["--help","--no-label"]}
+{"id":"hm-help-eqwhat-match","args":["--help=match"]}
+{"id":"hm-help-nowhat-match","args":["--help","--no-match"]}
+{"id":"hm-help-eqwhat-min-count","args":["--help=min-count"]}
+{"id":"hm-help-nowhat-min-count","args":["--help","--no-min-count"]}
+{"id":"hm-help-eqwhat-no-config","args":["--help=no-config"]}
+{"id":"hm-help-nowhat-no-config","args":["--help","--no-no-config"]}
+{"id":"hm-help-eqwhat-no-ignore-files","args":["--help=no-ignore-files"]}
+{"id":"hm-help-nowhat-no-ignore-files","args":["--help","--no-no-ignore-files"]}
+{"id":"hm-help-eqwhat-only-line-number","args":["--help=only-line-number"]}
+{"id":"hm-help-nowhat-only-line-number","args":["--help","--no-only-line-number"]}
+{"id":"hm-help-eqwhat-pretty","args":["--help=pretty"]}
+{"id":"hm-help-nowhat-pretty","args":["--help","--no-pretty"]}
+{"id":"hm-help-eqwhat-regexp","args":["--help=regexp"]}
+{"id":"hm-help-nowhat-regexp","args":["--help","--no-regexp"]}
+{"id":"hm-help-eqwhat-smart-case","args":["--help=smart-case"]}
+{"id":"hm-help-nowhat-smart-case","args":["--help","--no-smart-case"]}
+{"id":"hm-help-eqwhat-tag","args":["--help=tag"]}
+{"id":"hm-help-nowhat-tag","args":["--help","--no-tag"]}
+{"id":"hm-help-eqwhat-view","args":["--help=view"]}
+{"id":"hm-help-nowhat-view","args":["--help","--no-view"]}
+{"id":"hm-help-eqwhat-xml","args":["--help=xml"]}
+{"id":"hm-help-nowhat-xml","args":["--help","--no-xml"]}
+{"id":"hm-version","args":["--version"]}
+{"id":"hm-version-V","args":["-V"]}
+{"id":"hm-version-V-pattern","args":["-V","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-version-s","args":["-s","--version"]}
+{"id":"hm-version-q","args":["-q","--version"]}
+{"id":"hm-version-color","args":["--color=always","--version"]}
+{"id":"hm-version-after-help","args":["--version","--help"]}
+{"id":"hm-version-prefix","args":["--vers"]}
+{"id":"hm-version-prefix-ver","args":["--ver"]}
+{"id":"hm-version-eq","args":["--version=1"]}
+{"id":"hm-version-mode-E","args":["-E","--version"]}
+{"id":"hm-version-mode-F","args":["-F","--version"]}
+{"id":"hm-version-mode-G","args":["-G","--version"]}
+{"id":"hm-version-mode-P","args":["-P","--version"]}
+{"id":"hm-version-mode-Z","args":["-Z","--version"]}
+{"id":"hm-version-no-config","args":["--no-config","-V"]}
+{"id":"hm-version-verbose","args":["-V","-v"]}
+{"id":"hm-version-stdin","args":["-V"],"stdin":"foo\n"}
+{"id":"hm-version-cluster","args":["-nV"]}
+{"id":"hm-version-cluster2","args":["-Vn"]}
+{"id":"hm-version-after-bad","args":["--version","--no-such-option"]}
+{"id":"hm-version-pager","args":["--pager=cat","--version"]}
+{"id":"hm-usage-unknown-long","args":["--no-such-option","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-unknown-long-eq","args":["--no-such-option=1","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-unknown-short","args":["-!","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-unknown-short-2","args":["-_","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-unknown-cluster","args":["-n_","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-unknown-dashes","args":["---","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-unknown-dash-digit","args":["--9","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-unknown-long-suggest","args":["--colr","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-unknown-long-suggest2","args":["--regex","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-unknown-long-suggest3","args":["--ignore-cas","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-unknown-long-suggest4","args":["--no-filenam","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-ambiguous","args":["--no-","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-ambiguous2","args":["--co","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-ambiguous3","args":["--in","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-missing-arg","args":["-A"]}
+{"id":"hm-usage-missing-arg-long","args":["--context"]}
+{"id":"hm-usage-missing-arg-long-last","args":["foo","a.txt","--max-count"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-missing-arg-e","args":["-e"]}
+{"id":"hm-usage-missing-arg-f","args":["-f"]}
+{"id":"hm-usage-no-pattern","args":[]}
+{"id":"hm-usage-no-pattern-opt","args":["-n"]}
+{"id":"hm-usage-no-pattern-r","args":["-r"]}
+{"id":"hm-usage-no-pattern-stdin","args":[],"stdin":"foo\n"}
+{"id":"hm-usage-invalid-value","args":["--color=maybe","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-invalid-value-list","args":["--binary-files=x","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-invalid-value-dir","args":["-d","x","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-invalid-value-dev","args":["-D","x","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-invalid-value-hexdump","args":["--hexdump=x","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-invalid-value-hyperlink","args":["--hyperlink=%","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-invalid-value-type","args":["-t","nosuchtype","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-invalid-value-tabs","args":["--tabs=3","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-invalid-value-zmax","args":["--zmax=100","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-invalid-value-context","args":["-C","x","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-invalid-value-maxcount","args":["-m","x","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-invalid-value-jobs","args":["-J","x","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-invalid-value-sort","args":["--sort=x","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-invalid-value-width","args":["--width=x","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-invalid-value-colors","args":["--colors=zz=1","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-invalid-value-encoding","args":["--encoding=nosuch","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-invalid-value-format-no-eq","args":["--format","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-bad-then-good","args":["--no-such-option","--version"]}
+{"id":"hm-usage-bad-then-help","args":["--no-such-option","--help"]}
+{"id":"hm-usage-help-then-bad","args":["--help","-]"]}
+{"id":"hm-usage-two-errors","args":["-~","--no-such-option","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-bad-s","args":["-s","--no-such-option","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-bad-q","args":["-q","--no-such-option","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-bad-color","args":["--color=always","--no-such-option","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-bad-stdin","args":["--no-such-option","foo"],"stdin":"foo\n"}
+{"id":"hm-usage-bad-pager","args":["--pager=cat","--no-such-option","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-bad-regex","args":["-e","(","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-bad-regex-ere","args":["-E","a{","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-bad-regex-bracket","args":["[","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-bad-regex-star","args":["-G","\\(","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-bad-regex-perl","args":["-P","(","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-bad-regex-fixed-ok","args":["-F","(","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-usage-config-bad","args":["--config=bad.conf","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","bad.conf":"no-such-option\n"}}
+{"id":"hm-usage-config-bad-value","args":["--config=bad.conf","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","bad.conf":"color=maybe\n"}}
+{"id":"hm-usage-config-bad-warn-then-search","args":["--config=bad.conf","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","bad.conf":"tabs=3\n"}}
+{"id":"hm-usage-config-bad-s","args":["--config=bad.conf","-s","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","bad.conf":"no-such-option\n"}}
+{"id":"hm-usage-config-help","args":["--config=h.conf","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","h.conf":"help\n"}}
+{"id":"hm-usage-config-version","args":["--config=v.conf","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","v.conf":"version\n"}}
+{"id":"hm-usage-config-missing","args":["--config=nosuch.conf","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile","args":["foo","nofile.txt"]}
+{"id":"hm-warn-nofile-match","args":["foo","a.txt","nofile.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-first","args":["foo","nofile.txt","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-s","args":["-s","foo","nofile.txt"]}
+{"id":"hm-warn-nofile-s-match","args":["-s","foo","a.txt","nofile.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-q","args":["-q","foo","nofile.txt"]}
+{"id":"hm-warn-nofile-q-match","args":["-q","foo","a.txt","nofile.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-q-match-first","args":["-q","foo","nofile.txt","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-color","args":["--color=always","foo","nofile.txt","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-color-multi","args":["--color=always","foo","nofile.txt","nofile2.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-colors","args":["--color=always","--colors=ne=1;31:hl=1;33","foo","nofile.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-colors2","args":["--color=always","--colors=mt=1;32:se=1;34:fn=1;35","foo","nofile.txt","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-three","args":["--sort=name","foo","x1.txt","a.txt","x2.txt","x3.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-stdin","args":["foo","-","nofile.txt"],"stdin":"foo\n"}
+{"id":"hm-warn-nofile-e","args":["-e","foo","nofile.txt"]}
+{"id":"hm-warn-nofile-empty-name","args":["foo",""],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-space-name","args":["foo","no file.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-long-name","args":["foo","nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-dir-name","args":["foo","nodir/nofile.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-c","args":["-c","foo","nofile.txt","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-l","args":["-l","foo","nofile.txt","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-L","args":["-L","foo","nofile.txt","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-json","args":["--json","foo","nofile.txt","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-r","args":["-r","--sort=name","foo","nofile.txt","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-warn-nofile-j2","args":["-J2","--sort=name","foo","nofile.txt","a.txt","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-warn-nofile-pager","args":["--pager=cat","foo","nofile.txt","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-Q","args":["-Q","foo","nofile.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-Q-s","args":["-Q","-s","foo","nofile.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-nofile-pager-s","args":["--pager=cat","-s","foo","nofile.txt","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-glob-nomatch","args":["foo","zz*.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-dash-file-missing","args":["-f","nopats.txt","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-file-missing-exclude","args":["--exclude-from=nofile","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-ignore-files-missing","args":["--ignore-files=nofile","-r","--sort=name","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-warn-no-messages-long","args":["--no-messages","foo","nofile.txt","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-with-filename","args":["-H","foo","nofile.txt","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-warn-exit-error-match","args":["--exit-error","foo","nofile.txt","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-isdir-read","args":["-d","read","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-long","args":["--directories=read","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-s","args":["-s","-d","read","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-q","args":["-q","-d","read","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-q-match","args":["-q","-d","read","foo","a.txt","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-color","args":["--color=always","-d","read","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-colors","args":["--color=always","--colors=hl=1;31:ne=1","-d","read","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-match","args":["-d","read","foo","a.txt","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-two","args":["--sort=name","-d","read","foo","d","e"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-three","args":["--sort=name","-d","read","foo","d","a.txt","e"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-nested","args":["-d","read","foo","e/sub"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-trailing-slash","args":["-d","read","foo","d/"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-trailing-bs","args":["-d","read","foo","d\\"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-dot","args":["-d","read","foo","."],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-dotdot","args":["-d","read","foo","d/.."],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-space","args":["-d","read","foo","sp ace"],"files":{"sp ace/x.txt":"foo\n"}}
+{"id":"hm-isdir-read-unicode","args":["-d","read","foo","d\u00e9"],"files":{"d\u00e9/x.txt":"foo\n"}}
+{"id":"hm-isdir-read-r","args":["-d","read","-r","--sort=name","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-json","args":["-d","read","--json","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-count","args":["-d","read","-c","foo","d","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-list","args":["-d","read","-l","foo","d","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-L","args":["-d","read","-L","foo","d","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-stdin","args":["-d","read","foo","-","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"},"stdin":"foo\n"}
+{"id":"hm-isdir-read-pager","args":["--pager=cat","-d","read","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-hidden","args":["-d","read","foo",".hid"],"files":{".hid/x.txt":"foo\n"}}
+{"id":"hm-isdir-read-hidden-opt","args":["--hidden","-d","read","foo",".hid"],"files":{".hid/x.txt":"foo\n"}}
+{"id":"hm-isdir-read-glob","args":["-d","read","foo","d*"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-exclude-dir","args":["-d","read","--exclude-dir=d","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-include-dir","args":["-d","read","--include-dir=d","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-glob-opt","args":["-d","read","-g","d","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-skip","args":["-d","skip","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-skip-q","args":["-q","-d","skip","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-recurse","args":["-d","recurse","--sort=name","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-default","args":["--sort=name","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-default-match","args":["--sort=name","foo","a.txt","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-default-r-empty","args":["-r","foo","emptydir"],"files":{"emptydir/.keep":""}}
+{"id":"hm-isdir-config-read","args":["--config=r.conf","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n","r.conf":"directories=read\n"}}
+{"id":"hm-isdir-config-read-s","args":["--config=r.conf","-s","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n","r.conf":"directories=read\n"}}
+{"id":"hm-isdir-dir-as-file-f","args":["-f","d","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-dir-as-e-file","args":["foo","d","-d","read","-n"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-bin","args":["-d","read","foo","d","a.bin"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n","a.bin":{"hex":"666f6f00626172ff"}}}
+{"id":"hm-isdir-read-binary-pattern","args":["-d","read","-U","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-nomatch","args":["-d","read","zzz","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-empty-pattern","args":["-d","read","","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-isdir-read-v","args":["-d","read","-v","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-decomp-gz","args":["-z","foo","bad.gz"],"files":{"a.txt":"foo\n","bad.gz":{"hex":"1f8b0800010203040506070809"}}}
+{"id":"hm-decomp-gz-s","args":["-z","-s","foo","bad.gz"],"files":{"a.txt":"foo\n","bad.gz":{"hex":"1f8b0800010203040506070809"}}}
+{"id":"hm-decomp-gz-q","args":["-z","-q","foo","bad.gz"],"files":{"a.txt":"foo\n","bad.gz":{"hex":"1f8b0800010203040506070809"}}}
+{"id":"hm-decomp-gz-color","args":["-z","--color=always","foo","bad.gz"],"files":{"a.txt":"foo\n","bad.gz":{"hex":"1f8b0800010203040506070809"}}}
+{"id":"hm-decomp-gz-multi","args":["-z","--sort=name","foo","a.txt","bad.gz"],"files":{"a.txt":"foo\n","bad.gz":{"hex":"1f8b0800010203040506070809"}}}
+{"id":"hm-decomp-gz-r","args":["-z","-r","--sort=name","foo","."],"files":{"a.txt":"foo\n","bad.gz":{"hex":"1f8b0800010203040506070809"}}}
+{"id":"hm-decomp-bz2","args":["-z","foo","bad.bz2"],"files":{"a.txt":"foo\n","bad.bz2":{"hex":"425a683901020304050607"}}}
+{"id":"hm-decomp-xz","args":["-z","foo","bad.xz"],"files":{"a.txt":"foo\n","bad.xz":{"hex":"fd377a585a00000102030405"}}}
+{"id":"hm-decomp-lz4","args":["-z","foo","bad.lz4"],"files":{"a.txt":"foo\n","bad.lz4":{"hex":"04224d18000102030405"}}}
+{"id":"hm-decomp-zst","args":["-z","foo","bad.zst"],"files":{"a.txt":"foo\n","bad.zst":{"hex":"28b52ffd0001020304"}}}
+{"id":"hm-decomp-zip","args":["-z","foo","bad.zip"],"files":{"a.txt":"foo\n","bad.zip":{"hex":"504b0304140000000800010203040506"}}}
+{"id":"hm-decomp-7z","args":["-z","foo","bad.7z"],"files":{"a.txt":"foo\n","bad.7z":{"hex":"377abcaf271c000401020304"}}}
+{"id":"hm-decomp-tar","args":["-z","foo","bad.tar"],"files":{"a.txt":"foo\n","bad.tar":{"hex":"00000000000000000000616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161"}}}
+{"id":"hm-decomp-gz-trunc-header","args":["-z","foo","t.gz"],"files":{"t.gz":{"hex":"1f8b08"}}}
+{"id":"hm-decomp-gz-empty","args":["-z","foo","e.gz"],"files":{"e.gz":""}}
+{"id":"hm-decomp-gz-text","args":["-z","foo","t.gz"],"files":{"t.gz":"foo\n"}}
+{"id":"hm-decomp-zzz","args":["-zz","foo","bad.gz"],"files":{"bad.gz":{"hex":"1f8b0800010203040506070809"}}}
+{"id":"hm-decomp-long","args":["--decompress","foo","bad.gz"],"files":{"bad.gz":{"hex":"1f8b0800010203040506070809"}}}
+{"id":"hm-decomp-zmax","args":["-z","--zmax=2","foo","bad.gz"],"files":{"bad.gz":{"hex":"1f8b0800010203040506070809"}}}
+{"id":"hm-decomp-stats","args":["-z","--stats","foo","bad.gz"],"files":{"bad.gz":{"hex":"1f8b0800010203040506070809"}}}
+{"id":"hm-decomp-no-decompress","args":["--no-decompress","foo","bad.gz"],"files":{"bad.gz":{"hex":"1f8b0800010203040506070809"}}}
+{"id":"hm-decomp-nested-name","args":["-z","foo","sub dir/bad.gz"],"files":{"sub dir/bad.gz":{"hex":"1f8b0800010203040506070809"}}}
+{"id":"hm-decomp-stdin","args":["-z","foo"],"stdin":"foo\n"}
+{"id":"hm-decomp-bad-then-good","args":["-z","--sort=name","foo","bad.gz","a.txt"],"files":{"bad.gz":{"hex":"1f8b0800010203040506070809"},"a.txt":"foo\n"}}
+{"id":"hm-abort-pager-warning","args":["--pager=cat","foo","nofile.txt","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-pager-warning-s","args":["--pager=cat","-s","foo","nofile.txt","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-pager-bad-regex","args":["--pager=cat","-e","(","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-query-warning","args":["-Q","foo","nofile.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-query-warning-s","args":["-Q","-s","foo","nofile.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-query-bad-option","args":["-Q","--no-such-option"]}
+{"id":"hm-abort-query-config-warning","args":["-Q","--config=bad.conf","foo"],"files":{"bad.conf":"tabs=3\n"}}
+{"id":"hm-abort-pager-config-warning","args":["--pager=cat","--config=bad.conf","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","bad.conf":"tabs=3\n"}}
+{"id":"hm-abort-pager-config-warning-s","args":["--pager=cat","-s","--config=bad.conf","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","bad.conf":"tabs=3\n"}}
+{"id":"hm-abort-pager-color","args":["--pager=cat","--color=always","foo","nofile.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-pager-nofile-only","args":["--pager=cat","foo","nofile.txt"]}
+{"id":"hm-abort-pager-empty","args":["--pager=","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-pager-nosuch","args":["--pager=nosuchprogram_xyz","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-pager-nosuch-nomatch","args":["--pager=nosuchprogram_xyz","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-pager-nosuch-s","args":["--pager=nosuchprogram_xyz","-s","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-pager-quote","args":["--pager=\"","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-pager-q","args":["--pager=nosuchprogram_xyz","-q","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-pager-count","args":["--pager=nosuchprogram_xyz","-c","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-pager-dir","args":["--pager=nosuchprogram_xyz","-d","read","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-abort-pager-version","args":["--pager=nosuchprogram_xyz","--version"]}
+{"id":"hm-abort-filter-nosuch","args":["--filter=txt:nosuchprogram_xyz","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-filter-nosuch-s","args":["--filter=txt:nosuchprogram_xyz","-s","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-filter-nosuch-multi","args":["--filter=txt:nosuchprogram_xyz","foo","a.txt","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-filter-bad-spec","args":["--filter=nospec","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-index-nosuch","args":["--index","--sort=name","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-abort-save-config-readonly","args":["--save-config=nodir/x/y.conf","foo"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-format-bad","args":["--format=%{","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-regex-too-big","args":["-E","a{1000000}","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-regex-too-big2","args":["-E","(a{1000}){1000}","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-regex-nested","args":["-E","((((((((((((((((((((a))))))))))))))))))))","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-fuzzy-big","args":["-Z99999","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-abort-max-line","args":["--max-line=0","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-match","args":["foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-nomatch","args":["zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-error","args":["foo","nofile.txt"]}
+{"id":"hm-exit-error-match","args":["foo","a.txt","nofile.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-error-nomatch","args":["zzz","a.txt","nofile.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-q-match","args":["-q","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-q-nomatch","args":["-q","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-q-error","args":["-q","foo","nofile.txt"]}
+{"id":"hm-exit-q-error-match","args":["-q","foo","nofile.txt","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-q-match-error","args":["-q","foo","a.txt","nofile.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-s-error","args":["-s","foo","nofile.txt"]}
+{"id":"hm-exit-s-error-match","args":["-s","foo","nofile.txt","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-s-nomatch","args":["-s","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-s-q-error","args":["-s","-q","foo","nofile.txt"]}
+{"id":"hm-exit-v-match","args":["-v","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-v-nomatch","args":["-v","","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-c-nomatch","args":["-c","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-c-match","args":["-c","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-l-nomatch","args":["-l","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-L-match","args":["-L","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-L-nomatch","args":["-L","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-empty-pattern","args":["","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-empty-file","args":["foo","empty.txt"],"files":{"empty.txt":""}}
+{"id":"hm-exit-empty-file-v","args":["-v","foo","empty.txt"],"files":{"empty.txt":""}}
+{"id":"hm-exit-empty-file-empty-pattern","args":["","empty.txt"],"files":{"empty.txt":""}}
+{"id":"hm-exit-stdin-match","args":["foo"],"stdin":"foo\n"}
+{"id":"hm-exit-stdin-nomatch","args":["zzz"],"stdin":"foo\n"}
+{"id":"hm-exit-stdin-empty","args":["foo"],"stdin":""}
+{"id":"hm-exit-stdin-dash","args":["foo","-"],"stdin":"foo\n"}
+{"id":"hm-exit-max-count-0","args":["-m","0","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-max-count-1","args":["-m","1","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-no-match-flag","args":["--no-messages","-q","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-exit-error-match","args":["--exit-error","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-exit-error-nomatch","args":["--exit-error","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-exit-error-warn","args":["--exit-error","foo","a.txt","nofile.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-exit-error-warn-q","args":["--exit-error","-q","foo","a.txt","nofile.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-exit-error-warn-s","args":["--exit-error","-s","foo","a.txt","nofile.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-no-exit-error","args":["--no-exit-error","foo","a.txt","nofile.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-dir-match","args":["--sort=name","foo","a.txt","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-exit-dir-nomatch","args":["--sort=name","zzz","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-exit-dir-read-nomatch","args":["-d","read","zzz","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-exit-dir-read-match","args":["-d","read","foo","a.txt","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-exit-recurse-match","args":["-r","--sort=name","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-exit-recurse-nomatch","args":["-r","zzz","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-exit-recurse-nodir","args":["-r","foo","nodir"]}
+{"id":"hm-exit-binary-match","args":["foo","a.bin"],"files":{"a.bin":{"hex":"666f6f00626172ff"}}}
+{"id":"hm-exit-binary-nomatch","args":["zzz","a.bin"],"files":{"a.bin":{"hex":"666f6f00626172ff"}}}
+{"id":"hm-exit-I-binary","args":["-I","foo","a.bin"],"files":{"a.bin":{"hex":"666f6f00626172ff"}}}
+{"id":"hm-exit-help","args":["--help"]}
+{"id":"hm-exit-version","args":["--version"]}
+{"id":"hm-exit-usage","args":["--no-such-option"]}
+{"id":"hm-exit-usage-q","args":["-q","--no-such-option"]}
+{"id":"hm-exit-usage-s","args":["-s","--no-such-option"]}
+{"id":"hm-exit-bad-regex","args":["(","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-bad-regex-q","args":["-q","(","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-bad-regex-s","args":["-s","(","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-files-with-matches-error","args":["-l","foo","nofile.txt"]}
+{"id":"hm-exit-count-error","args":["-c","foo","nofile.txt"]}
+{"id":"hm-exit-json-nomatch","args":["--json","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-json-match","args":["--json","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-format-nomatch","args":["--format=%f%~","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-null-data","args":["-z","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
+{"id":"hm-exit-tree-match","args":["--tree","-r","--sort=name","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
