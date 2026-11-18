@@ -167,7 +167,7 @@ Known C++ quirk for Triage (preserve until classified): init tests `argv[1]`, no
 
 ## output.cpp retained (D-src_core-output-retained)
 
-`src/output.cpp` (Output and Output::Dump members) stays C++. Output is a fine-grained hot-path buffered writer used by the whole search driver; a per-member facade would add an FFI crossing per write, and no seam, signatures or traces exist for it. Porting it later needs one coarse seam together with the search driver (its own Prepare seam + Behavior follow-up).
+`src/output.cpp` was retained here at S2b; the output-buffer Port supersedes this (see "Seam: output-buffer" below): the file is deleted.
 
 
 ## ugrep.cpp globals/pager range retained (D-src_core-globals-retained)
@@ -268,3 +268,23 @@ No tap macro was added: `src/core_tap.hpp` was deleted at Cleanup and the plan h
 bodies are part of `src_core`, whose gates are cleaned). The generic `rust/src_core/cpp2rust_tap.hpp` template exists for the
 Behavior task. Evidence at Prepare: both modes build with MSVC (default and `/p:CPP_RUST_IMPL_OUTPUT=rust /p:CppRustOutSuffix=-rust`),
 `gate-check --gate baseline --target src_core` PASS (2981 surface cases, 0 divergent), `policy-scan` PASS.
+
+## Seam: output-buffer (supersedes the "C++ keeps the buffer" decision and known differences 1 and 2 above)
+
+`src/output.cpp` is deleted and no `output.obj` of ugrep is linked. The facade members (`color`, `header` x2, `binary_file_matches`,
+`format` x2, `format_invert`, `quote`...`xml`) are `inline` at the end of `src/output_rust.hpp`, included by `ugrep.cpp` after `output.hpp`.
+
+- **Buffer in Rust.** `rust/src_core/src/ffi/output_buf_core.rs` (`OutputBuf`) owns the 32768-byte blocks, the ordered/hold blocks, the
+  Sync slot, `--width` truncation state, the hex-dump state (`Dump::hex` and friends) and the global `--tree` state (path, depth, glyphs).
+  The module lives under `ffi/` because the plan only allows `unsafe` there. Flush is CRT `fwrite`/`fflush` on the same `FILE*` (static CRT on both
+  sides), so Windows text-mode CRLF is unchanged.
+- **Batching API (for the S4 performance task).** The C++ `Output` embeds `Regs {char *cur; char *end; size_t mode;}` (`repr(C)`); its address
+  and the `FILE*` and `eof` go to `ugrep_output_new`. `chr`, `str`, `nl`... write straight through `regs_.cur` to `regs_.end` inline; Rust is called
+  only when the block is full (`ugrep_output_next`), after an `nl` in `--line-buffered` mode (`ugrep_output_try_flush`), for `flush`/`begin`/`acquire`/
+  `release`/`end`/`cancel`, per hex-dump row batch (`ugrep_output_dump_*`) and per tree header. `Output` must not move after construction (Rust holds
+  `&regs_` and `&eof`); `GrepWorker` already constructs it in place.
+- **Tree.** `Output::Tree::reset()/depth()/end()/glyphs()` are Rust calls; `output_header_tree` takes no path/depth, it uses the Rust global.
+- **Flush points** of one facade call still happen where `Output::lines` appends, so with `--line-buffered` each `nl` flushes (verified byte-identical
+  to the baseline, also with output redirected to a file).
+- **Threading.** `OutputBuf` is `Send` (one per worker, never shared); the ordered-mode flush runs under the Rust `OutputSync` lock; the raw `regs`
+  and `eof` pointers are used by the owner thread only, `eof` through `AtomicBool::from_ptr`.

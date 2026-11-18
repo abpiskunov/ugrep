@@ -40,6 +40,10 @@ pub mod output_format;
 #[path = "ffi/output.rs"]
 pub mod output_ffi;
 pub mod output_sync;
+#[path = "ffi/output_buf_core.rs"]
+pub mod output_buf;
+#[path = "ffi/output_buf.rs"]
+pub mod output_buf_ffi;
 #[path = "ffi/output_sync.rs"]
 pub mod output_sync_ffi;
 
@@ -150,20 +154,6 @@ mod ffi {
         repeated: bool,
     }
 
-    /// Result of the `--tree` header: the lines and the new `Tree::path` and `Tree::depth`.
-    struct OutputTreeResult {
-        bytes: Vec<u8>,
-        path: Vec<u8>,
-        depth: i32,
-    }
-
-    /// Result of `flush_truncated_lines` for one block: the bytes to write and the new `skip_`, `cols_`, `ansi_`.
-    struct OutputTruncResult {
-        bytes: Vec<u8>,
-        skip: bool,
-        cols: usize,
-        ansi: u8,
-    }
 
     /// Bytes of a string, no NUL, no encoding assumed.
     struct Bytes {
@@ -317,7 +307,6 @@ mod ffi {
         fn output_json(data: &[u8]) -> Vec<u8>;
         fn output_xml(data: &[u8]) -> Vec<u8>;
         fn output_color(has_arg: bool, arg: &[u8]) -> Vec<u8>;
-        fn output_dump_line(bytes: &[i16], prevb: &[i16], pstar: bool, offset: usize) -> OutputDumpLine;
         fn output_header_line(
             pathname: &[u8],
             partname: &[u8],
@@ -328,22 +317,13 @@ mod ffi {
             ctx: &OutputCtx,
         ) -> OutputHeaderResult;
         fn output_header_file(pathname: &[u8], partname: &[u8], link: &[u8], ctx: &OutputCtx) -> OutputHeaderResult;
-        fn output_header_tree(
-            pathname: &[u8],
-            partname: &[u8],
-            link: &[u8],
-            glyphs: &[u8],
-            tree_path: &[u8],
-            tree_depth: i32,
-            ctx: &OutputCtx,
-        ) -> OutputTreeResult;
+        fn output_header_tree(pathname: &[u8], partname: &[u8], link: &[u8], ctx: &OutputCtx) -> Vec<u8>;
         fn output_binary_file_matches(
             pathname: &[u8],
             partname: &[u8],
             link: &[u8],
             ctx: &OutputCtx,
         ) -> OutputBinaryResult;
-        fn output_truncate_lines(data: &[u8], skip: bool, cols: usize, ansi: u8) -> OutputTruncResult;
         fn output_format_count(format: &[u8], matches: usize, ctx: &OutputCtx) -> Vec<u8>;
         fn output_format_match(
             format: &[u8],
@@ -561,10 +541,6 @@ fn output_color(has_arg: bool, arg: &[u8]) -> Vec<u8> {
     output::color(&output_ffi::opts(&[], &[], &[]), has_arg, arg)
 }
 
-fn output_dump_line(bytes: &[i16], prevb: &[i16], pstar: bool, offset: usize) -> ffi::OutputDumpLine {
-    output::dump_line(&output_ffi::opts(&[], &[], &[]), bytes, prevb, pstar, offset)
-}
-
 fn output_header_line(
     pathname: &[u8],
     partname: &[u8],
@@ -583,20 +559,20 @@ fn output_header_file(pathname: &[u8], partname: &[u8], link: &[u8], ctx: &ffi::
     output::header_file(&output_ffi::opts(p, h, d), pathname, partname, ctx)
 }
 
-fn output_header_tree(
-    pathname: &[u8],
-    partname: &[u8],
-    link: &[u8],
-    glyphs: &[u8],
-    tree_path: &[u8],
-    tree_depth: i32,
-    ctx: &ffi::OutputCtx,
-) -> ffi::OutputTreeResult {
+fn output_header_tree(pathname: &[u8], partname: &[u8], link: &[u8], ctx: &ffi::OutputCtx) -> Vec<u8> {
     let (p, h, d) = link_parts(link);
-    let (bar, ptr, end) = link_parts(glyphs);
-    let mut tree = output::TreeState { path: tree_path.to_vec(), depth: tree_depth };
-    let bytes = output::header_tree(&output_ffi::opts(p, h, d), pathname, partname, ctx, &output::TreeGlyphs { bar, ptr, end }, &mut tree);
-    ffi::OutputTreeResult { bytes, path: tree.path, depth: tree.depth }
+    let mut tree = output_buf::tree();
+    // the glyphs are copied: the guard borrows the tree state mutably for `header_tree`
+    let glyphs = tree.glyphs();
+    let (bar, ptr, end) = (glyphs.bar.to_vec(), glyphs.ptr.to_vec(), glyphs.end.to_vec());
+    output::header_tree(
+        &output_ffi::opts(p, h, d),
+        pathname,
+        partname,
+        ctx,
+        &output::TreeGlyphs { bar: &bar, ptr: &ptr, end: &end },
+        &mut tree.state,
+    )
 }
 
 fn output_binary_file_matches(
@@ -609,11 +585,6 @@ fn output_binary_file_matches(
     output::binary_file_matches(&output_ffi::opts(p, h, d), pathname, partname, ctx)
 }
 
-fn output_truncate_lines(data: &[u8], skip: bool, cols: usize, ansi: u8) -> ffi::OutputTruncResult {
-    let mut st = output::TruncState { skip, cols, ansi };
-    let bytes = output::truncate_lines(&output_ffi::opts(&[], &[], &[]), data, &mut st);
-    ffi::OutputTruncResult { bytes, skip: st.skip, cols: st.cols, ansi: st.ansi }
-}
 fn output_format_count(format: &[u8], matches: usize, ctx: &ffi::OutputCtx) -> Vec<u8> {
     output_format::format_count(&output_ffi::format_opts(), format, matches, ctx)
 }

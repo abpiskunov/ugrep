@@ -35,11 +35,16 @@ pub fn format_opts() -> Opts<'static> {
     opts(&[], &[], &[])
 }
 
-/// Builds the `Opts` snapshot from `ugrep_settings` and the `--hyperlink` strings that C++ passes.
-pub fn opts<'a>(hyperlink_prefix: &'a [u8], hyperlink_host: &'a [u8], hyperlink_path: &'a [u8]) -> Opts<'a> {
+/// The exported settings object, read-only.
+pub fn settings() -> &'static Settings {
     // SAFETY: the settings are written by C++ option parsing before any output is produced and are only read here;
     // the pointers inside refer to C strings that live for the whole process.
-    let s: &'a Settings = unsafe { &*crate::settings_ffi::UGREP_SETTINGS.as_ptr() };
+    unsafe { &*crate::settings_ffi::UGREP_SETTINGS.as_ptr() }
+}
+
+/// Builds the `Opts` snapshot from `ugrep_settings` and the `--hyperlink` strings that C++ passes.
+pub fn opts<'a>(hyperlink_prefix: &'a [u8], hyperlink_host: &'a [u8], hyperlink_path: &'a [u8]) -> Opts<'a> {
+    let s: &'a Settings = settings();
     // SAFETY: the colour and separator pointers are NULL or NUL-terminated strings with process lifetime (see above).
     let (hl, st, del, off, sep) = unsafe {
         (
