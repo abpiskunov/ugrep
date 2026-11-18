@@ -302,14 +302,6 @@ std::list<std::string> arg_strings;
 
 // helper function protos
 void options(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, int argc, const char **argv);
-void option_regexp(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, const char *arg, bool is_neg = false);
-void option_and(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, int& i, int argc, const char **argv);
-void option_and(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, const char *arg);
-void option_andnot(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, int& i, int argc, const char **argv);
-void option_andnot(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, const char *arg);
-void option_not(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, int& i, int argc, const char **argv);
-void option_not(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, const char *arg);
-void option_all_files();
 void init(int argc, const char **argv);
 void init_cpp(int argc, const char **argv);
 void set_color(const char *colors, const char *parameter, char color[COLORLEN]);
@@ -318,14 +310,6 @@ void trim(std::string& line);
 void trim_cpp(std::string& line);
 void trim_pathname_arg(const char *arg);
 bool is_output(ino_t inode);
-const char *getoptarg(int argc, const char **argv, const char *arg, int& i);
-const char *getloptarg(int argc, const char **argv, const char *arg, int& i);
-const char *strarg(const char *string);
-size_t strtonum(const char *string, const char *message);
-size_t strtopos(const char *string, const char *message);
-void strtopos2(const char *string, size_t& pos1, size_t& pos2, const char *message);
-size_t strtosize(const char *string, const char *message);
-size_t strtofuzzy(const char *string, const char *message);
 void import_globs(FILE *file, std::vector<std::string>& files, std::vector<std::string>& dirs, bool gitignore = false, const char *pathname = NULL);
 void usage(const char *message, const char *arg = NULL, const char *valid = NULL);
 void help(std::ostream& out);
@@ -4603,47 +4587,6 @@ int main(int argc, const char **argv)
   return Static::warnings > 0 ? EXIT_ERROR : Stats::found_any_file() ? EXIT_OK : EXIT_FAIL;
 }
 
-// set -1,...,-9,-10,... recursion depth flags
-static void set_depth(const char *& arg)
-{
-  const char *range = arg;
-  char *rest = NULL;
-
-  if (flag_max_depth > 0)
-  {
-    if (flag_min_depth == 0)
-      flag_min_depth = flag_max_depth;
-    flag_max_depth = static_cast<size_t>(strtoull(range, &rest, 10));
-    range = rest;
-  }
-  else
-  {
-    flag_max_depth = static_cast<size_t>(strtoull(range, &rest, 10));
-    range = rest;
-    if (*range == '-' || *range == ',')
-    {
-      flag_min_depth = flag_max_depth;
-      flag_max_depth = static_cast<size_t>(strtoull(range + 1, &rest, 10));
-      range = rest;
-    }
-  }
-
-  if (flag_min_depth > flag_max_depth)
-    usage("invalid argument -", arg);
-
-  arg = range - 1;
-}
-
-// set --10,... and --depth=10,... recursion depth flags
-static void set_depth_long(const char *arg)
-{
-  const char *range = arg;
-  set_depth(range);
-
-  if (range[1] != '\0')
-    usage("invalid argument --depth=", arg);
-}
-
 // load config file specified or the default .ugrep, located in the working directory or home directory
 static void load_config(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, bool recurse = false)
 {
@@ -5120,1076 +5063,183 @@ static void save_config()
     warning("options --file-type, --file-extension, --file-magic, --glob and --iglob are not saved to", flag_save_config);
 }
 
-// parse the command-line options
+// the callback table of the Rust options parser (ffi/options.rs), the order of the list numbers mirrors Rust's List
+struct OptionsEnv
+{
+  void *ctx;
+  void (*usage)(void *, const char *, const char *, const char *);
+  void (*help)(void *, const char *);
+  void (*version)(void *);
+  const char *(*strarg)(void *, const char *);
+  void (*pattern_push)(void *, int, const char *);
+  int (*patterns_empty)(void *);
+  void (*list_push)(void *, int, const char *);
+  void (*list_clear)(void *, int);
+  int (*list_empty)(void *, int);
+  void (*filter_append)(void *, const char *);
+  void (*filter_clear)(void *);
+  int (*arg_pattern_is_null)(void *);
+  void (*set_arg_pattern)(void *, const char *);
+  void (*push_arg_file)(void *, const char *);
+  size_t (*screen_width)(void *);
+  const char *auto_;
+  const char *never;
+  size_t max_mmap_size;
+  size_t default_tabs;
+  const char *default_tag;
+  const char *default_ignore_file;
+  int os_win;
+};
+
+extern "C" void ugrep_core_options(const OptionsEnv *env, int argc, const char **argv);
+
+namespace
+{
+
+typedef std::list<std::pair<CNF::PATTERN,const char*>> PatternArgs;
+
+std::vector<std::string> *options_list(int list)
+{
+  switch (list)
+  {
+    case 0: return &flag_file;
+    case 1: return &flag_file_type;
+    case 2: return &flag_file_extension;
+    case 3: return &flag_file_magic;
+    case 4: return &flag_filter_magic_label;
+    case 5: return &flag_from;
+    case 6: return &flag_glob;
+    case 7: return &flag_iglob;
+    case 8: return &flag_include;
+    case 9: return &flag_include_dir;
+    case 10: return &flag_include_from;
+    case 11: return &flag_include_fs;
+    case 12: return &flag_exclude;
+    case 13: return &flag_exclude_dir;
+    case 14: return &flag_exclude_from;
+    case 15: return &flag_exclude_fs;
+    default: return NULL;
+  }
+}
+
+void options_usage(void *, const char *message, const char *arg, const char *valid)
+{
+  usage(message, arg, valid);
+}
+
+void options_help(void *, const char *what)
+{
+  help(what);
+}
+
+void options_version(void *)
+{
+  version();
+}
+
+const char *options_strarg(void *, const char *string)
+{
+  arg_strings.emplace_back(string);
+  return arg_strings.back().c_str();
+}
+
+void options_pattern_push(void *ctx, int mask, const char *arg)
+{
+  static_cast<PatternArgs*>(ctx)->emplace_back(static_cast<CNF::PATTERN>(mask), arg);
+}
+
+int options_patterns_empty(void *ctx)
+{
+  return static_cast<PatternArgs*>(ctx)->empty();
+}
+
+void options_list_push(void *, int list, const char *value)
+{
+  if (list == 16)
+    flag_ignore_files.insert(value);
+  else
+    options_list(list)->emplace_back(value);
+}
+
+void options_list_clear(void *, int list)
+{
+  if (list == 16)
+    flag_ignore_files.clear();
+  else
+    options_list(list)->clear();
+}
+
+int options_list_empty(void *, int list)
+{
+  if (list == 16)
+    return flag_ignore_files.empty();
+  return options_list(list)->empty();
+}
+
+void options_filter_append(void *, const char *value)
+{
+  flag_filter.append(flag_filter.empty() ? "" : ",").append(value);
+}
+
+void options_filter_clear(void *)
+{
+  flag_filter.clear();
+}
+
+int options_arg_pattern_is_null(void *)
+{
+  return Static::arg_pattern == NULL;
+}
+
+void options_set_arg_pattern(void *, const char *arg)
+{
+  Static::arg_pattern = arg;
+}
+
+void options_push_arg_file(void *, const char *arg)
+{
+  Static::arg_files.emplace_back(arg);
+}
+
+size_t options_screen_width(void *)
+{
+  return tui_screen_getsize();
+}
+
+} // namespace
+
+// parse the command-line options, implemented in Rust on the settings struct
 void options(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, int argc, const char **argv)
 {
-  bool options = true;
-
-  for (int i = 1; i < argc; ++i)
-  {
-    const char *arg = argv[i];
-
-    if ((*arg == '-'
+  OptionsEnv env;
+  env.ctx = &pattern_args;
+  env.usage = options_usage;
+  env.help = options_help;
+  env.version = options_version;
+  env.strarg = options_strarg;
+  env.pattern_push = options_pattern_push;
+  env.patterns_empty = options_patterns_empty;
+  env.list_push = options_list_push;
+  env.list_clear = options_list_clear;
+  env.list_empty = options_list_empty;
+  env.filter_append = options_filter_append;
+  env.filter_clear = options_filter_clear;
+  env.arg_pattern_is_null = options_arg_pattern_is_null;
+  env.set_arg_pattern = options_set_arg_pattern;
+  env.push_arg_file = options_push_arg_file;
+  env.screen_width = options_screen_width;
+  env.auto_ = Static::AUTO;
+  env.never = Static::NEVER;
+  env.max_mmap_size = MAX_MMAP_SIZE;
+  env.default_tabs = DEFAULT_TABS;
+  env.default_tag = DEFAULT_TAG;
+  env.default_ignore_file = DEFAULT_IGNORE_FILE;
 #ifdef OS_WIN
-         || *arg == '/'
+  env.os_win = 1;
+#else
+  env.os_win = 0;
 #endif
-        ) && arg[1] != '\0' && options)
-    {
-      bool is_grouped = true;
-
-      // parse a ugrep command-line option
-      while (is_grouped && *++arg != '\0')
-      {
-        switch (*arg)
-        {
-          case '-':
-            is_grouped = false;
-            if (*++arg == '\0')
-            {
-              options = false;
-              continue;
-            }
-
-            switch (*arg)
-            {
-              case '-':
-                break;
-
-              case 'a':
-                if (strcmp(arg, "after-context") == 0) // legacy form --after-context NUM
-                  flag_after_context = strtonum(getloptarg(argc, argv, "", i), "invalid argument --after-context=");
-                else if (strncmp(arg, "after-context=", 14) == 0)
-                  flag_after_context = strtonum(getloptarg(argc, argv, arg + 14, i), "invalid argument --after-context=");
-                else if (strcmp(arg, "all") == 0)
-                  option_all_files();
-                else if (strcmp(arg, "and") == 0)
-                  option_and(pattern_args, i, argc, argv);
-                else if (strncmp(arg, "and=", 4) == 0)
-                  option_and(pattern_args, getloptarg(argc, argv, arg + 4, i));
-                else if (strcmp(arg, "andnot") == 0)
-                  option_andnot(pattern_args, i, argc, argv);
-                else if (strncmp(arg, "andnot=", 7) == 0)
-                  option_andnot(pattern_args, getloptarg(argc, argv, arg + 7, i));
-                else if (strcmp(arg, "any-line") == 0)
-                  flag_any_line = true;
-                else if (strcmp(arg, "ascii") == 0)
-                  flag_binary = true;
-                else
-                  usage("invalid option --", arg, "--after-context=, all, --and, --andnot, --any-line or --ascii");
-                break;
-
-              case 'b':
-                if (strcmp(arg, "basic-regexp") == 0)
-                  flag_mode = Mode::BRE;
-                else if (strcmp(arg, "before-context") == 0) // legacy form --before-context NUM
-                  flag_before_context = strtonum(getloptarg(argc, argv, "", i), "invalid argument --before-context=");
-                else if (strncmp(arg, "before-context=", 15) == 0)
-                  flag_before_context = strtonum(getloptarg(argc, argv, arg + 15, i), "invalid argument --before-context=");
-                else if (strcmp(arg, "best-match") == 0)
-                  flag_best_match = true;
-                else if (strcmp(arg, "binary") == 0)
-                  flag_binary = true;
-                else if (strcmp(arg, "binary-files") == 0) // legacy form --binary-files TYPE
-                  flag_binary_files = strarg(getloptarg(argc, argv, "", i));
-                else if (strncmp(arg, "binary-files=", 13) == 0)
-                  flag_binary_files = strarg(getloptarg(argc, argv, arg + 13, i));
-                else if (strcmp(arg, "bool") == 0)
-                  flag_bool = true;
-                else if (strcmp(arg, "break") == 0)
-                  flag_break = true;
-                else if (strcmp(arg, "byte-offset") == 0)
-                  flag_byte_offset = true;
-                else
-                  usage("invalid option --", arg, "--basic-regexp, --before-context=, --binary, --binary-files=, --bool, --break or --byte-offset");
-                break;
-
-              case 'c':
-                if (strcmp(arg, "color") == 0 || strcmp(arg, "colour") == 0)
-                  flag_color = Static::AUTO;
-                else if (strncmp(arg, "color=", 6) == 0)
-                  flag_color = strarg(getloptarg(argc, argv, arg + 6, i));
-                else if (strncmp(arg, "colour=", 7) == 0)
-                  flag_color = strarg(getloptarg(argc, argv, arg + 7, i));
-                else if (strncmp(arg, "colors=", 7) == 0)
-                  flag_colors = strarg(arg + 7);
-                else if (strncmp(arg, "colours=", 8) == 0)
-                  flag_colors = strarg(arg + 8);
-                else if (strcmp(arg, "column-number") == 0)
-                  flag_column_number = true;
-                else if (strcmp(arg, "config") == 0 || strncmp(arg, "config=", 7) == 0)
-                  ; // --config is pre-parsed before other options are parsed
-                else if (strcmp(arg, "confirm") == 0)
-                  flag_confirm = true;
-                else if (strcmp(arg, "context") == 0) // legacy form --context NUM
-                  flag_after_context = flag_before_context = strtonum(getloptarg(argc, argv, "", i), "invalid argument --context=");
-                else if (strncmp(arg, "context=", 8) == 0)
-                  flag_after_context = flag_before_context = strtonum(getloptarg(argc, argv, arg + 8, i), "invalid argument --context=");
-                else if (strncmp(arg, "context-separator=", 18) == 0)
-                  flag_separator_dash = strarg(arg + 18);
-                else if (strcmp(arg, "count") == 0)
-                  flag_count = true;
-                else if (strcmp(arg, "cpp") == 0)
-                  flag_cpp = true;
-                else if (strcmp(arg, "csv") == 0)
-                  flag_csv = true;
-                else if (strcmp(arg, "colors") == 0 || strcmp(arg, "colours") == 0 || strcmp(arg, "context-separator") == 0)
-                  usage("missing argument for --", arg);
-                else
-                  usage("invalid option --", arg, "--color, --colors=, --column-number, --config, --confirm, --context=, context-separator=, --count, --cpp or --csv");
-                break;
-
-              case 'd':
-                if (strcmp(arg, "decompress") == 0)
-                  flag_decompress = true;
-                else if (strncmp(arg, "delay=", 6) == 0)
-                  flag_delay = strtonum(getloptarg(argc, argv, arg + 6, i), "invalid argument --delay=");
-                else if (strcmp(arg, "depth") == 0) // legacy form --depth NUM
-                  set_depth_long(getloptarg(argc, argv, "", i));
-                else if (strncmp(arg, "depth=", 6) == 0)
-                  set_depth_long(getloptarg(argc, argv, arg + 6, i));
-                else if (strcmp(arg, "dereference") == 0)
-                  flag_dereference = true;
-                else if (strcmp(arg, "dereference-files") == 0)
-                  flag_dereference_files = true;
-                else if (strcmp(arg, "dereference-recursive") == 0)
-                  flag_directories = "dereference-recurse";
-                else if (strcmp(arg, "devices") == 0) // legacy form --devices ACTION
-                  flag_devices = strarg(getloptarg(argc, argv, "", i));
-                else if (strncmp(arg, "devices=", 8) == 0)
-                  flag_devices = strarg(getloptarg(argc, argv, arg + 8, i));
-                else if (strcmp(arg, "directories") == 0) // legacy form --directories ACTION
-                  flag_directories = strarg(getloptarg(argc, argv, "", i));
-                else if (strncmp(arg, "directories=", 12) == 0)
-                  flag_directories = strarg(getloptarg(argc, argv, arg + 12, i));
-                else if (strcmp(arg, "dotall") == 0)
-                  flag_dotall = true;
-                else if (strcmp(arg, "delay") == 0)
-                  usage("missing argument for --", arg);
-                else
-                  usage("invalid option --", arg, "--decompress, --delay=, --depth=, --dereference, --dereference-files, --dereference-recursive, --devices=, --directories= or --dotall");
-                break;
-
-              case 'e':
-                if (strcmp(arg, "empty") == 0)
-                  flag_empty = true;
-                else if (strncmp(arg, "encoding=", 9) == 0)
-                  flag_encoding = strarg(getloptarg(argc, argv, arg + 9, i));
-                else if (strcmp(arg, "exclude") == 0) // legacy form --exclude GLOB
-                  flag_exclude.emplace_back(getloptarg(argc, argv, "", i));
-                else if (strncmp(arg, "exclude=", 8) == 0)
-                  flag_exclude.emplace_back(getloptarg(argc, argv, arg + 8, i));
-                else if (strcmp(arg, "exclude-dir") == 0) // legacy form --exclude-dir GLOB
-                  flag_exclude_dir.emplace_back(getloptarg(argc, argv, "", i));
-                else if (strncmp(arg, "exclude-dir=", 12) == 0)
-                  flag_exclude_dir.emplace_back(getloptarg(argc, argv, arg + 12, i));
-                else if (strcmp(arg, "exclude-from") == 0) // legacy form --exclude-from FILE
-                  flag_exclude_from.emplace_back(getloptarg(argc, argv, "", i));
-                else if (strncmp(arg, "exclude-from=", 13) == 0)
-                  flag_exclude_from.emplace_back(getloptarg(argc, argv, arg + 13, i));
-                else if (strcmp(arg, "exclude-fs") == 0)
-                  flag_exclude_fs.emplace_back();
-                else if (strncmp(arg, "exclude-fs=", 11) == 0)
-                  flag_exclude_fs.emplace_back(getloptarg(argc, argv, arg + 11, i));
-                else if (strcmp(arg, "extended-regexp") == 0)
-                  flag_mode = Mode::ERE;
-                else if (strcmp(arg, "encoding") == 0)
-                  usage("missing argument for --", arg);
-                else
-                  usage("invalid option --", arg, "--empty, --encoding=, --exclude=, --exclude-dir=, --exclude-from=, --exclude-fs= or --extended-regexp");
-                break;
-
-              case 'f':
-                if (strcmp(arg, "file") == 0) // legacy form --file FILE
-                  flag_file.emplace_back(getloptarg(argc, argv, "", i));
-                else if (strncmp(arg, "file=", 5) == 0)
-                  flag_file.emplace_back(getloptarg(argc, argv, arg + 5, i));
-                else if (strncmp(arg, "file-extension=", 15) == 0)
-                  flag_file_extension.emplace_back(getloptarg(argc, argv, arg + 15, i));
-                else if (strncmp(arg, "file-magic=", 11) == 0)
-                  flag_file_magic.emplace_back(getloptarg(argc, argv, arg + 11, i));
-                else if (strncmp(arg, "file-type=", 10) == 0)
-                  flag_file_type.emplace_back(getloptarg(argc, argv, arg + 10, i));
-                else if (strcmp(arg, "files") == 0)
-                  flag_files = true;
-                else if (strcmp(arg, "files-with-matches") == 0)
-                  flag_files_with_matches = true;
-                else if (strcmp(arg, "files-without-match") == 0)
-                  flag_files_without_match = true;
-                else if (strcmp(arg, "fixed-strings") == 0)
-                  flag_mode = Mode::FIXED;
-                else if (strncmp(arg, "filter=", 7) == 0)
-                  flag_filter.append(flag_filter.empty() ? "" : ",").append(getloptarg(argc, argv, arg + 7, i));
-                else if (strncmp(arg, "filter-magic-label=", 19) == 0)
-                  flag_filter_magic_label.emplace_back(getloptarg(argc, argv, arg + 19, i));
-                else if (strncmp(arg, "format=", 7) == 0)
-                  flag_format = strarg(getloptarg(argc, argv, arg + 7, i));
-                else if (strncmp(arg, "format-begin=", 13) == 0)
-                  flag_format_begin = strarg(arg + 13);
-                else if (strncmp(arg, "format-close=", 13) == 0)
-                  flag_format_close = strarg(arg + 13);
-                else if (strncmp(arg, "format-end=", 11) == 0)
-                  flag_format_end = strarg(arg + 11);
-                else if (strncmp(arg, "format-open=", 12) == 0)
-                  flag_format_open = strarg(arg + 12);
-                else if (strcmp(arg, "from") == 0) // legacy form --from FILE
-                  flag_from.emplace_back(getloptarg(argc, argv, "", i));
-                else if (strncmp(arg, "from=", 5) == 0)
-                  flag_from.emplace_back(getloptarg(argc, argv, arg + 5, i));
-                else if (strcmp(arg, "fuzzy") == 0)
-                  flag_fuzzy = 1;
-                else if (strncmp(arg, "fuzzy=", 6) == 0)
-                  flag_fuzzy = strtofuzzy(getloptarg(argc, argv, arg + 6, i), "invalid argument --fuzzy=");
-                else if (strcmp(arg, "free-space") == 0)
-                  flag_free_space = true;
-                else if (strcmp(arg, "file-extension") == 0 ||
-                    strcmp(arg, "file-magic") == 0 ||
-                    strcmp(arg, "file-type") == 0 ||
-                    strcmp(arg, "filter") == 0 ||
-                    strcmp(arg, "filter-magic-label") == 0 ||
-                    strcmp(arg, "format") == 0 ||
-                    strcmp(arg, "format-begin") == 0 ||
-                    strcmp(arg, "format-close") == 0 ||
-                    strcmp(arg, "format-end") == 0 ||
-                    strcmp(arg, "format-open") == 0)
-                  usage("missing argument for --", arg);
-                else
-                  usage("invalid option --", arg, "--file=, --file-extension=, --file-magic=, --file-type=, --files, --files-with-matches, --files-without-match, --fixed-strings, --filter=, --filter-magic-label=, --format=, --format-begin=, --format-close, --format-end=, --format-open=, --fuzzy or --free-space");
-                break;
-
-              case 'g':
-                if (strncmp(arg, "glob=", 5) == 0)
-                  flag_glob.emplace_back(getloptarg(argc, argv, arg + 5, i));
-                else if (strcmp(arg, "glob-ignore-case") == 0)
-                  flag_glob_ignore_case = true;
-                else if (strcmp(arg, "grep") == 0)
-                  flag_empty = flag_grep = true;
-                else if (strcmp(arg, "group-separator") == 0)
-                  flag_group_separator = "--";
-                else if (strncmp(arg, "group-separator=", 16) == 0)
-                  flag_group_separator = strarg(arg + 16);
-                else if (strcmp(arg, "glob") == 0)
-                  usage("missing argument for --", arg);
-                else
-                  usage("invalid option --", arg, "--glob=, --glob-ignore-case, --grep or --group-separator");
-                break;
-
-              case 'h':
-                if (strcmp(arg, "heading") == 0)
-                  flag_heading = true;
-                else if (strncmp(arg, "help", 4) == 0)
-                  help(arg[4] != '\0' ? arg + 4 : ++i < argc ? argv[i] : NULL);
-                else if (strcmp(arg, "hex") == 0)
-                  flag_binary_files = "hex";
-                else if (strcmp(arg, "hexdump") == 0)
-                  flag_hexdump = "2";
-                else if (strncmp(arg, "hexdump=", 8) == 0)
-                  flag_hexdump = strarg(arg + 8);
-                else if (strcmp(arg, "hidden") == 0)
-                  flag_hidden = true;
-                else if (strncmp(arg, "hyperlink=", 10) == 0)
-                  flag_hyperlink = strarg(arg + 10);
-                else if (strcmp(arg, "hyperlink") == 0)
-                  flag_hyperlink = "";
-                else
-                  usage("invalid option --", arg, "--heading, --help, --hex, --hexdump, --hidden or --hyperlink");
-                break;
-
-              case 'i':
-                if (strncmp(arg, "iglob=", 6) == 0)
-                  flag_iglob.emplace_back(getloptarg(argc, argv, arg + 6, i));
-                else if (strcmp(arg, "ignore-binary") == 0)
-                  flag_binary_files = "without-match";
-                else if (strcmp(arg, "ignore-case") == 0)
-                  flag_ignore_case = true;
-                else if (strcmp(arg, "ignore-files") == 0)
-                  flag_ignore_files.insert(DEFAULT_IGNORE_FILE);
-                else if (strncmp(arg, "ignore-files=", 13) == 0)
-                  flag_ignore_files.insert(getloptarg(argc, argv, arg + 13, i));
-                else if (strcmp(arg, "include") == 0) // legacy form --include GLOB
-                  flag_include.emplace_back(getloptarg(argc, argv, "", i));
-                else if (strncmp(arg, "include=", 8) == 0)
-                  flag_include.emplace_back(getloptarg(argc, argv, arg + 8, i));
-                else if (strcmp(arg, "include-dir") == 0) // legacy form --include-dir GLOB
-                  flag_include_dir.emplace_back(getloptarg(argc, argv, "", i));
-                else if (strncmp(arg, "include-dir=", 12) == 0)
-                  flag_include_dir.emplace_back(getloptarg(argc, argv, arg + 12, i));
-                else if (strcmp(arg, "include-from") == 0) // legacy form --include-from FILE
-                  flag_include_from.emplace_back(getloptarg(argc, argv, "", i));
-                else if (strncmp(arg, "include-from=", 13) == 0)
-                  flag_include_from.emplace_back(getloptarg(argc, argv, arg + 13, i));
-                else if (strcmp(arg, "include-fs") == 0)
-                  flag_include_fs.emplace_back();
-                else if (strncmp(arg, "include-fs=", 11) == 0)
-                  flag_include_fs.emplace_back(getloptarg(argc, argv, arg + 11, i));
-                else if (strcmp(arg, "index") == 0)
-                  flag_index = "safe";
-                else if (strncmp(arg, "index=", 6) == 0)
-                  flag_index = strarg(getloptarg(argc, argv, arg + 6, i));
-                else if (strcmp(arg, "initial-tab") == 0)
-                  flag_initial_tab = true;
-                else if (strcmp(arg, "invert-match") == 0)
-                  flag_invert_match = true;
-                else
-                  usage("invalid option --", arg, "--iglob=, --ignore-case, --ignore-files, --include=, --include-dir=, --include-from=, --include-fs=, --initial-tab or --invert-match");
-                break;
-
-              case 'j':
-                if (strncmp(arg, "jobs=", 5) == 0)
-                  flag_jobs = strtonum(getloptarg(argc, argv, arg + 5, i), "invalid argument --jobs=");
-                else if (strcmp(arg, "json") == 0)
-                  flag_json = true;
-                else if (strcmp(arg, "jobs") == 0)
-                  usage("missing argument for --", arg);
-                else
-                  usage("invalid option --", arg, "--jobs= or --json");
-                break;
-
-              case 'l':
-                if (strcmp(arg, "label") == 0) // legacy form --label LABEL
-                  flag_label = strarg(getloptarg(argc, argv, "", i));
-                else if (strncmp(arg, "label=", 6) == 0)
-                  flag_label = strarg(arg + 6);
-                else if (strcmp(arg, "line-buffered") == 0)
-                  flag_line_buffered = true;
-                else if (strcmp(arg, "line-number") == 0)
-                  flag_line_number = true;
-                else if (strcmp(arg, "line-regexp") == 0)
-                  flag_line_regexp = true;
-                else if (strcmp(arg, "lines") == 0)
-                  flag_files = false;
-                else
-                  usage("invalid option --", arg, "--label=, --line-buffered, --line-number, --line-regexp or --lines");
-                break;
-
-              case 'm':
-                if (strcmp(arg, "match") == 0)
-                  flag_match = true;
-                else if (strncmp(arg, "max-count=", 10) == 0)
-                  flag_max_count = strtopos(getloptarg(argc, argv, arg + 10, i), "invalid argument --max-count=");
-                else if (strncmp(arg, "max-depth=", 10) == 0)
-                  flag_max_depth = strtopos(getloptarg(argc, argv, arg + 10, i), "invalid argument --max-depth=");
-                else if (strncmp(arg, "max-files=", 10) == 0)
-                  flag_max_files = strtopos(getloptarg(argc, argv, arg + 10, i), "invalid argument --max-files=");
-                else if (strncmp(arg, "max-line=", 9) == 0)
-                  flag_max_line = strtopos(getloptarg(argc, argv, arg + 9, i), "invalid argument --max-line=");
-                else if (strncmp(arg, "max-size=", 9) == 0)
-                  flag_max_size = strtosize(getloptarg(argc, argv, arg + 9, i), "invalid argument --max-size=");
-                else if (strncmp(arg, "max-queue=", 10) == 0)
-                  flag_max_queue = strtopos(getloptarg(argc, argv, arg + 10, i), "invalid argument --max-queue=");
-                else if (strncmp(arg, "min-count=", 10) == 0)
-                  flag_min_count = strtopos(getloptarg(argc, argv, arg + 10, i), "invalid argument --min-count=");
-                else if (strncmp(arg, "min-depth=", 10) == 0)
-                  flag_min_depth = strtopos(getloptarg(argc, argv, arg + 10, i), "invalid argument --min-depth=");
-                else if (strncmp(arg, "min-line=", 9) == 0)
-                  flag_min_line = strtopos(getloptarg(argc, argv, arg + 9, i), "invalid argument --min-line=");
-                else if (strncmp(arg, "min-size=", 9) == 0)
-                  flag_min_size = strtosize(getloptarg(argc, argv, arg + 9, i), "invalid argument --min-size=");
-                else if (strncmp(arg, "min-steal=", 10) == 0)
-                  flag_min_steal = strtopos(getloptarg(argc, argv, arg + 10, i), "invalid argument --min-steal=");
-                else if (strcmp(arg, "mmap") == 0)
-                  flag_max_mmap = MAX_MMAP_SIZE;
-                else if (strncmp(arg, "mmap=", 5) == 0)
-                  flag_max_mmap = strtopos(getloptarg(argc, argv, arg + 5, i), "invalid argument --mmap=");
-                else if (strcmp(arg, "messages") == 0)
-                  flag_no_messages = false;
-                else if (strcmp(arg, "max-count") == 0 ||
-                    strcmp(arg, "max-depth") == 0 ||
-                    strcmp(arg, "max-files") == 0 ||
-                    strcmp(arg, "max-line") == 0 ||
-                    strcmp(arg, "max-size") == 0 ||
-                    strcmp(arg, "min-count") == 0 ||
-                    strcmp(arg, "min-depth") == 0 ||
-                    strcmp(arg, "min-line") == 0 ||
-                    strcmp(arg, "min-size") == 0)
-                  usage("missing argument for --", arg);
-                else
-                  usage("invalid option --", arg, "--match, --max-count=, --max-depth=, --max-files=, --max-line=, --max-size=--min-count=, --min-depth=, --min-line=, --min-size=, --mmap or --messages");
-                break;
-
-              case 'n':
-                if (strncmp(arg, "neg-regexp=", 11) == 0)
-                  option_regexp(pattern_args, getloptarg(argc, argv, arg + 11, i), true);
-                else if (strcmp(arg, "not") == 0)
-                  option_not(pattern_args, i, argc, argv);
-                else if (strncmp(arg, "not=", 4) == 0)
-                  option_not(pattern_args, getloptarg(argc, argv, arg + 4, i));
-                else if (strcmp(arg, "no-any-line") == 0)
-                  flag_any_line = false;
-                else if (strcmp(arg, "no-ascii") == 0)
-                  flag_binary = false;
-                else if (strcmp(arg, "no-binary") == 0)
-                  flag_binary = false;
-                else if (strcmp(arg, "no-bool") == 0)
-                  flag_bool = false;
-                else if (strcmp(arg, "no-break") == 0)
-                  flag_break = false;
-                else if (strcmp(arg, "no-byte-offset") == 0)
-                  flag_byte_offset = false;
-                else if (strcmp(arg, "no-color") == 0 || strcmp(arg, "no-colour") == 0)
-                  flag_color = Static::NEVER;
-                else if (strcmp(arg, "no-column-number") == 0)
-                  flag_column_number = false;
-                else if (strcmp(arg, "no-config") == 0)
-                  ;
-                else if (strcmp(arg, "no-confirm") == 0)
-                  flag_confirm = false;
-                else if (strcmp(arg, "no-count") == 0)
-                  flag_count = false;
-                else if (strcmp(arg, "no-decompress") == 0)
-                  flag_decompress = false;
-                else if (strcmp(arg, "no-dereference") == 0)
-                  flag_no_dereference = true;
-                else if (strcmp(arg, "no-dereference-files") == 0)
-                  flag_dereference_files = false;
-                else if (strcmp(arg, "no-dotall") == 0)
-                  flag_dotall = false;
-                else if (strcmp(arg, "no-empty") == 0)
-                  flag_empty = false;
-                else if (strcmp(arg, "no-encoding") == 0)
-                  flag_encoding = NULL;
-                else if (strcmp(arg, "no-filename") == 0)
-                  flag_no_filename = true;
-                else if (strcmp(arg, "no-files-with-matches") == 0)
-                  flag_files_with_matches = false;
-                else if (strcmp(arg, "no-filter") == 0)
-                  flag_filter.clear();
-                else if (strcmp(arg, "no-glob-ignore-case") == 0)
-                  flag_glob_ignore_case = false;
-                else if (strcmp(arg, "no-group-separator") == 0)
-                  flag_group_separator = NULL;
-                else if (strcmp(arg, "no-heading") == 0)
-                  flag_heading = false;
-                else if (strcmp(arg, "no-hidden") == 0)
-                  flag_hidden = false;
-                else if (strcmp(arg, "no-hyperlink") == 0)
-                  flag_hyperlink = NULL;
-                else if (strcmp(arg, "no-ignore-binary") == 0)
-                  flag_binary_files = "binary";
-                else if (strcmp(arg, "no-ignore-case") == 0)
-                  flag_ignore_case = false;
-                else if (strcmp(arg, "no-ignore-files") == 0)
-                  flag_ignore_files.clear();
-                else if (strcmp(arg, "no-index") == 0)
-                  flag_index = NULL;
-                else if (strcmp(arg, "no-initial-tab") == 0)
-                  flag_initial_tab = false;
-                else if (strcmp(arg, "no-invert-match") == 0)
-                  flag_invert_match = false;
-                else if (strcmp(arg, "no-line-number") == 0)
-                  flag_line_number = false;
-                else if (strcmp(arg, "no-only-line-number") == 0)
-                  flag_only_line_number = false;
-                else if (strcmp(arg, "no-only-matching") == 0)
-                  flag_only_matching = false;
-                else if (strcmp(arg, "no-messages") == 0)
-                  flag_no_messages = true;
-                else if (strcmp(arg, "no-mmap") == 0)
-                  flag_max_mmap = 0;
-                else if (strcmp(arg, "no-pager") == 0)
-                  flag_pager = NULL;
-                else if (strcmp(arg, "no-passthru") == 0)
-                  flag_any_line = false;
-                else if (strcmp(arg, "no-pretty") == 0)
-                  flag_pretty = NULL;
-                else if (strcmp(arg, "no-smart-case") == 0)
-                  flag_smart_case = false;
-                else if (strcmp(arg, "no-sort") == 0)
-                  flag_sort = NULL;
-                else if (strcmp(arg, "no-split") == 0)
-                  flag_split = false;
-                else if (strcmp(arg, "no-tree") == 0)
-                  flag_tree = false;
-                else if (strcmp(arg, "no-stats") == 0)
-                  flag_stats = NULL;
-                else if (strcmp(arg, "no-ungroup") == 0)
-                  flag_ungroup = false;
-                else if (strcmp(arg, "no-view") == 0)
-                  flag_view = NULL;
-                else if (strcmp(arg, "null") == 0)
-                  flag_null = true;
-                else if (strcmp(arg, "null-data") == 0)
-                  flag_null_data = true;
-                else if (strcmp(arg, "neg-regexp") == 0)
-                  usage("missing argument for --", arg);
-                else
-                  usage("invalid option --", arg, "--neg-regexp=, --not, --no-any-line, --no-ascii, --no-binary, --no-bool, --no-break, --no-byte-offset, --no-color, --no-config, --no-confirm, --no-count, --no-decompress, --no-dereference, --no-dereference-files, --no-dotall, --no-encoding, --no-empty, --no-filename, --no-files-with-matches, --no-filter, --no-glob-ignore-case, --no-group-separator, --no-heading, --no-hidden, --no-hyperlink, --no-ignore-binary, --no-ignore-case, --no-ignore-files, --no-index, --no-initial-tab, --no-invert-match, --no-line-number, --no-only-line-number, --no-only-matching, --no-messages, --no-mmap, --no-pager, --no-pretty, --no-smart-case, --no-sort, --no-split, --no-stats, --no-tree, --no-ungroup, --no-view, --null or --null-data");
-                break;
-
-              case 'o':
-                if (strcmp(arg, "only-line-number") == 0)
-                  flag_only_line_number = true;
-                else if (strcmp(arg, "only-matching") == 0)
-                  flag_only_matching = true;
-                else
-                  usage("invalid option --", arg, "--only-line-number or --only-matching");
-                break;
-
-              case 'p':
-                if (strcmp(arg, "pager") == 0)
-                  flag_pager = "";
-                else if (strncmp(arg, "pager=", 6) == 0)
-                  flag_pager = strarg(getloptarg(argc, argv, arg + 6, i));
-                else if (strcmp(arg, "passthru") == 0)
-                  flag_any_line = true;
-                else if (strcmp(arg, "perl-regexp") == 0)
-                  flag_mode = Mode::PERL;
-                else if (strcmp(arg, "pretty") == 0)
-                  flag_pretty = Static::AUTO;
-                else if (strncmp(arg, "pretty=", 7) == 0)
-                  flag_pretty = strarg(getloptarg(argc, argv, arg + 7, i));
-                else
-                  usage("invalid option --", arg, "--pager, --passthru, --perl-regexp= or --pretty");
-                break;
-
-              case 'q':
-                if (strcmp(arg, "query") == 0)
-                  flag_query = true;
-                else if (strncmp(arg, "query=", 6) == 0)
-                  flag_query = (flag_delay = strtonum(getloptarg(argc, argv, arg + 6, i), "invalid argument --query="), true);
-                else if (strcmp(arg, "quiet") == 0)
-                  flag_quiet = flag_no_messages = true;
-                else
-                  usage("invalid option --", arg, "--query or --quiet");
-                break;
-
-              case 'r':
-                if (strncmp(arg, "range=", 6) == 0)
-                  strtopos2(getloptarg(argc, argv, arg + 6, i), flag_min_line, flag_max_line, "invalid argument --range=");
-                else if (strcmp(arg, "recursive") == 0)
-                  flag_directories = "recurse";
-                else if (strcmp(arg, "regexp") == 0) // legacy form --regexp PATTERN
-                  option_regexp(pattern_args, getloptarg(argc, argv, "", i));
-                else if (strncmp(arg, "regexp=", 7) == 0)
-                  option_regexp(pattern_args, getloptarg(argc, argv, arg + 7, i));
-                else if (strncmp(arg, "replace=", 8) == 0)
-                  flag_replace = strarg(getloptarg(argc, argv, arg + 8, i));
-                else if (strcmp(arg, "range") == 0 ||
-                    strcmp(arg, "replace") == 0)
-                  usage("missing argument for --", arg);
-                else
-                  usage("invalid option --", arg, "--range=, --recursive, --regexp= or --replace=");
-                break;
-
-              case 's':
-                if (strcmp(arg, "save-config") == 0)
-                  flag_save_config = ".ugrep";
-                else if (strncmp(arg, "save-config=", 12) == 0)
-                  flag_save_config = strarg(getloptarg(argc, argv, arg + 12, i));
-                else if (strcmp(arg, "separator") == 0)
-                  flag_separator = NULL;
-                else if (strncmp(arg, "separator=", 10) == 0)
-                  flag_separator = strarg(arg + 10);
-                else if (strcmp(arg, "silent") == 0)
-                  flag_quiet = flag_no_messages = true;
-                else if (strcmp(arg, "smart-case") == 0)
-                  flag_smart_case = true;
-                else if (strcmp(arg, "sort") == 0)
-                  flag_sort = "name";
-                else if (strncmp(arg, "sort=", 5) == 0)
-                  flag_sort = strarg(getloptarg(argc, argv, arg + 5, i));
-                else if (strcmp(arg, "split") == 0)
-                  flag_split = true;
-                else if (strcmp(arg, "stats") == 0)
-                  flag_stats = "";
-                else if (strncmp(arg, "stats=", 6) == 0)
-                  flag_stats = strarg(arg + 6);
-                else
-                  usage("invalid option --", arg, "--save-config, --separator, --silent, --smart-case, --sort, --split or --stats");
-                break;
-
-              case 't':
-                if (strcmp(arg, "tabs") == 0)
-                  flag_tabs = DEFAULT_TABS;
-                else if (strncmp(arg, "tabs=", 5) == 0)
-                  flag_tabs = strtopos(getloptarg(argc, argv, arg + 5, i), "invalid argument --tabs=");
-                else if (strcmp(arg, "tag") == 0)
-                  flag_tag = DEFAULT_TAG;
-                else if (strncmp(arg, "tag=", 4) == 0)
-                  flag_tag = strarg(getloptarg(argc, argv, arg + 4, i));
-                else if (strcmp(arg, "text") == 0)
-                  flag_binary_files = "text";
-                else if (strcmp(arg, "tree") == 0)
-                  flag_tree = true;
-                else
-                  usage("invalid option --", arg, "--tabs, --tag, --text or --tree");
-                break;
-
-              case 'u':
-                if (strcmp(arg, "ungroup") == 0)
-                  flag_ungroup = true;
-                else
-                  usage("invalid option --", arg, "--ungroup");
-                break;
-
-              case 'v':
-                if (strcmp(arg, "version") == 0)
-                  version();
-                else if (strncmp(arg, "view=", 5) == 0)
-                  flag_view = strarg(getloptarg(argc, argv, arg + 5, i));
-                else if (strcmp(arg, "view") == 0)
-                  flag_view = "";
-                else
-                  usage("invalid option --", arg, "--view or --version");
-                break;
-
-              case 'w':
-                if (strcmp(arg, "width") == 0)
-                  flag_width = tui_screen_getsize();
-                else if (strncmp(arg, "width=", 6) == 0)
-                  flag_width = strtopos(getloptarg(argc, argv, arg + 6, i), "invalid argument --width=");
-                else if (strcmp(arg, "with-filename") == 0)
-                  flag_with_filename = true;
-                else if (strcmp(arg, "with-hex") == 0)
-                  flag_binary_files = "with-hex";
-                else if (strcmp(arg, "word-regexp") == 0)
-                  flag_word_regexp = true;
-                else
-                  usage("invalid option --", arg, "--width, --with-filename, --with-hex or --word-regexp");
-                break;
-
-              case 'x':
-                if (strcmp(arg, "xml") == 0)
-                  flag_xml = true;
-                else
-                  usage("invalid option --", arg, "--xml");
-                break;
-
-              case 'z':
-                if (strncmp(arg, "zmax=", 5) == 0)
-                  flag_zmax = strtopos(getloptarg(argc, argv, arg + 5, i), "invalid argument --zmax=");
-                else if (strcmp(arg, "zmax") == 0)
-                  usage("missing argument for --", arg);
-                else
-                  usage("invalid option --", arg, "--zmax=");
-                break;
-
-              default:
-                if (isdigit(static_cast<unsigned char>(*arg)))
-                  set_depth_long(arg);
-                else
-                  usage("invalid option --", arg);
-            }
-            break;
-
-          case 'A':
-            flag_after_context = strtonum(getoptarg(argc, argv, arg, i), "invalid argument -A=");
-            is_grouped = false;
-            break;
-
-          case 'a':
-            flag_binary_files = "text";
-            break;
-
-          case 'B':
-            flag_before_context = strtonum(getoptarg(argc, argv, arg, i), "invalid argument -B=");
-            is_grouped = false;
-            break;
-
-          case 'b':
-            flag_byte_offset = true;
-            break;
-
-          case 'C':
-            flag_after_context = flag_before_context = strtonum(getoptarg(argc, argv, arg, i), "invalid argument -C=");
-            is_grouped = false;
-            break;
-
-          case 'c':
-            flag_count = true;
-            break;
-
-          case 'D':
-            flag_devices = getoptarg(argc, argv, arg, i);
-            is_grouped = false;
-            break;
-
-          case 'd':
-            flag_directories = getoptarg(argc, argv, arg, i);
-            is_grouped = false;
-            break;
-
-          case 'E':
-            flag_mode = Mode::ERE;
-            break;
-
-          case 'e':
-            option_regexp(pattern_args, getoptarg(argc, argv, arg, i));
-            is_grouped = false;
-            break;
-
-          case 'F':
-            flag_mode = Mode::FIXED;
-            break;
-
-          case 'f':
-            flag_file.emplace_back(getoptarg(argc, argv, arg, i));
-            is_grouped = false;
-            break;
-
-          case 'G':
-            flag_mode = Mode::BRE;
-            break;
-
-          case 'g':
-            flag_glob.emplace_back(getoptarg(argc, argv, arg, i));
-            is_grouped = false;
-            break;
-
-          case 'H':
-            flag_with_filename = true;
-            break;
-
-          case 'h':
-            flag_no_filename = true;
-            break;
-
-          case 'I':
-            flag_binary_files = "without-match";
-            break;
-
-          case 'i':
-            flag_ignore_case = true;
-            break;
-
-          case 'J':
-            flag_jobs = strtonum(getoptarg(argc, argv, arg, i), "invalid argument -J=");
-            is_grouped = false;
-            break;
-
-          case 'j':
-            flag_smart_case = true;
-            break;
-
-          case 'K':
-            strtopos2(getoptarg(argc, argv, arg, i), flag_min_line, flag_max_line, "invalid argument -K=");
-            is_grouped = false;
-            break;
-
-          case 'k':
-            flag_column_number = true;
-            break;
-
-          case 'L':
-            flag_files_without_match = true;
-            break;
-
-          case 'l':
-            flag_files_with_matches = true;
-            break;
-
-          case 'M':
-            flag_file_magic.emplace_back(getoptarg(argc, argv, arg, i));
-            is_grouped = false;
-            break;
-
-          case 'm':
-            strtopos2(getoptarg(argc, argv, arg, i), flag_min_count, flag_max_count, "invalid argument -m=");
-            is_grouped = false;
-            break;
-
-          case 'N':
-            option_regexp(pattern_args, getoptarg(argc, argv, arg, i), true);
-            is_grouped = false;
-            break;
-
-          case 'n':
-            flag_line_number = true;
-            break;
-
-          case 'O':
-            flag_file_extension.emplace_back(getoptarg(argc, argv, arg, i));
-            is_grouped = false;
-            break;
-
-          case 'o':
-            flag_only_matching = true;
-            break;
-
-          case 'P':
-            flag_mode = Mode::PERL;
-            break;
-
-          case 'p':
-            flag_no_dereference = true;
-            break;
-
-          case 'Q':
-            if (arg[1] == '=')
-            {
-              ++arg;
-              flag_delay = strtonum(arg + 1, "invalid argument -Q=");
-              flag_query = true;
-              is_grouped = false;
-            }
-            else
-            {
-              flag_query = true;
-            }
-            break;
-
-          case 'q':
-            flag_quiet = flag_no_messages = true;
-            break;
-
-          case 'R':
-            flag_directories = "dereference-recurse";
-            break;
-
-          case 'r':
-            flag_directories = "recurse";
-            break;
-
-          case 'S':
-            flag_dereference_files = true;
-            break;
-
-          case 's':
-            flag_no_messages = true;
-            break;
-
-          case 'T':
-            flag_initial_tab = true;
-            break;
-
-          case 't':
-            flag_file_type.emplace_back(getoptarg(argc, argv, arg, i));
-            is_grouped = false;
-            break;
-
-          case 'U':
-            flag_binary = true;
-            break;
-
-          case 'u':
-            flag_ungroup = true;
-            break;
-
-          case 'V':
-            version();
-            break;
-
-          case 'v':
-            flag_invert_match = true;
-            break;
-
-          case 'W':
-            flag_binary_files = "with-hex";
-            break;
-
-          case 'w':
-            flag_word_regexp = true;
-            break;
-
-          case 'X':
-            flag_binary_files = "hex";
-            break;
-
-          case 'x':
-            flag_line_regexp = true;
-            break;
-
-          case 'Y':
-            flag_empty = true;
-            break;
-
-          case 'y':
-            flag_any_line = true;
-            break;
-
-          case 'Z':
-            if (flag_grep)
-            {
-              flag_null = true;
-            }
-            else
-            {
-              ++arg;
-              if (*arg == '=' || strncmp(arg, "best", 4) == 0 || isdigit(static_cast<unsigned char>(*arg)) || strchr("+-~", *arg) != NULL)
-              {
-                flag_fuzzy = strtofuzzy(&arg[*arg == '='], "invalid argument -Z=");
-                is_grouped = false;
-              }
-              else
-              {
-                flag_fuzzy = 1;
-                --arg;
-              }
-            }
-            break;
-
-
-          case 'z':
-            if (flag_grep)
-              flag_null_data = true;
-            else
-              flag_decompress = true;
-            break;
-
-          case '0':
-            flag_null_data = flag_null;
-            flag_null = !flag_null;
-            break;
-
-          case '1':
-          case '2':
-          case '3':
-          case '4':
-          case '5':
-          case '6':
-          case '7':
-          case '8':
-          case '9':
-            set_depth(arg);
-            break;
-
-          case '?':
-            help(arg[1] != '\0' ? arg + 1 : ++i < argc ? argv[i] : NULL);
-            break;
-
-          case '%':
-            if (flag_bool)
-              flag_files = true;
-            flag_bool = true;
-            break;
-
-          case '^':
-            flag_tree = true;
-            break;
-
-          case '+':
-            flag_heading = true;
-            break;
-
-          case '.':
-            flag_hidden = true;
-            break;
-
-          case '@':
-            option_all_files();
-            break;
-
-          default:
-            usage("invalid option -", arg);
-        }
-
-        if (!is_grouped)
-          break;
-      }
-    }
-    else if (strcmp(arg, "-") == 0)
-    {
-      // read standard input
-      flag_stdin = true;
-    }
-    else if (Static::arg_pattern == NULL && !flag_match && !flag_not && pattern_args.empty() && flag_file.empty())
-    {
-      // no regex pattern specified yet, so assume it is PATTERN
-      Static::arg_pattern = arg;
-    }
-    else
-    {
-      // otherwise add the file argument to the list of FILE files
-      Static::arg_files.emplace_back(arg);
-    }
-  }
-
-  if (flag_not)
-    usage("missing PATTERN for --not");
-}
-
-// parse -e PATTERN and -N PATTERN
-void option_regexp(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, const char *arg, bool is_neg)
-{
-  pattern_args.emplace_back((flag_not ? CNF::PATTERN::NOT : CNF::PATTERN::ALT) | (is_neg ? CNF::PATTERN::NEG : CNF::PATTERN::ALT), arg);
-}
-
-// parse --and [PATTERN]
-void option_and(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, int& i, int argc, const char **argv)
-{
-  if (flag_not)
-    usage("missing PATTERN for --not");
-
-  pattern_args.emplace_back(CNF::PATTERN::AND, "");
-
-  if (i + 1 < argc && *argv[i + 1] != '-')
-    pattern_args.emplace_back((flag_not ? CNF::PATTERN::NOT : CNF::PATTERN::ALT), argv[++i]);
-}
-
-// parse --and=PATTERN
-void option_and(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, const char *arg)
-{
-  if (flag_not)
-    usage("missing PATTERN for --not");
-
-  pattern_args.emplace_back(CNF::PATTERN::AND, "");
-  pattern_args.emplace_back((flag_not ? CNF::PATTERN::NOT : CNF::PATTERN::ALT), arg);
-}
-
-// parse --andnot [PATTERN]
-void option_andnot(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, int& i, int argc, const char **argv)
-{
-  if (flag_not)
-    usage("missing PATTERN for --not");
-
-  pattern_args.emplace_back(CNF::PATTERN::AND, "");
-
-  flag_not = true;
-
-  if (i + 1 < argc && *argv[i + 1] != '-')
-  {
-    pattern_args.emplace_back(CNF::PATTERN::NOT, argv[++i]);
-    flag_not = false;
-  }
-}
-
-// parse --andnot=PATTERN
-void option_andnot(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, const char *arg)
-{
-  if (flag_not)
-    usage("missing PATTERN for --not");
-
-  pattern_args.emplace_back(CNF::PATTERN::AND, "");
-  pattern_args.emplace_back(CNF::PATTERN::NOT, arg);
-}
-
-// parse --not [PATTERN]
-void option_not(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, int& i, int argc, const char **argv)
-{
-  flag_not = !flag_not;
-
-  if (i + 1 < argc && *argv[i + 1] != '-')
-  {
-    pattern_args.emplace_back((flag_not ? CNF::PATTERN::NOT : CNF::PATTERN::ALT), argv[++i]);
-    flag_not = false;
-  }
-}
-
-// parse --not=PATTERN
-void option_not(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, const char *arg)
-{
-  flag_not = !flag_not;
-
-  pattern_args.emplace_back((flag_not ? CNF::PATTERN::NOT : CNF::PATTERN::ALT), arg);
-  flag_not = false;
-}
-
-// --all: cancel all previously specified file and directory search restrictions
-void option_all_files()
-{
-  flag_glob.clear();
-  flag_iglob.clear();
-  flag_exclude.clear();
-  flag_exclude_dir.clear();
-  flag_exclude_from.clear();
-  flag_include.clear();
-  flag_include_dir.clear();
-  flag_include_from.clear();
-  flag_file_type.clear();
-  flag_file_extension.clear();
-  flag_file_magic.clear();
-  flag_ignore_files.clear();
-  if (strcmp(flag_binary_files, "without-match") == 0)
-    flag_binary_files = "binary";
+  ugrep_core_options(&env, argc, argv);
 }
 
 // parse the command-line options and initialize
@@ -13703,132 +12753,6 @@ void set_color_cpp(const char *colors, const char *parameter, char color[COLORLE
       color[0] = '\0';
     }
   }
-}
-
-// get short option argument
-const char *getoptarg(int argc, const char **argv, const char *arg, int& i)
-{
-  if (*++arg == '=')
-    ++arg;
-  if (*arg != '\0')
-    return arg;
-  if (++i < argc)
-    return argv[i];
-  return "";
-}
-
-// get required non-empty long option argument after =
-const char *getloptarg(int argc, const char **argv, const char *arg, int& i)
-{
-  if (*arg != '\0')
-    return arg;
-  if (++i < argc)
-    return argv[i];
-  return "";
-}
-
-// save a string argument parsed from the command line or from a config file
-const char *strarg(const char *string)
-{
-  arg_strings.emplace_back(string);
-  return arg_strings.back().c_str();
-}
-
-// convert unsigned decimal to non-negative size_t, produce error when conversion fails
-size_t strtonum(const char *string, const char *message)
-{
-  char *rest = NULL;
-  size_t size = static_cast<size_t>(strtoull(string, &rest, 10));
-  if (rest == NULL || *rest != '\0')
-    usage(message, string);
-  return size;
-}
-
-// convert unsigned decimal to positive size_t, produce error when conversion fails or when the value is zero
-size_t strtopos(const char *string, const char *message)
-{
-  size_t size = strtonum(string, message);
-  if (size == 0)
-    usage(message, string);
-  return size;
-}
-
-// convert one or two comma-separated unsigned decimals specifying a range to positive size_t, produce error when conversion fails or when the range is invalid
-void strtopos2(const char *string, size_t& min, size_t& max, const char *message)
-{
-  if (*string == '\0')
-  {
-    usage(message, string);
-    return;
-  }
-  char *rest = const_cast<char*>(string);
-  if (*string != ',')
-    min = static_cast<size_t>(strtoull(string, &rest, 10));
-  else
-    min = 0;
-  if (*rest == ',')
-    max = static_cast<size_t>(strtoull(rest + 1, &rest, 10));
-  else
-    max = min, min = 0;
-  if (rest == NULL || *rest != '\0' || (max > 0 && min > max))
-    usage(message, string);
-}
-
-// convert unsigned decimal with optional kb, mb, gb, tb suffix to size_t, produce error when conversion fails
-size_t strtosize(const char *string, const char *message)
-{
-  char *rest = NULL;
-  size_t size = static_cast<size_t>(strtoull(string, &rest, 10));
-  if (rest == NULL || size == 0)
-    usage(message, string);
-  switch (*rest)
-  {
-    case 'k': case 'K': size *= 1024ULL; ++rest; break;
-    case 'm': case 'M': size *= 1024ULL*1024ULL; ++rest; break;
-    case 'g': case 'G': size *= 1024ULL*1024ULL*1024ULL; ++rest; break;
-    case 't': case 'T': if (sizeof(size_t) >= 8) { size *= 1024ULL*1024ULL*1024ULL*1024ULL; ++rest; } break;
-  }
-  if (*rest != 'b' && *rest != 'B' && *rest != '\0')
-    usage(message, string);
-  return size;
-}
-
-// convert unsigned decimal MAX fuzzy with optional prefix '+', '-', or '~' to positive size_t
-size_t strtofuzzy(const char *string, const char *message)
-{
-  char *rest = NULL;
-  size_t flags = 0;
-  size_t max = 1;
-  while (*string != '\0')
-  {
-    switch (*string)
-    {
-      case 'b':
-        if (strncmp(string, "best", 4) != 0)
-          usage(message, string);
-        flag_best_match = true;
-        string += 4;
-        break;
-      case '+':
-        flags |= reflex::FuzzyMatcher::INS;
-        ++string;
-        break;
-      case '-':
-        flags |= reflex::FuzzyMatcher::DEL;
-        ++string;
-        break;
-      case '~':
-        flags |= reflex::FuzzyMatcher::SUB;
-        ++string;
-        break;
-      default:
-        max = static_cast<size_t>(strtoull(string, &rest, 10));
-        if (max == 0 || max > 0xff || rest == NULL || *rest != '\0')
-          usage(message, string);
-        string = rest;
-    }
-  }
-  return max | flags;
 }
 
 // print a diagnostic message
