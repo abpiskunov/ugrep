@@ -27,51 +27,51 @@ impl Env for HexEnv {
     fn usage(&mut self, message: &[u8]) {
         self.usages.push(message.to_vec());
     }
-    fn set_home_dir(&mut self) { unimplemented!() }
-    fn cerr(&mut self, _: &[u8]) { unimplemented!() }
-    fn exit(&mut self, _: i32) { unimplemented!() }
-    fn warning(&mut self, _: Option<&[u8]>, _: &[u8]) { unimplemented!() }
-    fn error(&mut self, _: &[u8], _: &[u8]) { unimplemented!() }
-    fn abort(&mut self, _: &[u8]) { unimplemented!() }
-    fn abort_what(&mut self, _: &[u8], _: &[u8]) { unimplemented!() }
-    fn load_config(&mut self) { unimplemented!() }
-    fn save_config(&mut self) { unimplemented!() }
-    fn warnings_reset(&mut self) { unimplemented!() }
-    fn warnings(&mut self) -> usize { unimplemented!() }
-    fn options(&mut self) { unimplemented!() }
-    fn terminal(&mut self) { unimplemented!() }
-    fn patterns(&mut self) -> Vec<(i32, *const c_char)> { unimplemented!() }
-    fn bcnf_new_pattern(&mut self, _: i32, _: *const c_char) { unimplemented!() }
-    fn bcnf_new_pattern_regexp(&mut self) { unimplemented!() }
-    fn bcnf_new_term(&mut self) { unimplemented!() }
-    fn regexp_append(&mut self, _: &[u8]) { unimplemented!() }
-    fn list_all(&mut self, _: List) -> Vec<Vec<u8>> { unimplemented!() }
-    fn list_push(&mut self, _: List, _: &[u8]) { unimplemented!() }
-    fn list_truncate(&mut self, _: List, _: usize, _: usize) { unimplemented!() }
-    fn ignore_file_erase(&mut self, _: &[u8]) { unimplemented!() }
-    fn arg_pattern(&mut self) -> *const c_char { unimplemented!() }
-    fn set_arg_pattern(&mut self, _: *const c_char) { unimplemented!() }
-    fn arg_files_len(&mut self) -> usize { unimplemented!() }
-    fn arg_file(&mut self, _: usize) -> *const c_char { unimplemented!() }
-    fn arg_files_erase(&mut self, _: usize) { unimplemented!() }
-    fn arg_files_insert_front(&mut self, _: *const c_char) { unimplemented!() }
-    fn expand_arg_files(&mut self) { unimplemented!() }
-    fn check_arg_file(&mut self, _: *const c_char, _: bool) -> ArgFile { unimplemented!() }
-    fn trim_pathname_arg(&mut self, _: *const c_char) { unimplemented!() }
-    fn file_open(&mut self, _: &[u8]) -> bool { unimplemented!() }
-    fn file_getline(&mut self) -> (bool, usize) { unimplemented!() }
-    fn arg_files_push_line(&mut self) { unimplemented!() }
-    fn file_close(&mut self) { unimplemented!() }
-    fn import_globs(&mut self, _: bool, _: bool) { unimplemented!() }
-    fn fs_probe(&mut self, _: &[u8]) -> Option<u64> { unimplemented!() }
-    fn fs_insert(&mut self, _: bool, _: u64) { unimplemented!() }
-    fn type_entry(&mut self, _: usize) -> Option<TypeEntry> { unimplemented!() }
-    fn encoding_entry(&mut self, _: usize) -> Option<(Vec<u8>, u16)> { unimplemented!() }
-    fn magic_pattern_assign(&mut self, _: Option<&[u8]>) -> Option<Vec<u8>> { unimplemented!() }
-    fn filter_magic_assign(&mut self, _: &[u8]) -> Option<Vec<u8>> { unimplemented!() }
-    fn filter_empty(&mut self) -> bool { unimplemented!() }
-    fn isatty_stdin(&mut self) -> bool { unimplemented!() }
-    fn set_binary_stdout(&mut self) { unimplemented!() }
+    fn set_home_dir(&mut self) { unreachable!() }
+    fn cerr(&mut self, _: &[u8]) { unreachable!() }
+    fn exit(&mut self, _: i32) { unreachable!() }
+    fn warning(&mut self, _: Option<&[u8]>, _: &[u8]) { unreachable!() }
+    fn error(&mut self, _: &[u8], _: &[u8]) { unreachable!() }
+    fn abort(&mut self, _: &[u8]) { unreachable!() }
+    fn abort_what(&mut self, _: &[u8], _: &[u8]) { unreachable!() }
+    fn load_config(&mut self) { unreachable!() }
+    fn save_config(&mut self) { unreachable!() }
+    fn warnings_reset(&mut self) { unreachable!() }
+    fn warnings(&mut self) -> usize { unreachable!() }
+    fn options(&mut self) { unreachable!() }
+    fn terminal(&mut self) { unreachable!() }
+    fn patterns(&mut self) -> Vec<(i32, *const c_char)> { unreachable!() }
+    fn bcnf_new_pattern(&mut self, _: i32, _: *const c_char) { unreachable!() }
+    fn bcnf_new_pattern_regexp(&mut self) { unreachable!() }
+    fn bcnf_new_term(&mut self) { unreachable!() }
+    fn regexp_append(&mut self, _: &[u8]) { unreachable!() }
+    fn list_all(&mut self, _: List) -> Vec<Vec<u8>> { unreachable!() }
+    fn list_push(&mut self, _: List, _: &[u8]) { unreachable!() }
+    fn list_truncate(&mut self, _: List, _: usize, _: usize) { unreachable!() }
+    fn ignore_file_erase(&mut self, _: &[u8]) { unreachable!() }
+    fn arg_pattern(&mut self) -> *const c_char { unreachable!() }
+    fn set_arg_pattern(&mut self, _: *const c_char) { unreachable!() }
+    fn arg_files_len(&mut self) -> usize { unreachable!() }
+    fn arg_file(&mut self, _: usize) -> *const c_char { unreachable!() }
+    fn arg_files_erase(&mut self, _: usize) { unreachable!() }
+    fn arg_files_insert_front(&mut self, _: *const c_char) { unreachable!() }
+    fn expand_arg_files(&mut self) { unreachable!() }
+    fn check_arg_file(&mut self, _: *const c_char, _: bool) -> ArgFile { unreachable!() }
+    fn trim_pathname_arg(&mut self, _: *const c_char) { unreachable!() }
+    fn file_open(&mut self, _: &[u8]) -> bool { unreachable!() }
+    fn file_getline(&mut self) -> (bool, usize) { unreachable!() }
+    fn arg_files_push_line(&mut self) { unreachable!() }
+    fn file_close(&mut self) { unreachable!() }
+    fn import_globs(&mut self, _: bool, _: bool) { unreachable!() }
+    fn fs_probe(&mut self, _: &[u8]) -> Option<u64> { unreachable!() }
+    fn fs_insert(&mut self, _: bool, _: u64) { unreachable!() }
+    fn type_entry(&mut self, _: usize) -> Option<TypeEntry> { unreachable!() }
+    fn encoding_entry(&mut self, _: usize) -> Option<(Vec<u8>, u16)> { unreachable!() }
+    fn magic_pattern_assign(&mut self, _: Option<&[u8]>) -> Option<Vec<u8>> { unreachable!() }
+    fn filter_magic_assign(&mut self, _: &[u8]) -> Option<Vec<u8>> { unreachable!() }
+    fn filter_empty(&mut self) -> bool { unreachable!() }
+    fn isatty_stdin(&mut self) -> bool { unreachable!() }
+    fn set_binary_stdout(&mut self) { unreachable!() }
 }
 
 fn run_hexdump(arg: &'static std::ffi::CStr) -> HexEnv {
