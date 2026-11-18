@@ -1090,10 +1090,10 @@ behaviors:
     origin: capture
 
   - id: B-src_core-161
-    statement: "Plain output of a match line is `[FILE:][LINE:][COLUMN:][OFFSET:]TEXT` in that order (options -H, -n, -k, -b), `:` after a matching line and `-` after a context line, context groups that are not adjacent are separated by `--`; match lines are LF terminated like the input line"
+    statement: "Plain output of a match line is `[FILE:][LINE:][COLUMN:][OFFSET:]TEXT` in that order (options -H, -n, -k, -b), `:` after a matching line and `-` after a context line, context groups that are not adjacent are separated by `--`; whole match and context lines are LF terminated like the input line, but `-o` lines, the `--` separator and lines cut by `--width` end in CRLF (B-src_core-196, 197, 198)"
     kind: normal
     status: observed
-    evidence: ["case:out-m-plain-t-k-5", "case:out-m-plain-t-on-8", "case:out-cx-0-1-", "case:out-cx-0-0-br"]
+    evidence: ["case:out-m-plain-t-k-5", "case:out-cx-0-1-", "case:out-cx-0-0-br"]
     origin: capture
   - id: B-src_core-162
     statement: "`-T` (initial tab) pads the numbers to a fixed width (line 6, column 3, offset 7 characters) before a tab that precedes the text: `     1:  1:      0:<TAB>foo bar`; `--tabs=N` changes the tab stops"
@@ -1144,7 +1144,7 @@ behaviors:
     evidence: ["case:out-esc-xml-1-o", "case:out-esc-xml-2-n", "case:out-esc-xml-3-n", "case:out-m1-xml-t2"]
     origin: capture
   - id: B-src_core-170
-    statement: "`--csv` outputs one record per match line: `FILE,LINE,COLUMN,OFFSET,MATCH` with the first four values only when -H, -n, -k or -b ask for them; values are in double quotes, a `\"` is doubled, a backslash is doubled and a control character is written as `\\xNN`"
+    statement: "`--csv` outputs one record per match line: `FILE,LINE,COLUMN,OFFSET,MATCH` with the first four values only when -H, -n, -k or -b ask for them; values are in double quotes, a `\"` is doubled, a backslash is doubled, a TAB stays a raw byte and any other control character is written as `\\xNN`"
     kind: normal
     status: observed
     evidence: ["case:out-esc-csv-1-", "case:out-esc-csv-2-o", "case:out-esc-csv-4-v", "case:out-m1-csv-t2"]
@@ -1230,7 +1230,7 @@ behaviors:
     evidence: ["case:out-hd-21-0", "case:out-hd-22-0", "case:out-hd-23-0", "case:out-hdd-21-0"]
     origin: capture
   - id: B-src_core-184
-    statement: "`-c`, `-l` and `-L` print `NAME:COUNT`, `NAME` and `NAME` lines (CRLF line ends, B-src_core-158) and combine with --json, --xml, --csv and --cpp to the same structured output as for matching lines"
+    statement: "`-c`, `-l` and `-L` print `NAME:COUNT`, `NAME` and `NAME` lines (CRLF line ends, B-src_core-158); with `--null` (`-l --null`, out-hd-33-0) each name ends in `\\0` and no line ending; with `--json` they give `{ \"match\": true }` for `-l` (out-hd-39-0) and `{ \"match\": N }` for `-c` (out-hd-40-0); the --xml, --csv and --cpp combinations are recorded in the other cited cases"
     kind: normal
     status: observed
     evidence: ["case:out-hd-33-0", "case:out-hd-38-0", "case:out-hd-39-0", "case:out-hd-40-0"]
@@ -1250,7 +1250,7 @@ behaviors:
     suspicious: true
     why: "the output line ending of a last line that has none is CRLF in the plain format but lines that have one are bare LF (B-src_core-158 covers the rule for counts and names, not for this case)"
   - id: B-src_core-187
-    statement: "`--width=N` truncates each output line to N visible characters in the plain, -o, colour, JSON, XML, CSV, `--format %O` and hex outputs (the cases cover N=0,1,5,20,40,80,200); `--max-line=N` is recorded with N=1,10,50,100000"
+    statement: "`--width=N` truncates each output line to N visible characters in the plain, -o, colour, JSON, XML, CSV, `--format %O` and hex outputs (the cases cover N=1,5,20,40,80,200); `--width=0` exits 2 with `ugrep: invalid argument --width=0` (out-w-0-*); `--max-line=N` is recorded with N=1,10,50,100000"
     kind: normal
     status: observed
     evidence: ["case:out-w-1-", "case:out-w-5-", "case:out-w-20-", "case:out-w-40-"]
@@ -1296,13 +1296,13 @@ behaviors:
     suspicious: true
     why: "`%l` (last line number of a match, documented) outputs a literal `l` under -v, while %n, %k and %b work"
   - id: B-src_core-194
-    statement: "`--color=always` with `--width` cuts a line inside a match and still outputs an empty colour sequence pair for the match: `ESC[1;31mESC[m` after the cut text"
+    statement: "`--color=always` with `--width` leaves empty colour pairs where the cut removed the text: an empty separator pair `ESC[36mESC[m` after a cut file name (`out-w-5-c`: `ESC[1;35mu.txtESC[mESC[36mESC[m`) and an empty rest-of-line pair `ESC[1;37mESC[m` between two matches (`out-m-color-re-width_20-33`: `ESC[1;31mfooESC[mESC[1;37mESC[mESC[1;31mbarESC[m`)"
     kind: edge-case
     status: hypothesis
-    evidence: ["case:out-w-5-c", "case:out-w-20-c", "case:out-w-1-c"]
+    evidence: ["case:out-w-5-c", "case:out-m-color-re-width_20-33", "case:out-m-color-re-width_40_n-34"]
     origin: capture
     suspicious: true
-    why: "the width cut leaves an empty match colour sequence `ESC[1;31mESC[m` at the end of a coloured line"
+    why: "the width cut and adjacent matches leave empty colour sequence pairs (`ESC[36mESC[m`, `ESC[1;37mESC[m`) that colour no text"
   - id: B-src_core-195
     statement: "`-o` with `--replace=FORMAT` writes the replacements back to back with no separator and no final newline: `<foo><foo>`"
     kind: edge-case
@@ -1311,6 +1311,32 @@ behaviors:
     origin: capture
     suspicious: true
     why: "`--replace` with `-o` outputs no line ending, so the next file's output or the shell prompt continues the same line"
+  - id: B-src_core-196
+    statement: "`-o` (only matching) lines end in CRLF while whole matching and context lines end in LF: `t.txt:foo\\r\\n` for `-o` against `t.txt:1:foo bar\\n` for a plain line"
+    kind: normal
+    status: observed
+    evidence: ["case:out-m-plain-t-on-8", "case:out-m-plain-bin-o-7", "case:out-cx-0-1-o"]
+    origin: capture
+  - id: B-src_core-197
+    statement: "The `--` group separator between non-adjacent context groups ends in CRLF (`--\\r\\n`) while the context and match lines around it end in LF"
+    kind: normal
+    status: observed
+    evidence: ["case:out-cx-0-1-", "case:out-cx-0-1-v", "case:out-cx-0-1-bi"]
+    origin: capture
+  - id: B-src_core-198
+    statement: "A line cut by `--width=N` ends in CRLF while an uncut line in the same output ends in LF (`long.txt:xxxxxxxxxxx\\r\\n` then `long.txt:short foo\\n`); with -o, -T and --format %O every line is cut and ends in CRLF"
+    kind: edge-case
+    status: observed
+    evidence: ["case:out-w-20-", "case:out-w-20-n", "case:out-w-20-o", "case:out-w-20-f"]
+    origin: capture
+  - id: B-src_core-199
+    statement: "`--color=always` with `-X` or `-W` hex dumps and with a match that ends at a line end (-U, `\\n` in the pattern) outputs an empty match colour pair `ESC[1;31mESC[m` that colours no text"
+    kind: edge-case
+    status: hypothesis
+    evidence: ["case:out-hx-0-col", "case:out-hx-1-col", "case:out-m0-hexc-bin", "case:out-ml-1-1"]
+    origin: capture
+    suspicious: true
+    why: "an empty match colour sequence pair appears in coloured hex dumps and for multi-line matches; it has no visible effect"
 
 openQuestions: []
 
@@ -1320,7 +1346,7 @@ uncovered:
   - {region: "src/cnf.cpp CNF::compile", reason: unreachable, note: "no caller in src/"}
   - {region: "-P (perl) paths: have_pcre2=1 in cnf_flags, perl-mode CNF::anchor and CNF::report", reason: platform-only, note: "build-config limitation: the recorded build has have_pcre2=0, every -P case exits 2 with `option -P is not available in this build configuration`"}
   - {region: "src/ugrep.cpp save_config, set_depth_long, option_and/andnot/not/all_files, is_output, read_line, modified_time, rev_comp_by_*, JobQueue::steal_job/move_job, Binary/Grep handlers", reason: deferred, note: "reachable from the CLI in principle; cases to reach them are a Behavior follow-up (coverage 60.7% lines, 81.9% functions at this task's end)"}
-  - {region: "src/output.cpp color, capture and most format/colour/hex/json output paths", reason: deferred, note: "output.cpp lines 42.5% at the C++ seam; rounds 19-22 (generator migration/harness/src_core/gen_output.py, quiet_output.py) record the Output surface cases against the product build; the component is cleaned, so there is no C++ coverage to measure"}
+  - {region: "src/output.cpp color, capture and most format/colour/hex/json output paths", reason: deferred, note: "output.cpp lines 42.5%; needs a Behavior follow-up with more output cases"}
   - {region: "src/ugrep.cpp Windows-only vs POSIX branches", reason: platform-only, note: "recorded on Windows x64 only"}
   - {region: "src/ugrep.cpp terminal(): --pager and --color=auto/--pretty=auto with a terminal (isatty stdout/stderr, NO_COLOR, COLORTERM, TERM checks, pager pipe)", reason: platform-only, note: "needs a pty/ConPTY, the harness always pipes stdout; proposed mask: none (covered by the pipe cases only); Triage decision; follow-up pty harness"}
   - {region: "src/ugrep.cpp terminal(): Windows VT console mode setup and /dev/null quiet detection", reason: platform-only, note: "console handles only exist with a terminal; /dev/null check is POSIX only; proposed mask: none"}
@@ -1353,7 +1379,7 @@ discovery:
     - {round: 16, source: llm-proposed, new_cases: 561, new_coverage: 0, new_behaviors: 36, note: "help, --help WHAT, --version, usage, warning, error/abort, is_directory, cannot_decompress and exit codes; generator migration/harness/src_core/gen_help_main.py; recorded 3x twice, flaky 0, C++ against itself 0 divergent; help text saved in migration/corpus/src_core/help/help.txt"}
     - {round: 17, source: surface-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "quiet_help_main.py seed 1: 150 hm-* cases with independent flags, 0 differ from the recorded observation, 0 flaky"}
     - {round: 18, source: surface-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "quiet_help_main.py seed 2: 150 hm-* cases with other independent flags, 0 differ from the recorded observation, 0 flaky"}
-    - {round: 19, source: llm-proposed, new_cases: 2043, new_coverage: 0, new_behaviors: 35, note: "Output: plain, colour, hex dump, JSON, XML, CSV, C++, --format fields and %[...] arguments, --replace, context, separators, heading/break/tree, binary files, CRLF input, --width, --line-buffered, -J 1..16 with --sort=name, -m/-q/-l/--max-files; generator migration/harness/src_core/gen_output.py (3925 candidates, 1906 with an observation no recorded case had, 33 flaky dropped, 170 thread cases forced past the duplicate check); recorded 3x on the product build, flaky 0; unordered multi-file candidates are run with -J1 because the order is thread timing (--max-files with -J>1 races: not recorded)"}
+    - {round: 19, source: llm-proposed, new_cases: 2043, new_coverage: 0, new_behaviors: 39, note: "Output: plain, colour, hex dump, JSON, XML, CSV, C++, --format fields and %[...] arguments, --replace, context, separators, heading/break/tree, binary files, CRLF input, --width, --line-buffered, -J 1..16 with --sort=name, -m/-q/-l/--max-files; generator migration/harness/src_core/gen_output.py (3925 candidates, 1906 with an observation no recorded case had, 33 flaky dropped, thread cases th-{2,3,4,8,16}-* forced past the duplicate check, gen_output.py force flag; the uncovered line for src/output.cpp from round 18 is kept as recorded and is now covered by the out-* cases, 9 out-rn2-* cases are generated by gen_output.py with force); recorded 3x on the product build, flaky 0; unordered multi-file candidates are run with -J1 because the order is thread timing (--max-files with -J>1 races: not recorded)"}
     - {round: 20, source: surface-proposed, new_cases: 10, new_coverage: 0, new_behaviors: 0, note: "quiet_output.py seed 1 (--tabs=8, --max-line, --no-hidden added to 150 out-* cases): 1 differed (out-r-65-5_n, --replace with %n and --max-line), admitted with 9 %n/%l cases (out-rn2-*), recorded 5x, flaky 0; 3 suspicious behaviors (--replace %n counter, %l under -v, last line without LF) listed for Triage"}
     - {round: 21, source: surface-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "quiet_output.py seed 2: 150 out-* cases with independent flags, 0 differ from the recorded observation, 0 flaky"}
     - {round: 22, source: surface-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "quiet_output.py seed 3 (--no-config, -J1, --no-ignore-files): 150 variants, 0 differ, 0 flaky"}

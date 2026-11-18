@@ -36,13 +36,16 @@ TREE = {"d/a.txt": "foo a\n", "d/b.txt": "bar\nfoo b\n", "d/s/c.txt": "foo c\nfo
 MANY = {"m/f%02d.txt" % i: "".join("line %d foo %d\nother\n" % (j, i) for j in range(1 + i % 4)) for i in range(14)}
 cases = []
 seen_ids = set()
+forced = set()  # admitted even when an earlier case observed the same output (thread counts, --replace %n)
 
 
-def c(id, args, files=None, stdin=None, env=None):
+def c(id, args, files=None, stdin=None, env=None, force=False):
     id = "out-" + id
     if id in seen_ids:
         return
     seen_ids.add(id)
+    if force:
+        forced.add(id)
     d = {"id": id, "args": args}
     if files and len(files) > 1 and not any(a.startswith(("-J", "--sort")) for a in args):
         d["args"] = ["-J1"] + args  # unordered multi-file output is thread timing; -J1 keeps the case deterministic
@@ -231,7 +234,7 @@ for j in (1, 2, 3, 4, 8, 16):
                        ("bin", ["-a", "-n"]), ("pr", ["--pretty"]), ("ug", ["--ungroup", "-nH"])):
         files = dict(MANY)
         files["m/bin.dat"] = BIN
-        c("th-%d-%s" % (j, tag), ["-J%d" % j, "--sort=name", "-r"] + extra + ["foo", "m"], files)
+        c("th-%d-%s" % (j, tag), ["-J%d" % j, "--sort=name", "-r"] + extra + ["foo", "m"], files, force=j > 1)
 for tag, extra in (("m1", ["-m1"]), ("m2", ["-m2"]), ("m3n", ["-m3", "-nH"]), ("m1c", ["-m1", "-C1", "-n"]), ("m1v", ["-m1", "-v"]),
                    ("m1o", ["-m1", "-o"]), ("m1j", ["-m1", "--json"]), ("m1x", ["-m1", "--xml"]), ("m1s", ["-m1", "--csv"]),
                    ("m1hx", ["-m1", "-X"]), ("m1f", ["-m1", "--format=%f:%O%~"]), ("m1co", ["-m1", "--color=always", "-nH"]),
@@ -247,6 +250,15 @@ c("st-stdin-q-nomatch", ["-q", "zzz"], stdin=TXT)
 c("st-q-err-first", ["-q", "foo", "nofile.txt", "t.txt"], F1)
 c("st-q-err-last", ["-q", "foo", "t.txt", "nofile.txt"], F1)
 c("st-m1-J4-bin", ["-m1", "-J4", "--sort=name", "-r", "foo", "m"], dict(MANY, **{"m/b.bin": BIN}))
+
+# %n under --replace and --format, with and without -n, -v, -o, -k, -b, --max-line
+RN = {"t.txt": "foo bar\nplain\nplain2\nfoo\nx\nfoo x\n"}
+for tag, extra in (("replace-n-plain", ["--replace=<%n>"]), ("replace-n-with-n", ["-n", "--replace=<%n>"]),
+                   ("replace-n-maxline", ["--max-line=100000", "--replace=<%n>"]), ("replace-n-only", ["-o", "--replace=<%n>"]),
+                   ("replace-nk", ["-k", "--replace=<%n>"]), ("replace-nb", ["-b", "--replace=<%n>"]),
+                   ("format-n-plain", ["--format=%n,%l,%k,%b%~"]), ("format-n-invert", ["-v", "--format=%n,%l,%k,%b%~"]),
+                   ("replace-invert", ["-v", "--replace=<%n>"])):
+    c("rn2-" + tag, extra + ["foo", "t.txt"], dict(RN), force=True)
 
 # JSON / XML / CSV / C++ escapes
 SP = {"s.txt": SPECIAL, "u.txt": UNI, "bin.dat": BIN}
@@ -325,7 +337,7 @@ for x in cases:
     if o is None or "exit" not in o:
         continue
     k = json.dumps(o, sort_keys=True)
-    if k in known:
+    if k in known and x["id"] not in forced:
         continue
     known.add(k)
     admit.append(x)
