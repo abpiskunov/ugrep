@@ -950,8 +950,13 @@ fn hexdump<E: Env>(env: &mut E, k: &Consts) {
                     }
                 }
                 if end == 0 {
-                    // the C++ loops forever here (strtoull consumed nothing and the scan restarts at the same
-                    // character); only reachable when usage() returned, so stop instead of hanging
+                    // D-src_core-hexdump (bug-fix): the C++ loops forever here (strtoull consumed nothing and
+                    // the scan restarts at the same character). Context 0 has already reported the invalid
+                    // argument above; A/B/C followed by a non-digit reports it now. usage() exits except while a
+                    // configuration file is read, so stop instead of hanging.
+                    if context != 0 {
+                        env.usage(b"invalid argument --hexdump=[1-8][a][bch][A[NUM]][B[NUM]][C[NUM]]");
+                    }
                     return;
                 }
                 continue;
