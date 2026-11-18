@@ -2975,3 +2975,7 @@
 {"id":"hm-exit-format-nomatch","args":["--format=%f%~","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
 {"id":"hm-exit-null-data","args":["-z","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n"}}
 {"id":"hm-exit-tree-match","args":["--tree","-r","--sort=name","foo","d"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\n","d/a.txt":"foo\n","d/b.log":"foo\n","d/s/c.txt":"foo\n","e/sub/x.txt":"foo\n",".gitignore":"*.log\n"}}
+{"id":"hm-help-grep","args":["--grep","--help"]}
+{"id":"hm-help-grep-fuzzy","args":["--grep","--help","fuzzy"]}
+{"id":"hm-help-grep-decompress","args":["--grep","--help","decompress"]}
+{"id":"hm-help-pastend","args":["--help","occurred.**x"]}
