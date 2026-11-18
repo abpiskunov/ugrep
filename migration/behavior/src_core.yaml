@@ -874,7 +874,8 @@ behaviors:
   - id: B-src_core-128
     statement: "`--help` and `-?` print the whole help text (usage line, option list, the trailer `Specify `ugrep --help WHAT' for help on WHAT.`) to standard output with empty standard error and exit 2; `-s`, `--color=always`, `--no-config`, `--help=` and `--help ''` print the same text. The text is recorded in migration/corpus/src_core/help/help.txt"
     kind: normal
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-help-1
     evidence: ["case:hm-help", "case:hm-help-q", "case:hm-help-s", "case:hm-help-color", "case:hm-help-config-none", "case:hm-help-eq-empty", "case:hm-help-empty-what", "case:hm-help-pager", "case:hm-help-pager-bad"]
     origin: capture
     suspicious: true
@@ -894,7 +895,8 @@ behaviors:
   - id: B-src_core-131
     statement: "WHAT starting with `--no` loses those four characters even when no `-` follows: `--help --nosuchoption` reports WHAT `suchoption`, `--help --no-such-option` reports `-such-option`, and `--help --no` shows the whole help like a missing WHAT"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-help-2
     evidence: ["case:hm-help-what-long-unknown", "case:hm-help-after-bad", "case:hm-help-what-no"]
     origin: capture
     suspicious: true
@@ -902,7 +904,8 @@ behaviors:
   - id: B-src_core-132
     statement: "`--help --` and `--help -` print `\\nOptions and arguments:\\n` followed directly by the whole help text (no blank line after the heading), exit 2"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-help-3
     evidence: ["case:hm-help-what-dashes", "case:hm-help-what-dash"]
     origin: capture
     suspicious: true
@@ -941,7 +944,8 @@ behaviors:
   - id: B-src_core-138
     statement: "The `did you mean` list of an unknown option prints the option `--context-separator=` as `context-separator=`, without its leading `--` (`--colr` suggests `--context=, context-separator=, --count`)"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-help-4
     evidence: ["case:hm-usage-unknown-long-suggest"]
     origin: capture
     suspicious: true
@@ -967,7 +971,8 @@ behaviors:
   - id: B-src_core-142
     statement: "A missing `-e` argument at the end of the command line is not an error: the pattern list is empty, standard input is searched and nothing matches (exit 1, no output)"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-help-5
     evidence: ["case:hm-usage-missing-arg-e"]
     origin: capture
     suspicious: true
@@ -987,7 +992,8 @@ behaviors:
   - id: B-src_core-145
     statement: "`-s` and `--no-messages` remove the warning text but not the exit code 2; `-q` prints no warning and exits 2 when a file could not be read, whether the match came before or after the missing file (`-q` with a match and no error exits 0)"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-help-6
     evidence: ["case:hm-warn-nofile-s", "case:hm-warn-nofile-s-match", "case:hm-warn-nofile-q", "case:hm-warn-nofile-q-match", "case:hm-warn-nofile-q-match-first", "case:hm-warn-no-messages-long", "case:hm-exit-s-error", "case:hm-exit-s-error-match", "case:hm-exit-q-error", "case:hm-exit-q-error-match", "case:hm-exit-q-match-error", "case:hm-exit-s-q-error", "case:hm-exit-q-match"]
     origin: capture
     suspicious: true
