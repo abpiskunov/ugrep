@@ -36,9 +36,7 @@
 
 #include "output.hpp"
 
-#ifdef CPP_RUST_IMPL_OUTPUT_RUST
-# include "output_rust.hpp"
-#endif
+#include "output_rust.hpp"
 
 // dump matching data in hex
 void Output::Dump::hex(short mode, size_t byte_offset, const char *data, size_t size)
@@ -51,519 +49,6 @@ void Output::Dump::hex(short mode, size_t byte_offset, const char *data, size_t 
       line();
     --size;
   }
-}
-
-// dump one line of hex
-void Output::Dump::line_cpp()
-{
-  if (flag_hex_star)
-  {
-    // if the previous hex line was the same as this hex line, output a * (but only once)
-    size_t i;
-
-    for (i = 0; i < flag_hex_columns; ++i)
-      if (prevb[i] < 0 || bytes[i] != prevb[i])
-        break;
-
-    if (i >= flag_hex_columns)
-    {
-      if (!pstar)
-      {
-        out.str(color_se);
-        out.chr('*');
-        out.nl();
-
-        pstar = true;
-      }
-
-      for (i = 0; i < MAX_HEX_COLUMNS; ++i)
-        bytes[i] = -1;
-
-      return;
-    }
-  }
-
-  out.str(color_bn);
-  out.hex((offset - 1) - (offset - 1) % flag_hex_columns, 8);
-  out.str(color_off);
-  out.chr(' ');
-
-  short last_hex_color = HEX_MAX;
-
-  for (size_t i = 0; i < flag_hex_columns; ++i)
-  {
-    if (bytes[i] < 0)
-    {
-      if (last_hex_color != -1)
-      {
-        last_hex_color = -1;
-        out.str(color_off);
-        out.str(color_cx);
-      }
-      if (flag_hex_hbr || (i == 0 && flag_hex_cbr))
-        out.chr(' ');
-      out.str("--", 2);
-      if (flag_hex_cbr && (i & 7) == 7)
-        out.chr(' ');
-    }
-    else
-    {
-      short byte = bytes[i];
-      if ((byte >> 8) != last_hex_color)
-      {
-        out.str(last_hex_color == HEX_MATCH || last_hex_color == HEX_CONTEXT_MATCH ? match_off : color_off);
-        last_hex_color = byte >> 8;
-        out.str(color_hex[last_hex_color]);
-      }
-      if (flag_hex_hbr || (i == 0 && flag_hex_cbr))
-        out.chr(' ');
-      out.hex(byte & 0xff, 2);
-      if (flag_hex_cbr && (i & 7) == 7)
-        out.chr(' ');
-    }
-  }
-
-  out.str(color_off);
-
-  if (flag_hex_chr)
-  {
-    out.str(color_se);
-    if (flag_hex_hbr)
-      out.chr(' ');
-    out.chr('|');
-
-    last_hex_color = HEX_MAX;
-    bool inverted = false;
-
-    for (size_t i = 0; i < flag_hex_columns; ++i)
-    {
-      if (bytes[i] < 0)
-      {
-        if (last_hex_color != -1)
-        {
-          last_hex_color = -1;
-          out.str(color_off);
-          out.str(color_cx);
-        }
-        out.chr('-');
-      }
-      else
-      {
-        short byte = bytes[i];
-        if ((byte >> 8) != last_hex_color)
-        {
-          out.str(last_hex_color == HEX_MATCH || last_hex_color == HEX_CONTEXT_MATCH ? match_off : color_off);
-          last_hex_color = byte >> 8;
-          out.str(color_hex[last_hex_color]);
-        }
-        byte &= 0xff;
-        if (flag_color != NULL)
-        {
-          if (byte < 0x20)
-          {
-            out.str("\033[7m", 4);
-            out.chr('@' + byte);
-            inverted = true;
-          }
-          else if (byte == 0x7f)
-          {
-            out.str("\033[7m~", 5);
-            inverted = true;
-          }
-          else if (byte > 0x7f)
-          {
-            out.str("\033[7m.", 5);
-            inverted = true;
-          }
-          else if (inverted)
-          {
-            out.str(color_off);
-            out.str(color_hex[last_hex_color]);
-            out.chr(byte);
-            inverted = false;
-          }
-          else
-          {
-            out.chr(byte);
-          }
-        }
-        else if (byte < 0x20 || byte >= 0x7f)
-        {
-          out.chr('.');
-        }
-        else
-        {
-          out.chr(byte);
-        }
-      }
-    }
-
-    out.str(color_off);
-    out.str(color_se);
-    out.chr('|');
-    out.str(color_off);
-  }
-
-  out.nl();
-
-  for (int i = 0; i < MAX_HEX_COLUMNS; ++i)
-  {
-    prevb[i] = bytes[i];
-    bytes[i] = -1;
-  }
-
-  pstar = false;
-}
-
-// output color when set
-void Output::color_cpp(const char *arg)
-{
-  if (arg != NULL)
-  {
-    static const char *colors[10] = {
-      color_sl,
-      color_cx,
-      color_mt,
-      color_ms,
-      color_mc,
-      color_fn,
-      color_ln,
-      color_cn,
-      color_bn,
-      color_se,
-    };
-    static const char *codes = "sl cx mt ms mc fn ln cn bn se ";
-    char code[4] = { arg[0], arg[1], ' ', 0 };
-    const char *s = strstr(codes, code);
-    if (s != NULL)
-      str(colors[(s - codes) / 3]);
-  }
-  else
-  {
-    str(color_off);
-  }
-}
-
-// output the header part of the match, preceding the matched line
-void Output::header_cpp(const char *pathname, const std::string& partname, bool& heading, size_t lineno, reflex::AbstractMatcher *matcher, size_t byte_offset, const char *separator, bool newline)
-{
-  // if hex dump line is incomplete and a header is output, then complete the hex dump first
-  if (dump.incomplete() &&
-      (heading ||
-       (!flag_no_filename && !partname.empty()) ||
-       flag_line_number ||
-       flag_column_number ||
-       flag_byte_offset))
-    dump.done();
-
-  // get column number when we need it
-  size_t columno = flag_column_number && matcher != NULL ? matcher->columno() + 1 : 1;
-
-  // -Q: mark pathname with three \0 markers in headings, unless -a
-  bool nul = flag_query && heading && !flag_text;
-
-  if (nul)
-    chr('\0');
-
-  // --hyperlink: open link, unless standard input
-  bool hyp = pathname != Static::LABEL_STANDARD_INPUT && color_hl != NULL; // include hyperlinks
-
-  if (hyp)
-    open_hyperlink(pathname, !(heading && flag_heading) && flag_hyperlink_line, lineno, columno);
-
-  // when a separator is needed
-  bool sep = false;
-
-  // header should include the pathname
-  if (heading)
-  {
-    str(color_fn);
-
-    if (nul)
-      chr('\0');
-
-    str(pathname);
-
-    if (nul)
-      chr('\0');
-
-    str(color_off);
-
-    if (flag_null)
-      chr('\0');
-
-    if (flag_heading)
-    {
-      // --hyperlink: close link
-      if (hyp)
-        close_hyperlink();
-
-      str(color_fn);
-      str(color_del);
-      str(color_off);
-      nl();
-
-      // --hyperlink: open link
-      if (hyp)
-        open_hyperlink(pathname, flag_hyperlink_line, lineno, columno);
-
-      // the next headers should not include this pathname
-      heading = false;
-    }
-    else
-    {
-      sep = !flag_null;
-    }
-  }
-
-  if (!flag_no_filename && !partname.empty())
-  {
-    nul = flag_query && !flag_text && (flag_heading || !nul);
-
-    if (nul)
-      chr('\0');
-
-    str(color_fn);
-
-    if (nul)
-      chr('\0');
-
-    chr('{');
-    str(partname);
-    chr('}');
-
-    if (nul)
-      chr('\0');
-
-    str(color_off);
-
-    sep = true;
-  }
-
-  if (flag_line_number)
-  {
-    if (sep)
-    {
-      str(color_se);
-      str(separator);
-      str(color_off);
-    }
-
-    str(color_ln);
-    num(lineno, (flag_initial_tab ? 6 : 1));
-    str(color_off);
-
-    sep = true;
-  }
-
-  if (flag_column_number)
-  {
-    if (sep)
-    {
-      str(color_se);
-      str(separator);
-      str(color_off);
-    }
-
-    str(color_cn);
-    num(columno, (flag_initial_tab ? 3 : 1));
-    str(color_off);
-
-    sep = true;
-  }
-
-  // --hyperlink: close link
-  if (hyp)
-    close_hyperlink();
-
-  if (flag_byte_offset)
-  {
-    if (sep)
-    {
-      str(color_se);
-      str(separator);
-      str(color_off);
-    }
-
-    str(color_bn);
-    num(byte_offset, (flag_initial_tab ? 7 : 1));
-    str(color_off);
-
-    sep = true;
-  }
-
-  if (sep)
-  {
-    str(color_se);
-    str(separator);
-    str(color_off);
-
-    if (flag_initial_tab)
-      chr('\t');
-
-    if (newline)
-      nl();
-  }
-}
-
-// output the short pathname header for --files_with_matches and --count
-void Output::header_cpp(const char *pathname, const std::string& partname)
-{
-  bool hyp = pathname != Static::LABEL_STANDARD_INPUT && color_hl != NULL; // include hyperlinks
-  bool nul = flag_query; // -Q: mark pathname with three \0 markers for quick navigation
-
-  if (flag_tree)
-  {
-    // acquire lock on output and to access global Tree::path and Tree::depth
-    acquire();
-
-    int up = 0;
-
-    while (!Tree::path.empty() && Tree::path.compare(0, Tree::path.size(), pathname, Tree::path.size()) != 0)
-    {
-      Tree::path.pop_back();
-
-      size_t len = Tree::path.rfind(PATHSEPCHR);
-
-      if (len == std::string::npos)
-        Tree::path.clear();
-      else
-        Tree::path.resize(len + 1);
-
-      ++up;
-      --Tree::depth;
-    }
-
-    if (up > 0)
-    {
-      for (int i = 0; i < Tree::depth; ++i)
-        str(Tree::bar);
-      for (int i = 1; i < up; ++i)
-        str(Tree::end);
-      nl();
-
-      // make sure to add a break between trees with terminated leafs
-      if (up > 1 && *Tree::end != '\0' && Tree::depth == 0)
-        nl();
-    }
-    else if (Tree::path.empty() && strchr(pathname, PATHSEPCHR) != NULL)
-    {
-      // add a break between the list of filenames without path and filenames with paths
-      nl();
-    }
-
-    const char *sep;
-
-    while ((sep = strchr(pathname + Tree::path.size(), PATHSEPCHR)) != NULL)
-    {
-      if (nul)
-        chr('\0');
-
-      for (int i = 1; i < Tree::depth; ++i)
-        str(Tree::bar);
-
-      if (Tree::depth > 0)
-        str(Tree::ptr);
-
-      if (nul)
-        chr('\0');
-
-      str(pathname + Tree::path.size(), sep - (pathname + Tree::path.size()) + 1);
-
-      if (nul)
-        chr('\0');
-
-      nl();
-
-      Tree::path.assign(pathname, sep - pathname + 1);
-      ++Tree::depth;
-    }
-
-    if (nul)
-      chr('\0');
-
-    for (int i = 1; i < Tree::depth; ++i)
-      str(Tree::bar);
-
-    if (Tree::depth > 0)
-      str(Tree::ptr);
-
-    str(color_fn);
-
-    if (hyp)
-      open_hyperlink(pathname);
-
-    if (nul)
-      chr('\0');
-
-    str(pathname + Tree::path.size());
-
-    if (nul)
-      chr('\0');
-
-  }
-  else
-  {
-    if (nul)
-      chr('\0');
-
-    str(color_fn);
-
-    if (hyp)
-      open_hyperlink(pathname);
-
-    if (nul)
-      chr('\0');
-
-    str(pathname);
-
-    if (nul)
-      chr('\0');
-
-    if (hyp)
-      close_hyperlink();
-  }
-
-  if (!partname.empty())
-  {
-    chr('{');
-    str(partname);
-    chr('}');
-  }
-
-  str(color_off);
-}
-
-// output "Binary file ... matches"
-void Output::binary_file_matches_cpp(const char *pathname, const std::string& partname)
-{
-  if ((mode_ & BINARY) != 0)
-    return;
-
-  str(color_off);
-  str("Binary file ");
-  str(color_fn);
-
-  if (pathname != Static::LABEL_STANDARD_INPUT && color_hl != NULL)
-    open_hyperlink(pathname);
-
-  str(pathname);
-
-  if (pathname != Static::LABEL_STANDARD_INPUT && color_hl != NULL)
-    close_hyperlink();
-
-  if (!partname.empty())
-  {
-    chr('{');
-    str(partname);
-    chr('}');
-  }
-
-  str(color_off);
-  str(" matches");
-  nl();
-
-  mode_ |= BINARY;
 }
 
 // get a group capture's string pointer and size specified by %[ARG] as arg, if any
@@ -2260,182 +1745,6 @@ void Output::xml_cpp(const char *data, size_t size)
   str(t, s - t);
 }
 
-// flush a block of data as truncated lines limited to --width columns, taking into account tabs, UTF-8, ANSI
-bool Output::flush_truncated_lines(const char *data, size_t size)
-{
-  if (skip_)
-  {
-    const char *end = static_cast<const char*>(memchr(data, '\n', size));
-
-    if (end == NULL)
-      return false;
-
-    size_t num = end - data + 1;
-
-    data += num;
-    size -= num;
-
-    skip_ = false;
-  }
-
-  while (size > 0)
-  {
-    // search for \n or cols_ + width Unicode characters, whichever comes first
-    const char *end = data + size;
-    const char *esc = end;
-    const char *scan;
-
-    for (scan = data; scan < end && cols_ <= flag_width && *scan != '\n'; ++scan)
-    {
-      if (ansi_ != ANSI::NA)
-      {
-        // skip ANSI escape sequence state machine
-        switch (ansi_)
-        {
-          case ANSI::ESC:
-            switch (*scan)
-            {
-              case '[':
-                // CSI \e[... sequence
-                ansi_ = ANSI::CSI;
-                break;
-
-              case ']':
-                // OSC \e]...BEL|ST sequence
-                ansi_ = ANSI::OSC;
-                break;
-
-              default:
-                ansi_ = ANSI::NA;
-            }
-            break;
-
-          case ANSI::CSI:
-            if (*scan >= 0x40 && *scan <= 0x7e)
-              ansi_ = ANSI::NA;
-            break;
-
-          case ANSI::OSC:
-            if (*scan == '\a')
-              ansi_ = ANSI::NA;
-            else if (*scan == '\033')
-              ansi_ = ANSI::OSC_ESC;
-            break;
-
-          case ANSI::OSC_ESC:
-            if (*scan == '\\')
-              ansi_ = ANSI::NA;
-            else
-              ansi_ = ANSI::OSC;
-            break;
-
-          default:
-            ansi_ = ANSI::NA;
-        }
-      }
-      else if (*scan == '\t')
-      {
-        cols_ += 1 + (~cols_ & 7);
-      }
-      else if (*scan == '\033')
-      {
-        esc = scan;
-        ansi_ = ANSI::ESC;
-      }
-      else if (static_cast<unsigned char>(*scan) < 0x80)
-      {
-        cols_ += (*scan >= ' ');
-      }
-      else
-      {
-        cols_ += (*scan & 0xc0) != 0x80;
-      }
-    }
-
-    if (scan < end && *scan == '\n')
-    {
-      // write data with newline
-      size_t num = scan - data + 1;
-      size_t nwritten = fwrite(data, 1, num, file);
-      if (nwritten < num)
-        return true;
-
-      data += num;
-      size -= num;
-
-      cols_ = 0;
-    }
-    else if (cols_ <= flag_width)
-    {
-      // write data
-      size_t num = scan - data;
-      size_t nwritten = fwrite(data, 1, num, file);
-      if (nwritten < num)
-        return true;
-
-      data += num;
-      size -= num;
-    }
-    else
-    {
-      // counted one column over, back up to ensure UTF-8 multibyte sequence is complete
-      --scan;
-
-      size_t num = scan - data;
-
-      if (ansi_ != ANSI::NA)
-      {
-        // write data up to but not including ANSI ESC
-        size_t len = esc - data;
-        size_t nwritten = fwrite(data, 1, len, file);
-        if (nwritten < len)
-          return true;
-      }
-      else
-      {
-        // write data
-        size_t nwritten = fwrite(data, 1, num, file);
-        if (nwritten < num)
-          return true;
-      }
-
-      data += num;
-      size -= num;
-
-      // disable CSI when line was truncated
-      if (flag_color != NULL)
-        if (fwrite("\033[m", 1, 3, file) < 3)
-          return true;
-
-      // write newline
-#ifdef OS_WIN
-      if (fwrite("\r\n", 1, 2, file) < 2)
-        return true;
-#else
-      if (fwrite("\n", 1, 1, file) < 1)
-        return true;
-#endif
-
-      cols_ = 0;
-
-      // look for newline to reach next line
-      scan = static_cast<const char*>(memchr(data, '\n', size));
-      if (scan == NULL)
-      {
-        skip_ = true;
-        break;
-      }
-
-      // move to next line
-      num = scan - data + 1;
-      data += num;
-      size -= num;
-    }
-  }
-
-  return false;
-}
-
 const char *Output::Dump::color_hex[4] = { match_ms, color_sl, match_mc, color_cx };
 
 const char *Output::Tree::bar = "|  ";
@@ -2445,10 +1754,10 @@ const char *Output::Tree::end = "~  ";
 std::string Output::Tree::path;
 int Output::Tree::depth;
 
-// Facade of the output seam (rust/src_core/SEAM.md, section Seam: output): CPP_RUST_IMPL_OUTPUT selects the
-// implementation at build time, cpp (default) or rust. The rust bodies produce the bytes, C++ keeps the buffer.
 
-#ifdef CPP_RUST_IMPL_OUTPUT_RUST
+// Facade of the output seam (rust/src_core/SEAM.md, section Seam: output): the ported members call Rust, which
+// produces the bytes while C++ keeps the buffer.
+
 
 namespace {
 
@@ -2491,6 +1800,7 @@ void Output::header(const char *pathname, const std::string& partname, bool& hea
   output_rust::Need need;
   need.columno = flag_column_number;
   ugrep_rust::OutputMatch m = output_rust::snapshot(matcher, window, need);
+  std::string link = output_rust::link();
   ugrep_rust::OutputArgs args{};
   args.heading = heading;
   args.lineno = lineno;
@@ -2501,7 +1811,7 @@ void Output::header(const char *pathname, const std::string& partname, bool& hea
       output_rust::slice(pathname),
       output_rust::slice(partname),
       output_rust::slice(sep),
-      output_rust::slice(window.data, window.size),
+      output_rust::slice(link),
       args,
       m,
       output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), pathname));
@@ -2513,15 +1823,33 @@ void Output::header(const char *pathname, const std::string& partname, bool& hea
 
 void Output::header(const char *pathname, const std::string& partname)
 {
-  // --tree takes the Sync lock and updates the process-wide Tree::path and Tree::depth: kept in C++ under the lock
+  std::string link = output_rust::link();
   if (flag_tree)
   {
-    header_cpp(pathname, partname);
+    // acquire lock on output and to access global Tree::path and Tree::depth
+    acquire();
+    std::string glyphs(Tree::bar);
+    glyphs.push_back('\0');
+    glyphs.append(Tree::ptr);
+    glyphs.push_back('\0');
+    glyphs.append(Tree::end);
+    ugrep_rust::OutputTreeResult t = ugrep_rust::output_header_tree(
+        output_rust::slice(pathname),
+        output_rust::slice(partname),
+        output_rust::slice(link),
+        output_rust::slice(glyphs),
+        output_rust::slice(Tree::path),
+        Tree::depth,
+        output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), pathname));
+    Tree::path.assign(reinterpret_cast<const char*>(t.path.data()), t.path.size());
+    Tree::depth = t.depth;
+    output_rust::append(*this, t.bytes);
     return;
   }
   ugrep_rust::OutputHeaderResult r = ugrep_rust::output_header_file(
       output_rust::slice(pathname),
       output_rust::slice(partname),
+      output_rust::slice(link),
       output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), pathname));
   if (r.complete_dump)
     dump.done();
@@ -2530,127 +1858,20 @@ void Output::header(const char *pathname, const std::string& partname)
 
 void Output::binary_file_matches(const char *pathname, const std::string& partname)
 {
+  std::string link = output_rust::link();
   ugrep_rust::OutputBinaryResult r = ugrep_rust::output_binary_file_matches(
       output_rust::slice(pathname),
       output_rust::slice(partname),
+      output_rust::slice(link),
       output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), pathname));
   output_rust::append(*this, r.bytes);
   if (r.set_binary)
     mode_ |= BINARY;
 }
 
-void Output::format(const char *format, size_t matches)
-{
-  output_rust::append(*this, ugrep_rust::output_format_count(
-      output_rust::slice(format),
-      matches,
-      output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), NULL)));
-}
-
-bool Output::format(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t *matching, reflex::AbstractMatcher *matcher, bool& heading, bool body, bool next)
-{
-  output_rust::Window window;
-  output_rust::Need need = output_rust::scan_format(format, body && lineno_ > 0);
-  ugrep_rust::OutputMatch m = output_rust::snapshot(matcher, window, need);
-  ugrep_rust::OutputArgs args{};
-  args.matches = matches;
-  args.has_matching = matching != NULL;
-  args.matching = matching != NULL ? *matching : 0;
-  args.heading = heading;
-  args.body = body;
-  args.next = next;
-  ugrep_rust::OutputFormatResult r = ugrep_rust::output_format_match(
-      output_rust::slice(format),
-      output_rust::slice(pathname),
-      output_rust::slice(partname),
-      output_rust::slice(window.data, window.size),
-      args,
-      m,
-      output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), pathname));
-  if (r.lineno_set)
-    lineno_ = r.lineno;
-  if (matching != NULL)
-    *matching = r.matching;
-  heading = r.heading;
-  output_rust::append(*this, r.bytes);
-  return r.ret;
-}
-
-void Output::format_invert(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t lineno, size_t offset, const char *ptr, size_t size, bool& heading, bool next)
-{
-  ugrep_rust::OutputArgs args{};
-  args.matches = matches;
-  args.lineno = lineno;
-  args.offset = offset;
-  args.heading = heading;
-  args.next = next;
-  ugrep_rust::OutputFormatResult r = ugrep_rust::output_format_invert(
-      output_rust::slice(format),
-      output_rust::slice(pathname),
-      output_rust::slice(partname),
-      output_rust::slice(ptr, size),
-      args,
-      output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), pathname));
-  if (r.lineno_set)
-    lineno_ = r.lineno;
-  heading = r.heading;
-  output_rust::append(*this, r.bytes);
-}
-
-void Output::quote(const char *data, size_t size)
-{
-  output_rust::append(*this, ugrep_rust::output_quote(output_rust::slice(data, size)));
-}
-
-void Output::cpp(const char *data, size_t size)
-{
-  output_rust::append(*this, ugrep_rust::output_cpp(output_rust::slice(data, size)));
-}
-
-void Output::csv(const char *data, size_t size)
-{
-  output_rust::append(*this, ugrep_rust::output_csv(output_rust::slice(data, size)));
-}
-
-void Output::hex(const char *data, size_t size)
-{
-  output_rust::append(*this, ugrep_rust::output_hex(output_rust::slice(data, size)));
-}
-
-void Output::json(const char *data, size_t size)
-{
-  output_rust::append(*this, ugrep_rust::output_json(output_rust::slice(data, size)));
-}
-
-void Output::xml(const char *data, size_t size)
-{
-  output_rust::append(*this, ugrep_rust::output_xml(output_rust::slice(data, size)));
-}
-
-#else
-
-void Output::Dump::line() { line_cpp(); }
-void Output::color(const char *arg) { color_cpp(arg); }
-
-void Output::header(const char *pathname, const std::string& partname, bool& heading, size_t lineno, reflex::AbstractMatcher *matcher, size_t byte_offset, const char *sep, bool newline)
-{
-  header_cpp(pathname, partname, heading, lineno, matcher, byte_offset, sep, newline);
-}
-
-void Output::header(const char *pathname, const std::string& partname)
-{
-  header_cpp(pathname, partname);
-}
-
-void Output::binary_file_matches(const char *pathname, const std::string& partname)
-{
-  binary_file_matches_cpp(pathname, partname);
-}
-
-void Output::format(const char *format, size_t matches)
-{
-  format_cpp(format, matches);
-}
+// format, format_invert and the quote/cpp/csv/hex/json/xml emitters are not ported yet (next unit, output-format):
+// the rust build keeps their C++ bodies, which call the ported functions above through the facade
+void Output::format(const char *format, size_t matches) { format_cpp(format, matches); }
 
 bool Output::format(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t *matching, reflex::AbstractMatcher *matcher, bool& heading, bool body, bool next)
 {
@@ -2669,4 +1890,16 @@ void Output::hex(const char *data, size_t size) { hex_cpp(data, size); }
 void Output::json(const char *data, size_t size) { json_cpp(data, size); }
 void Output::xml(const char *data, size_t size) { xml_cpp(data, size); }
 
-#endif
+// flush a block of data as truncated lines limited to --width columns: the Rust body returns the bytes to write
+bool Output::flush_truncated_lines(const char *data, size_t size)
+{
+  ugrep_rust::OutputTruncResult r = ugrep_rust::output_truncate_lines(
+      output_rust::slice(data, size),
+      skip_,
+      cols_,
+      static_cast<uint8_t>(ansi_));
+  skip_ = r.skip;
+  cols_ = r.cols;
+  ansi_ = static_cast<ANSI>(r.ansi);
+  return !r.bytes.empty() && fwrite(r.bytes.data(), 1, r.bytes.size(), file) < r.bytes.size();
+}

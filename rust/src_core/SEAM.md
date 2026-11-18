@@ -212,11 +212,7 @@ The ugrep.cpp ~4670-4765 (main/wmain) and ~5282-6354 (options, option_regexp/and
 
 ## Seam: output (src/output.cpp, src/output.hpp) - Prepare seam
 
-Switch: `CPP_RUST_IMPL_OUTPUT` = `cpp` (default) | `rust`. MSBuild: `msvc/rust.props` default, `msvc/rust.targets` defines
-`CPP_RUST_IMPL_OUTPUT_RUST=1` for `rust`. Autotools has no option yet (default cpp; `make CPPFLAGS=-DCPP_RUST_IMPL_OUTPUT_RUST`
-selects rust; the umbrella is always built and linked). The umbrella is always linked (see Build above), so the switch is a
-compile-time facade, not a link-time one: with `rust` the `*_cpp` bodies stay compiled but unreachable. The Port tasks delete them
-(then output.obj holds only the facade). Only `src/ugrep.cpp` includes `output.hpp`; **no call site changed**, the public
+Switch: removed by the output-core Port. The ported members (colour, `Dump::line`, both `header`, `binary_file_matches`, `flush_truncated_lines`, `Sync`) call Rust unconditionally and their `*_cpp` bodies and the C++ `Sync` are deleted; `CPP_RUST_IMPL_OUTPUT` no longer exists. Only `format*`, `format_invert*` and the quote/cpp/csv/hex/json/xml emitters keep their `*_cpp` C++ bodies until the output-format unit. `Output::Sync::Lock` holds its own reference to the reference-counted Rust sync object, so it never touches the C++ `Sync`. Only `src/ugrep.cpp` includes `output.hpp`; **no call site changed**, the public
 `Output` API is the facade.
 
 Facade (members of `Output`, in `src/output.cpp`, end of file): `color`, `header` x2, `binary_file_matches`, `format` x2,

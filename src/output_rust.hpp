@@ -248,7 +248,20 @@ inline ugrep_rust::OutputMatch snapshot(reflex::AbstractMatcher *matcher, Window
 inline void append(Output& out, const rust::Vec<uint8_t>& bytes)
 {
   if (!bytes.empty())
-    out.str(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    out.lines(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+}
+
+// the --hyperlink prefix, host and path as three NUL-terminated strings in a row (see output_link in lib.rs)
+inline std::string link()
+{
+  if (color_hl == NULL)
+    return std::string();
+  std::string s(flag_hyperlink_prefix);
+  s.push_back('\0');
+  s.append(flag_hyperlink_host);
+  s.push_back('\0');
+  s.append(flag_hyperlink_path);
+  return s;
 }
 
 } // namespace output_rust

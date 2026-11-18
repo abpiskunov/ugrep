@@ -15,13 +15,6 @@
     </ClCompile>
   </ItemDefinitionGroup>
 
-  <!-- CPP_RUST_IMPL_OUTPUT=rust: src/output.cpp calls the Rust output seam (src/output_rust.hpp). -->
-  <ItemDefinitionGroup Condition="'$(CPP_RUST_IMPL_OUTPUT)'=='rust'">
-    <ClCompile>
-      <PreprocessorDefinitions>CPP_RUST_IMPL_OUTPUT_RUST=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-    </ClCompile>
-  </ItemDefinitionGroup>
-
   <!-- Cleanup: the legacy C++ bodies of the ported units are deleted, so the umbrella is always linked. -->
   <ItemDefinitionGroup Condition="'$(RustLinkUmbrella)'=='true'">
     <ClCompile>
