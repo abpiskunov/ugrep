@@ -41,6 +41,17 @@ pub mod sys {
         }
     }
 
+    /// CRT `stderr` (`std::cerr` of the C++): text mode, so `\n` becomes CRLF
+    pub fn write_stderr(bytes: &[u8]) {
+        // SAFETY: stderr of the CRT, `bytes` is valid for its length
+        unsafe {
+            fwrite(bytes.as_ptr().cast(), 1, bytes.len(), __acrt_iob_func(2));
+        }
+    }
+
+    /// `signal(SIGPIPE, SIG_IGN)` does not exist on Windows
+    pub fn ignore_sigpipe() {}
+
     pub fn strerror_bytes(errnum: i32) -> Vec<u8> {
         // SAFETY: strerror returns a NUL-terminated string that stays valid until the next call
         unsafe { CStr::from_ptr(strerror(errnum)).to_bytes().to_vec() }
@@ -68,6 +79,24 @@ pub mod sys {
 
     pub fn flush_stdout() {
         let _ = std::io::stdout().flush();
+    }
+
+    pub fn write_stderr(bytes: &[u8]) {
+        let _ = std::io::stderr().write_all(bytes);
+    }
+
+    /// `signal(SIGPIPE, SIG_IGN)` of `main` when built with `HAVE_LIBZ`: writes to a closed pipe fail instead of
+    /// killing the process
+    pub fn ignore_sigpipe() {
+        extern "C" {
+            fn signal(signum: i32, handler: usize) -> usize;
+        }
+        const SIGPIPE: i32 = 13;
+        const SIG_IGN: usize = 1;
+        // SAFETY: installs the ignore disposition, no handler code runs
+        unsafe {
+            signal(SIGPIPE, SIG_IGN);
+        }
     }
 
     pub fn strerror_bytes(errnum: i32) -> Vec<u8> {

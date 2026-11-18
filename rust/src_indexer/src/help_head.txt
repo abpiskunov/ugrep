@@ -1,0 +1,71 @@
+
+Usage:
+
+ugrep-indexer [-0|...|-9] [-.] [-c|-d|-f] [-I] [-q] [-S] [-s] [-X] [-z] [PATH]
+
+    Updates indexes incrementally unless option -f or --force is specified.
+    
+    When option -I or --ignore-binary is specified, binary files are ignored
+    and not indexed.  Searching with ugrep --index still searches binary files
+    unless ugrep option -I or --ignore-binary is specified also.
+    
+    Archives and compressed files are indexed when option -z or --decompress is
+    specified.  Otherwise, archives and compressed files are indexed as binary
+    files, or are ignored with option -I or --ignore-binary.
+    
+    To save a log file, specify option -v or --verbose and redirect standard
+    output to a log file.  All messages are sent to standard output.
+    
+    A .ugrep-indexer configuration file with configuration options is loaded
+    when present in the working directory or in the home directory.  A
+    configuration option consists of the name of a long option and its argument
+    when applicable.
+    
+    The following options are available:
+    
+    PATH    Optional pathname to the root of the directory tree to index.  The
+            default is to recursively index the working directory tree.
+
+    -0, -1, -2, -3, ..., -9, --accuracy=DIGIT
+            Specifies indexing accuracy.  A low accuracy reduces the indexing
+            storage overhead at the cost of a higher rate of false positive
+            pattern matches (more noise).  A high accuracy reduces the rate of
+            false positive regex pattern matches (less noise) at the cost of an
+            increased indexing storage overhead.  An accuracy between 2 and 7
+            is recommended.  The default accuracy is 4.
+    -., --hidden
+            Index hidden files and directories.
+    -?, --help
+            Display a help message and exit.
+    -c, --check
+            Recursively check and report indexes without reindexing files.
+    -d, --delete
+            Recursively remove index files.
+    -f, --force
+            Force reindexing of files, even those that are already indexed.
+    -I, --ignore-binary
+            Do not index binary files.
+    -q, --quiet, --silent
+            Quiet mode: do not display indexing statistics.
+    -S, --dereference-files
+            Follow symbolic links to files.  Symbolic links to directories are
+            never followed.
+    -s, --no-messages
+            Silent mode: nonexistent and unreadable files are ignored, i.e.
+            their error messages and warnings are suppressed.
+    -V, --version
+            Display version and exit.
+    -v, --verbose
+            Produce verbose output.  Files are marked A for archive, C for
+            compressed, and B for binary or I for ignored binary.  Deletions
+            are marked D.
+    -X, --ignore-files, --ignore-files=FILE
+            Do not index files and directories matching the globs in FILE
+            encountered during indexing.  The default FILE is `.gitignore'.
+            This option may be repeated to specify additional files.
+    -z, --decompress
+            Index the contents of compressed files and archives.  Hidden files
+            in archives are ignored unless option -. or --hidden is specified.
+            Option -I or --ignore-binary ignores compressed binary files.  When
+            used with option --zmax=NUM, indexes the contents of compressed
+            files and archives stored within archives up to NUM levels deep.

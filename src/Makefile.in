@@ -114,15 +114,14 @@ PROGRAMS = $(bin_PROGRAMS)
 am_ugrep_OBJECTS = ugrep-ugrep.$(OBJEXT) ugrep-cnf.$(OBJEXT) \
 	ugrep-glob_facade.$(OBJEXT) ugrep-output.$(OBJEXT) \
 	ugrep-query.$(OBJEXT) ugrep-screen.$(OBJEXT) \
-	ugrep-settings.$(OBJEXT) ugrep-stats.$(OBJEXT) ugrep-vkey.$(OBJEXT) \
-	ugrep-zopen_facade.$(OBJEXT)
+	ugrep-settings.$(OBJEXT) ugrep-stats.$(OBJEXT) \
+	ugrep-vkey.$(OBJEXT) ugrep-zopen_facade.$(OBJEXT)
 ugrep_OBJECTS = $(am_ugrep_OBJECTS)
 am__DEPENDENCIES_1 =
 am__dirstamp = $(am__leading_dot)dirstamp
 am_ugrep_indexer_OBJECTS =  \
 	$(top_builddir)/lib/ugrep_indexer-input.$(OBJEXT) \
 	ugrep_indexer-ugrep-indexer.$(OBJEXT) \
-	ugrep_indexer-ugrep-indexer_facade.$(OBJEXT) \
 	ugrep_indexer-glob_facade.$(OBJEXT) \
 	ugrep_indexer-zopen_facade.$(OBJEXT)
 ugrep_indexer_OBJECTS = $(am_ugrep_indexer_OBJECTS)
@@ -145,12 +144,11 @@ am__depfiles_remade =  \
 	$(top_builddir)/lib/$(DEPDIR)/ugrep_indexer-input.Po \
 	./$(DEPDIR)/ugrep-cnf.Po ./$(DEPDIR)/ugrep-glob_facade.Po \
 	./$(DEPDIR)/ugrep-output.Po ./$(DEPDIR)/ugrep-query.Po \
-	./$(DEPDIR)/ugrep-screen.Po ./$(DEPDIR)/ugrep-settings.Po ./$(DEPDIR)/ugrep-stats.Po \
-	./$(DEPDIR)/ugrep-ugrep.Po ./$(DEPDIR)/ugrep-vkey.Po \
-	./$(DEPDIR)/ugrep-zopen_facade.Po \
+	./$(DEPDIR)/ugrep-screen.Po ./$(DEPDIR)/ugrep-settings.Po \
+	./$(DEPDIR)/ugrep-stats.Po ./$(DEPDIR)/ugrep-ugrep.Po \
+	./$(DEPDIR)/ugrep-vkey.Po ./$(DEPDIR)/ugrep-zopen_facade.Po \
 	./$(DEPDIR)/ugrep_indexer-glob_facade.Po \
 	./$(DEPDIR)/ugrep_indexer-ugrep-indexer.Po \
-	./$(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Po \
 	./$(DEPDIR)/ugrep_indexer-zopen_facade.Po
 am__mv = mv -f
 AM_V_lt = $(am__v_lt_@AM_V@)
@@ -395,8 +393,8 @@ ugrep_SOURCES = \
 	query.cpp \
 	screen.hpp \
 	screen.cpp \
-	stats.hpp \
 	settings.cpp \
+	stats.hpp \
 	stats.cpp \
 	tui_entry.hpp \
 	vkey.hpp \
@@ -427,9 +425,6 @@ ugrep_indexer_SOURCES = \
 	$(top_srcdir)/include/reflex/utf8.h \
 	$(top_srcdir)/lib/input.cpp \
 	ugrep-indexer.cpp \
-	ugrep-indexer_facade.cpp \
-	ugrep-indexer_seam.h \
-	indexer_rust.hpp \
 	glob.hpp \
 	glob_rust.hpp \
 	glob_facade.cpp \
@@ -562,7 +557,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ugrep-zopen_facade.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ugrep_indexer-glob_facade.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ugrep_indexer-ugrep-indexer.Po@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ugrep_indexer-zopen_facade.Po@am__quote@ # am--include-marker
 
 $(am__depfiles_remade):
@@ -684,6 +678,7 @@ ugrep-settings.obj: settings.cpp
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='settings.cpp' object='ugrep-settings.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o ugrep-settings.obj `if test -f 'settings.cpp'; then $(CYGPATH_W) 'settings.cpp'; else $(CYGPATH_W) '$(srcdir)/settings.cpp'; fi`
+
 ugrep-stats.o: stats.cpp
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT ugrep-stats.o -MD -MP -MF $(DEPDIR)/ugrep-stats.Tpo -c -o ugrep-stats.o `test -f 'stats.cpp' || echo '$(srcdir)/'`stats.cpp
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ugrep-stats.Tpo $(DEPDIR)/ugrep-stats.Po
@@ -753,20 +748,6 @@ ugrep_indexer-ugrep-indexer.obj: ugrep-indexer.cpp
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='ugrep-indexer.cpp' object='ugrep_indexer-ugrep-indexer.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_indexer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o ugrep_indexer-ugrep-indexer.obj `if test -f 'ugrep-indexer.cpp'; then $(CYGPATH_W) 'ugrep-indexer.cpp'; else $(CYGPATH_W) '$(srcdir)/ugrep-indexer.cpp'; fi`
-
-ugrep_indexer-ugrep-indexer_facade.o: ugrep-indexer_facade.cpp
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_indexer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT ugrep_indexer-ugrep-indexer_facade.o -MD -MP -MF $(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Tpo -c -o ugrep_indexer-ugrep-indexer_facade.o `test -f 'ugrep-indexer_facade.cpp' || echo '$(srcdir)/'`ugrep-indexer_facade.cpp
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Tpo $(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Po
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='ugrep-indexer_facade.cpp' object='ugrep_indexer-ugrep-indexer_facade.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_indexer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o ugrep_indexer-ugrep-indexer_facade.o `test -f 'ugrep-indexer_facade.cpp' || echo '$(srcdir)/'`ugrep-indexer_facade.cpp
-
-ugrep_indexer-ugrep-indexer_facade.obj: ugrep-indexer_facade.cpp
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_indexer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT ugrep_indexer-ugrep-indexer_facade.obj -MD -MP -MF $(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Tpo -c -o ugrep_indexer-ugrep-indexer_facade.obj `if test -f 'ugrep-indexer_facade.cpp'; then $(CYGPATH_W) 'ugrep-indexer_facade.cpp'; else $(CYGPATH_W) '$(srcdir)/ugrep-indexer_facade.cpp'; fi`
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Tpo $(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Po
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='ugrep-indexer_facade.cpp' object='ugrep_indexer-ugrep-indexer_facade.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_indexer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o ugrep_indexer-ugrep-indexer_facade.obj `if test -f 'ugrep-indexer_facade.cpp'; then $(CYGPATH_W) 'ugrep-indexer_facade.cpp'; else $(CYGPATH_W) '$(srcdir)/ugrep-indexer_facade.cpp'; fi`
 
 ugrep_indexer-glob_facade.o: glob_facade.cpp
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(ugrep_indexer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT ugrep_indexer-glob_facade.o -MD -MP -MF $(DEPDIR)/ugrep_indexer-glob_facade.Tpo -c -o ugrep_indexer-glob_facade.o `test -f 'glob_facade.cpp' || echo '$(srcdir)/'`glob_facade.cpp
@@ -942,7 +923,6 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/ugrep-zopen_facade.Po
 	-rm -f ./$(DEPDIR)/ugrep_indexer-glob_facade.Po
 	-rm -f ./$(DEPDIR)/ugrep_indexer-ugrep-indexer.Po
-	-rm -f ./$(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Po
 	-rm -f ./$(DEPDIR)/ugrep_indexer-zopen_facade.Po
 	-rm -f Makefile
 distclean-am: clean-am distclean-compile distclean-generic \
@@ -1002,7 +982,6 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/ugrep-zopen_facade.Po
 	-rm -f ./$(DEPDIR)/ugrep_indexer-glob_facade.Po
 	-rm -f ./$(DEPDIR)/ugrep_indexer-ugrep-indexer.Po
-	-rm -f ./$(DEPDIR)/ugrep_indexer-ugrep-indexer_facade.Po
 	-rm -f ./$(DEPDIR)/ugrep_indexer-zopen_facade.Po
 	-rm -f Makefile
 maintainer-clean-am: distclean-am maintainer-clean-generic
@@ -1041,7 +1020,7 @@ uninstall-am: uninstall-binPROGRAMS
 
 .PHONY: rust-umbrella
 rust-umbrella:
-	cd $(abs_top_srcdir)/rust && CPP2RUST_CODECS_FROM_LINKER=1 CPP2RUST_CODEC_LIBS=@RUST_CODEC_LIBS@ $(CARGO) build --release --locked -p rust_umbrella @RUST_FEATURES@ @RUST_TARGET@ --target-dir $(RUST_CARGO_DIR)
+	cd $(abs_top_srcdir)/rust && PLATFORM="$(PLATFORM)" CPP2RUST_CODECS_FROM_LINKER=1 CPP2RUST_CODEC_LIBS=@RUST_CODEC_LIBS@ $(CARGO) build --release --locked -p rust_umbrella @RUST_FEATURES@ @RUST_TARGET@ --target-dir $(RUST_CARGO_DIR)
 $(RUST_UMBRELLA): rust-umbrella
 clean-local:
 	rm -rf $(RUST_CARGO_DIR)
