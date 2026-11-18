@@ -21,6 +21,8 @@ pub struct Consts {
     pub auto: *const c_char,
     /// DEFAULT_GREP_COLORS.
     pub default_grep_colors: Vec<u8>,
+    /// The same string as a pointer that lives for the whole run (`flag_hyperlink` may point into it).
+    pub default_grep_colors_ptr: *const c_char,
     /// `OS_WIN_OR_MINGW`.
     pub os_win: bool,
     /// The path separator character, `PATHSEPCHR`.
@@ -278,14 +280,14 @@ fn parse_colors(s: &mut Settings, h: &mut dyn Host, c: &Consts) {
         (Some(colors), _) => (c_str(colors).to_vec(), leak(colors)),
         // if GREP_COLOR is defined but not GREP_COLORS, use it
         (None, Some(color)) => (c_str(color).to_vec(), leak(color)),
-        (None, None) => (c.default_grep_colors.clone(), std::ptr::null()),
+        (None, None) => (c.default_grep_colors.clone(), c.default_grep_colors_ptr),
     };
 
     // parse deprecated GREP_COLOR format with ANSI SGR codes for matched text only
     if !grep_colors.contains(&b'=') {
         // use default colors then override matched text color with the specified color
         deprecated_grep_colors = std::mem::replace(&mut grep_colors, c.default_grep_colors.clone());
-        grep_colors_ptr = std::ptr::null();
+        grep_colors_ptr = c.default_grep_colors_ptr;
     }
 
     // parse GREP_COLORS
@@ -449,6 +451,7 @@ mod tests {
             always: c"always".as_ptr(),
             auto: c"auto".as_ptr(),
             default_grep_colors: b"mt=1;31:fn=1;35".to_vec(),
+            default_grep_colors_ptr: c"mt=1;31:fn=1;35".as_ptr(),
             os_win: false,
             pathsep: b'/',
         }
@@ -536,6 +539,17 @@ mod tests {
         terminal(&mut s, &mut h, &c);
         assert_eq!(h.link, Some((b"box".to_vec(), b"work/dir".to_vec(), b"file".to_vec())));
         assert!(!s.color_hl.is_null() && !s.flag_hyperlink_line);
+    }
+
+    #[test]
+    fn hl_in_default_colors_points_into_the_default_string() {
+        let (mut s, mut h, mut c) = (settings(), Mock::default(), consts());
+        c.default_grep_colors = b"mt=1;31:hl=vscode".to_vec();
+        c.default_grep_colors_ptr = c"mt=1;31:hl=vscode".as_ptr();
+        s.flag_color = c"always".as_ptr();
+        terminal(&mut s, &mut h, &c);
+        assert_eq!(s.flag_hyperlink, c.default_grep_colors_ptr.wrapping_add(3));
+        assert_eq!(h.link.map(|l| l.2), Some(b"1".to_vec()));
     }
 
     #[test]

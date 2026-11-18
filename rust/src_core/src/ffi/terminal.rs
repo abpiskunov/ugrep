@@ -204,6 +204,7 @@ unsafe fn consts(env: &TerminalEnv) -> Consts {
         auto: env.auto,
         // SAFETY: see above.
         default_grep_colors: unsafe { CStr::from_ptr(env.default_grep_colors) }.to_bytes().to_vec(),
+        default_grep_colors_ptr: env.default_grep_colors,
         os_win: env.os_win != 0,
         pathsep: u8::try_from(env.pathsep).unwrap_or(b'/'),
     }
