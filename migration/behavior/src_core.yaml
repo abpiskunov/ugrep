@@ -877,9 +877,9 @@ uncovered:
   - {region: "src/ugrep.cpp init() -Q: the no-TTY query path (CONIN$/CONOUT$ opened, tui_query), and the query UI with a terminal", reason: unreachable, note: "the recorded -Q case (core-init-query-flag-no-tty) is `-Q --no-config foo`: foo is a missing file, so init() exits 2 before tui_query; a -Q run with a valid pattern reaches tui_query, which opens CONIN$/CONOUT$ and needs a console, so it is not covered; proposed mask: none (needs a ConPTY harness); Triage decision"}
   - {region: "src/ugrep.cpp init(): program-name branches (ug, ug+, ugrep-indexer, grep, egrep, fgrep, zgrep, ...)", reason: deferred, note: "the harness fixes argv[0] as ugrep.exe; needs a per-case argv0 or a renamed binary copy; proposed mask: none"}
   - {region: "src/ugrep.cpp init(): ~ expansion with USERPROFILE and HOME both unset (crash, access violation)", reason: excluded, note: "crashes the C++, the harness always sets USERPROFILE; listed as suspicious for Triage; no recorded case"}
-    - {region: "src/ugrep.cpp init(): --hexdump=A/B/C followed by a non-digit (`Ax`, `C-`), C++ loops forever", reason: excluded, note: "hangs the C++ reference; decision D-src_core-hexdump (bug-fix): Rust calls usage (exit 2, same message as the context-0 invalid forms); covered by Rust unit tests, no surface case"}
+  - {region: "src/ugrep.cpp init(): --hexdump=A/B/C followed by a non-digit (`Ax`, `C-`), C++ loops forever", reason: excluded, note: "hangs the C++ reference; decision D-src_core-hexdump (bug-fix): Rust calls usage (exit 2, same message as the context-0 invalid forms); covered by Rust unit tests, no surface case"}
 
-  discovery:
+discovery:
   rounds:
     - {round: 1, source: seam-driver+surface-proposed, new_cases: 375, new_coverage: 0, new_behaviors: 36, note: "CNF, options, config, threads, formats, output; recorded 3x, flaky 0"}
     - {round: 2, source: llm-proposed, new_cases: 71, new_coverage: 0, new_behaviors: 0, note: "--stats cases; time noise proposed as mask, pending approval"}
