@@ -871,7 +871,7 @@ behaviors:
     suspicious: true
     why: "a hang cannot be preserved; the fix reuses the existing usage message and exit code (operator decision on PR #81)"
 
-  - id: B-src_core-127
+  - id: B-src_core-128
     statement: "`--help` and `-?` print the whole help text (usage line, option list, the trailer `Specify `ugrep --help WHAT' for help on WHAT.`) to standard output with empty standard error and exit 2; `-s`, `-q`, `--color=always`, `--no-config`, `--help=` and `--help ''` print the same text. The text is recorded in migration/corpus/src_core/help/help.txt"
     kind: normal
     status: hypothesis
@@ -879,19 +879,19 @@ behaviors:
     origin: capture
     suspicious: true
     why: "help is a successful request but exits 2 (EXIT_ERROR), while `--version` exits 0; a script cannot tell the help from a usage error"
-  - id: B-src_core-128
+  - id: B-src_core-129
     statement: "`--help WHAT` (also `--help=WHAT`, `--WHAT`, `-WHAT`, `--no-WHAT`) prints `\\nOptions and arguments:\\n\\n` and every option entry whose option line or text contains WHAT, matched without regard to case, to standard output with exit 2; WHAT may be a long option, a short option or a word (`format`, `col`, `binary files`, `%`, `?`)"
     kind: normal
     status: observed
     evidence: ["case:hm-help-what-uppercase", "case:hm-help-what-prefix", "case:hm-help-what-eq", "case:hm-help-what-eq-dash", "case:hm-help-what-eq-no", "case:hm-help-what-text", "case:hm-help-what-percent", "case:hm-help-what-question", "case:hm-help-what-no-filename", "case:hm-help-what-l-context", "case:hm-help-what-l-format", "case:hm-help-what-l-color", "case:hm-help-eqwhat-bool", "case:hm-help-nowhat-bool", "case:hm-help-what-s-A"]
     origin: capture
-  - id: B-src_core-129
+  - id: B-src_core-130
     statement: "`--help WHAT` with no option matching WHAT prints `ugrep --help: nothing appropriate for WHAT` and an empty line to standard output, exit 2; only the first WHAT counts and any further word (a PATTERN, a FILE, another WHAT) is ignored"
     kind: edge-case
     status: observed
     evidence: ["case:hm-help-what-nomatch", "case:hm-help-then-pattern", "case:hm-help-two", "case:hm-help-what-and-more"]
     origin: capture
-  - id: B-src_core-130
+  - id: B-src_core-131
     statement: "WHAT starting with `--no` loses those four characters even when no `-` follows: `--help --nosuchoption` reports WHAT `suchoption`, `--help --no-such-option` reports `-such-option`, and `--help --no` shows the whole help like a missing WHAT"
     kind: edge-case
     status: hypothesis
@@ -899,7 +899,7 @@ behaviors:
     origin: capture
     suspicious: true
     why: "the `--no` strip is meant for `--no-WHAT` but also eats the start of any WHAT beginning with `--no`; the message names a word the user did not type"
-  - id: B-src_core-131
+  - id: B-src_core-132
     statement: "`--help --` and `--help -` print `\\nOptions and arguments:\\n` followed directly by the whole help text (no blank line after the heading), exit 2"
     kind: edge-case
     status: hypothesis
@@ -907,37 +907,37 @@ behaviors:
     origin: capture
     suspicious: true
     why: "a WHAT of dashes matches the first option line and prints from there to the end of the text under a heading that promises one option"
-  - id: B-src_core-132
+  - id: B-src_core-133
     statement: "`--help WHAT` where WHAT matches only in the option text of other options (`--help -]`) prints `\\nNo matching option, other relevant options:\\n\\n` and the options that mention it, exit 2"
     kind: edge-case
     status: observed
     evidence: ["case:hm-usage-help-then-bad"]
     origin: capture
-  - id: B-src_core-133
+  - id: B-src_core-134
     statement: "`--version` and `-V` print four lines to standard output (`ugrep VERSION PLATFORM +SIMD`, the license, author and RE/flex lines) and exit 0; `-s`, `-q`, `-E`, `-F`, `-G`, `-P`, `-Z`, `-v`, `-n`, `--color=always`, a PATTERN and files do not change it, and standard error stays empty. The SIMD word (+avx2 here) is host dependent and rewritten by D-version-simd"
     kind: normal
     status: observed
     evidence: ["case:hm-version", "case:hm-version-V", "case:hm-version-V-pattern", "case:hm-version-s", "case:hm-version-q", "case:hm-version-color", "case:hm-version-mode-E", "case:hm-version-mode-F", "case:hm-version-mode-G", "case:hm-version-mode-P", "case:hm-version-mode-Z", "case:hm-version-no-config", "case:hm-version-verbose", "case:hm-version-stdin", "case:hm-version-cluster", "case:hm-version-cluster2", "case:hm-version-pager", "case:hm-exit-version"]
     origin: capture
-  - id: B-src_core-134
+  - id: B-src_core-135
     statement: "`--version` acts when the option parser reaches it: before a bad option it prints the version and exits 0 (also `--version --help`, which prints the version only), after a bad option the usage error exits 2; `version` in a config file prints the version and exits 0"
     kind: ordering
     status: observed
     evidence: ["case:hm-version-after-help", "case:hm-version-after-bad", "case:hm-usage-bad-then-good", "case:hm-usage-config-version"]
     origin: capture
-  - id: B-src_core-135
+  - id: B-src_core-136
     statement: "`--vers`, `--ver` and `--version=1` are invalid options: exit 2 and `invalid option --vers, did you mean --view or --version?`"
     kind: edge-case
     status: observed
     evidence: ["case:hm-version-prefix", "case:hm-version-prefix-ver", "case:hm-version-eq"]
     origin: capture
-  - id: B-src_core-136
+  - id: B-src_core-137
     statement: "usage() for an unknown long option writes `ugrep: invalid option --X, did you mean A, B or C?` (the long options that share the typed prefix, `=` kept for options with an argument) and `For more help, run `ugrep --help' or `ugrep --help WHAT'` to standard error, nothing to standard output, exit 2; `-s`, `-q`, `--color=always` and a config file change neither text nor exit code"
     kind: error
     status: observed
     evidence: ["case:hm-usage-unknown-long", "case:hm-usage-unknown-long-eq", "case:hm-usage-unknown-long-suggest", "case:hm-usage-unknown-long-suggest2", "case:hm-usage-unknown-long-suggest3", "case:hm-usage-unknown-long-suggest4", "case:hm-usage-ambiguous", "case:hm-usage-ambiguous2", "case:hm-usage-ambiguous3", "case:hm-usage-bad-s", "case:hm-usage-bad-q", "case:hm-usage-bad-color", "case:hm-usage-bad-stdin", "case:hm-usage-config-bad", "case:hm-usage-config-bad-s", "case:hm-exit-usage", "case:hm-exit-usage-q", "case:hm-exit-usage-s"]
     origin: capture
-  - id: B-src_core-137
+  - id: B-src_core-138
     statement: "The `did you mean` list of an unknown option prints the option `--context-separator=` as `context-separator=`, without its leading `--` (`--colr` suggests `--context=, context-separator=, --count`)"
     kind: edge-case
     status: hypothesis
@@ -945,25 +945,25 @@ behaviors:
     origin: capture
     suspicious: true
     why: "a typo in the suggestion table: the suggested option name is not usable as printed"
-  - id: B-src_core-138
+  - id: B-src_core-139
     statement: "usage() for an unknown short option writes `ugrep: invalid option -X` and `For more help, run `ugrep --help' or `ugrep --help -X'` to standard error, exit 2; in a cluster the first unknown letter is named (`-n_` names `-_`) and with two unknown options only the first is reported"
     kind: error
     status: observed
     evidence: ["case:hm-usage-unknown-short", "case:hm-usage-unknown-short-2", "case:hm-usage-unknown-cluster", "case:hm-usage-two-errors", "case:hm-usage-help-then-bad"]
     origin: capture
-  - id: B-src_core-139
+  - id: B-src_core-140
     statement: "usage() for an invalid option value writes `ugrep: invalid argument --OPT=VALUE, valid arguments are ...` and `For more help, run `ugrep --help' or `ugrep --help --OPT'` to standard error, exit 2; the same in a config file"
     kind: error
     status: observed
     evidence: ["case:hm-usage-invalid-value", "case:hm-usage-invalid-value-list", "case:hm-usage-invalid-value-dir", "case:hm-usage-invalid-value-dev", "case:hm-usage-invalid-value-hexdump", "case:hm-usage-invalid-value-type", "case:hm-usage-invalid-value-tabs", "case:hm-usage-invalid-value-zmax", "case:hm-usage-invalid-value-context", "case:hm-usage-invalid-value-maxcount", "case:hm-usage-invalid-value-jobs", "case:hm-usage-invalid-value-sort", "case:hm-usage-invalid-value-width", "case:hm-usage-invalid-value-encoding", "case:hm-usage-config-bad-value", "case:hm-usage-config-bad-warn-then-search"]
     origin: capture
-  - id: B-src_core-140
+  - id: B-src_core-141
     statement: "A command without PATTERN (`ugrep`, `ugrep -n`, `ugrep -r`, with stdin text) writes `ugrep: no search PATTERN specified` and the Examples block to standard error, exit 2; a missing value of `-A`/`--context` at the end of the command line is the same error because the option consumes nothing"
     kind: error
     status: observed
     evidence: ["case:hm-usage-no-pattern", "case:hm-usage-no-pattern-opt", "case:hm-usage-no-pattern-r", "case:hm-usage-no-pattern-stdin", "case:hm-usage-missing-arg", "case:hm-usage-missing-arg-long", "case:hm-usage-missing-arg-long-last"]
     origin: capture
-  - id: B-src_core-141
+  - id: B-src_core-142
     statement: "A missing `-e` argument at the end of the command line is not an error: the pattern list is empty, standard input is searched and nothing matches (exit 1, no output); `-f` at the end behaves the same way"
     kind: edge-case
     status: hypothesis
@@ -971,109 +971,109 @@ behaviors:
     origin: capture
     suspicious: true
     why: "every other option reports a missing argument as a usage error"
-  - id: B-src_core-142
+  - id: B-src_core-143
     statement: "`---` and `--9` are not rejected: the first non-option word is taken as PATTERN and the search runs (exit 0 on a match)"
     kind: edge-case
     status: observed
     evidence: ["case:hm-usage-unknown-dashes", "case:hm-usage-unknown-dash-digit"]
     origin: capture
-  - id: B-src_core-143
+  - id: B-src_core-144
     statement: "warning() for a file that cannot be opened writes `ugrep: warning: NAME: No such file or directory` to standard error (NAME as typed, including an empty name, spaces, a glob that matches nothing or a long name), the search continues with the other files, and the exit code is 2 even when other files matched"
     kind: error
     status: observed
     evidence: ["case:hm-warn-nofile", "case:hm-warn-nofile-match", "case:hm-warn-nofile-first", "case:hm-warn-nofile-three", "case:hm-warn-nofile-stdin", "case:hm-warn-nofile-e", "case:hm-warn-nofile-empty-name", "case:hm-warn-nofile-space-name", "case:hm-warn-nofile-long-name", "case:hm-warn-nofile-dir-name", "case:hm-warn-glob-nomatch", "case:hm-warn-nofile-c", "case:hm-warn-nofile-l", "case:hm-warn-nofile-L", "case:hm-warn-nofile-json", "case:hm-warn-nofile-r", "case:hm-warn-nofile-j2", "case:hm-exit-error", "case:hm-exit-error-match", "case:hm-exit-error-nomatch", "case:hm-exit-recurse-nodir"]
     origin: capture
-  - id: B-src_core-144
+  - id: B-src_core-145
     statement: "`-s` and `--no-messages` remove the warning text but not the exit code 2; `-q` prints no warning and exits 2 when a file could not be read, whether the match came before or after the missing file (`-q` with a match and no error exits 0)"
     kind: edge-case
     status: observed
     evidence: ["case:hm-warn-nofile-s", "case:hm-warn-nofile-s-match", "case:hm-warn-nofile-q", "case:hm-warn-nofile-q-match", "case:hm-warn-nofile-q-match-first", "case:hm-warn-no-messages-long", "case:hm-exit-s-error", "case:hm-exit-s-error-match", "case:hm-exit-q-error", "case:hm-exit-q-error-match", "case:hm-exit-q-match-error", "case:hm-exit-s-q-error", "case:hm-exit-q-match"]
     origin: capture
-  - id: B-src_core-145
+  - id: B-src_core-146
     statement: "With `--color=always` the warning is `ESC[mugrep: warning:ESC[m NAME:ESC[m No such file or directoryESC[m`: the colour-off sequence is written even though warning, message and highlight colours are empty; `--colors` changes nothing on this line"
     kind: normal
     status: observed
     evidence: ["case:hm-warn-nofile-color", "case:hm-warn-nofile-color-multi", "case:hm-warn-nofile-colors", "case:hm-warn-nofile-colors2", "case:hm-isdir-read-color", "case:hm-isdir-read-colors"]
     origin: capture
-  - id: B-src_core-146
+  - id: B-src_core-147
     statement: "is_directory(): with `-d read` (`--directories=read`, or `directories=read` in a config file) each directory argument writes `ugrep: NAME is a directory` to standard error (NAME as typed: `d/`, `.`, `d\\`, `.hid`, with spaces, non-ASCII) and is skipped; the other files are searched; exit 1 if nothing matched, 0 if a file matched; `-s` and `-q` print no message; with `--color=always` the text is `ESC[mugrep: NAMEESC[m is a directory`"
     kind: normal
     status: observed
     evidence: ["case:hm-isdir-read", "case:hm-isdir-read-long", "case:hm-isdir-read-s", "case:hm-isdir-read-q", "case:hm-isdir-read-q-match", "case:hm-isdir-read-color", "case:hm-isdir-read-match", "case:hm-isdir-read-two", "case:hm-isdir-read-three", "case:hm-isdir-read-nested", "case:hm-isdir-read-trailing-slash", "case:hm-isdir-read-trailing-bs", "case:hm-isdir-read-dot", "case:hm-isdir-read-dotdot", "case:hm-isdir-read-space", "case:hm-isdir-read-unicode", "case:hm-isdir-read-json", "case:hm-isdir-read-count", "case:hm-isdir-read-list", "case:hm-isdir-read-L", "case:hm-isdir-read-stdin", "case:hm-isdir-read-hidden", "case:hm-isdir-read-hidden-opt", "case:hm-isdir-read-glob", "case:hm-isdir-read-bin", "case:hm-isdir-config-read", "case:hm-isdir-config-read-s", "case:hm-exit-dir-read-nomatch", "case:hm-exit-dir-read-match"]
     origin: capture
-  - id: B-src_core-147
+  - id: B-src_core-148
     statement: "Without `-d read`, a directory argument is searched (default), skipped (`-d skip`) or recursed (`-d recurse`, `-r`) and never reports `is a directory`; `--exclude-dir`, `--include-dir` and `-g` with `-d read` leave the message as is"
     kind: normal
     status: observed
     evidence: ["case:hm-isdir-skip", "case:hm-isdir-skip-q", "case:hm-isdir-recurse", "case:hm-isdir-default", "case:hm-isdir-default-match", "case:hm-isdir-default-r-empty", "case:hm-isdir-read-exclude-dir", "case:hm-isdir-read-include-dir", "case:hm-isdir-read-glob-opt", "case:hm-exit-dir-match", "case:hm-exit-dir-nomatch"]
     origin: capture
-  - id: B-src_core-148
+  - id: B-src_core-149
     statement: "`-z`/`--decompress` is not available in the recorded build (HAVE_LIBZ undefined in Base-Release): every format and every combination of options exits 2 with `ugrep: option -z is not available in this build configuration of ugrep` and the `For more help ... --help -z'` line, so cannot_decompress() is never called"
     kind: error
     status: observed
     evidence: ["case:hm-decomp-gz", "case:hm-decomp-bz2", "case:hm-decomp-xz", "case:hm-decomp-lz4", "case:hm-decomp-zst", "case:hm-decomp-zip", "case:hm-decomp-7z", "case:hm-decomp-tar", "case:hm-decomp-gz-s", "case:hm-decomp-gz-q", "case:hm-decomp-gz-color", "case:hm-decomp-gz-multi", "case:hm-decomp-gz-r", "case:hm-decomp-gz-trunc-header", "case:hm-decomp-gz-empty", "case:hm-decomp-gz-text", "case:hm-decomp-zzz", "case:hm-decomp-long", "case:hm-decomp-zmax", "case:hm-decomp-stats", "case:hm-decomp-stdin", "case:hm-decomp-bad-then-good", "case:hm-exit-null-data"]
     origin: capture
-  - id: B-src_core-149
+  - id: B-src_core-150
     statement: "`--no-decompress` and a corrupt file without `-z` search the bytes as a binary or text file; no decompression error is reported"
     kind: normal
     status: observed
     evidence: ["case:hm-decomp-no-decompress", "case:hm-decomp-nested-name"]
     origin: capture
-  - id: B-src_core-150
+  - id: B-src_core-151
     statement: "abort(message, what): a pattern the regex compiler rejects stops the run with `ugrep: error: error at position N`, the pattern shown as `(?m)PATTERN`, a `\\___` pointer line with the reason (`mismatched ( )`, `exceeds complexity limits`), two empty lines, all on standard error, exit 2; `-q` and `-s` do not silence it; no output on standard output"
     kind: error
     status: observed
     evidence: ["case:hm-abort-pager-bad-regex", "case:hm-abort-regex-too-big", "case:hm-abort-regex-too-big2", "case:hm-exit-bad-regex", "case:hm-exit-bad-regex-q", "case:hm-exit-bad-regex-s", "case:hm-usage-bad-regex", "case:hm-usage-bad-regex-ere", "case:hm-usage-bad-regex-bracket", "case:hm-usage-bad-regex-star", "case:hm-usage-bad-regex-perl"]
     origin: capture
-  - id: B-src_core-151
+  - id: B-src_core-152
     statement: "error(): an unreadable `-f FILE` (a missing file or a directory) writes `ugrep: error: option -f: cannot read NAME` and an empty line to standard error, exit 2; `--save-config` to an unwritable path writes `ugrep: saving configuration file PATH` and `ugrep: cannot save configuration file PATH` and the `--help WHAT` hint, exit 2"
     kind: error
     status: observed
     evidence: ["case:hm-warn-dash-file-missing", "case:hm-isdir-dir-as-file-f", "case:hm-abort-save-config-readonly"]
     origin: capture
-  - id: B-src_core-152
+  - id: B-src_core-153
     statement: "`--pager=PROGRAM` has no effect when standard output is a pipe: the matches are written to standard output, the warning stays on standard error, exit 0/1/2 as without the option, even for a program that does not exist; so error(`cannot open pipe to pager`) and abort(`option --pager: warnings are present`) are not reached without a terminal"
     kind: edge-case
     status: observed
     evidence: ["case:hm-abort-pager-warning", "case:hm-abort-pager-warning-s", "case:hm-abort-pager-nosuch", "case:hm-abort-pager-nosuch-nomatch", "case:hm-abort-pager-nosuch-s", "case:hm-abort-pager-quote", "case:hm-abort-pager-q", "case:hm-abort-pager-count", "case:hm-abort-pager-dir", "case:hm-abort-pager-version", "case:hm-abort-pager-config-warning", "case:hm-abort-pager-color", "case:hm-abort-pager-nofile-only"]
     origin: capture
-  - id: B-src_core-153
+  - id: B-src_core-154
     statement: "`-Q` without a terminal behaves like an ordinary search (warnings about missing files, exit 2, no query UI), `-Q -s` exits 2 without a message"
     kind: edge-case
     status: observed
     evidence: ["case:hm-abort-query-warning", "case:hm-abort-query-warning-s", "case:hm-abort-query-bad-option", "case:hm-abort-query-config-warning", "case:hm-warn-nofile-Q", "case:hm-warn-nofile-Q-s"]
     origin: capture
-  - id: B-src_core-154
+  - id: B-src_core-155
     statement: "`--filter=EXT:COMMAND` with a command that cannot be started writes `ugrep: warning: --filter: cannot create process for command COMMAND: No such file or directory` to standard error and exits 2; a `--filter` value without `:` is accepted and the search runs"
     kind: error
     status: observed
     evidence: ["case:hm-abort-filter-nosuch", "case:hm-abort-filter-nosuch-s", "case:hm-abort-filter-nosuch-multi", "case:hm-abort-filter-bad-spec"]
     origin: capture
-  - id: B-src_core-155
+  - id: B-src_core-156
     statement: "Exit codes of a search: 0 when something matched (also `-v`, `-L` on a file without the pattern, `-c` with a count, `-m 0`, `--json`), 1 when nothing matched (also an empty file or empty stdin, `-L` on a matching file, `-I` on a binary file), 2 when any error was reported (usage, regex, unreadable file, `-f`, `-z`), which wins over a match and over `-q`"
     kind: normal
     status: observed
     evidence: ["case:hm-exit-match", "case:hm-exit-nomatch", "case:hm-exit-q-match", "case:hm-exit-q-nomatch", "case:hm-exit-s-nomatch", "case:hm-exit-v-match", "case:hm-exit-v-nomatch", "case:hm-exit-c-nomatch", "case:hm-exit-c-match", "case:hm-exit-l-nomatch", "case:hm-exit-L-match", "case:hm-exit-L-nomatch", "case:hm-exit-empty-pattern", "case:hm-exit-empty-file", "case:hm-exit-empty-file-v", "case:hm-exit-empty-file-empty-pattern", "case:hm-exit-stdin-match", "case:hm-exit-stdin-nomatch", "case:hm-exit-stdin-empty", "case:hm-exit-stdin-dash", "case:hm-exit-max-count-0", "case:hm-exit-max-count-1", "case:hm-exit-no-match-flag", "case:hm-exit-recurse-match", "case:hm-exit-recurse-nomatch", "case:hm-exit-binary-match", "case:hm-exit-binary-nomatch", "case:hm-exit-I-binary", "case:hm-exit-json-nomatch", "case:hm-exit-json-match", "case:hm-exit-format-nomatch", "case:hm-exit-tree-match", "case:hm-exit-files-with-matches-error", "case:hm-exit-count-error", "case:hm-exit-help", "case:hm-exit-exit-error-match"]
     origin: capture
-  - id: B-src_core-156
+  - id: B-src_core-157
     statement: "`--exit-error` and `--no-exit-error` are not options of this version: they are invalid options (exit 2) with the suggestion list"
     kind: edge-case
     status: observed
     evidence: ["case:hm-exit-exit-error-match", "case:hm-exit-exit-error-nomatch", "case:hm-exit-exit-error-warn", "case:hm-exit-exit-error-warn-q", "case:hm-exit-exit-error-warn-s", "case:hm-exit-no-exit-error", "case:hm-warn-exit-error-match"]
     origin: capture
-  - id: B-src_core-157
+  - id: B-src_core-158
     statement: "Standard output of a search is written with bare LF (`\\n`) but help, version and every message on standard error are written by iostreams/stdio in text mode, so the recorded Windows output has CRLF (`\\r\\n`) for them"
     kind: edge-case
     status: observed
     evidence: ["case:hm-help", "case:hm-version", "case:hm-usage-unknown-long", "case:hm-isdir-read", "case:hm-warn-nofile", "case:hm-exit-match"]
     origin: capture
-  - id: B-src_core-158
+  - id: B-src_core-159
     statement: "Value checks of `-Z`, `--max-line`, `--hyperlink` and `--colors`: an out of range fuzzy (`-Z99999`) or `--max-line=0` exits 2 with `invalid argument`, while `--hyperlink=%` and `--colors=zz=1` are accepted silently and the search runs (exit 0)"
     kind: edge-case
     status: observed
     evidence: ["case:hm-abort-fuzzy-big", "case:hm-abort-max-line", "case:hm-usage-invalid-value-hyperlink", "case:hm-usage-invalid-value-colors", "case:hm-abort-regex-nested"]
     origin: capture
-  - id: B-src_core-159
+  - id: B-src_core-160
     statement: "`--index` on a directory without an index, `--format` with an unterminated `%{` and a deeply nested regex group are not errors: the search runs and exits 0"
     kind: edge-case
     status: observed
