@@ -459,7 +459,7 @@ behaviors:
   - id: B-src_core-066
     statement: "`---FILE` is ugrep's documented shorthand for `--config=FILE` (src/ugrep.cpp:6222): `---foo` with no such file fails with `option --config: cannot read foo: No such file or directory`, exit 2"
     kind: edge-case
-    status: observed
+    status: intended
     decision: Q-core-8
     evidence: ["case:opc-err-triple-dash"]
     origin: capture
@@ -541,7 +541,7 @@ behaviors:
   - id: B-src_core-079
     statement: "`--save-config=DIR` with an existing directory writes the configuration to `DIR` as a file (4081 bytes) and renames the old directory to `DIR.old`; stderr has `saved old configuration file to DIR.old: File exists` and `updating configuration file DIR`, exit 0. `File exists` is the normal rename message (save_config sets errno = EEXIST on purpose, src/ugrep.cpp:4851-4866) and also appears for an existing plain file (opc-save-overwrite)"
     kind: edge-case
-    status: observed
+    status: intended
     decision: Q-core-10
     evidence: ["case:opc-save-to-dir"]
     origin: capture
