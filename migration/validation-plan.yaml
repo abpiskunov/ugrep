@@ -107,6 +107,7 @@ compare:
   differences:
     - {id: D-zopen-1, behavior: B-src_leaves-041, decision: Q-zopen-6, note: "C++ segfaults on zopen handle misuse; Rust returns -1 or 0. Not replayable; Rust-side tests only"}
     - {id: D-src_core-1, behavior: B-src_core-039, decision: Q-core-3, note: "C++ is non-deterministic on -f two-patterns --and (sometimes bad allocation, exit 2; UB); Rust always gives the normal match result. Not in the corpus"}
+    - {id: D-src_core-2, behavior: B-src_core-115, decision: Q-core-115, note: "C++ crashes (access violation) on a ~ path with HOME and USERPROFILE unset; Rust reports cannot read and exits 2. Not in the corpus (the runner always sets the variable)"}
 
 policy:
   protected: ["migration/validation-plan.yaml", "migration/masks/*", "migration/harness/*", "rust/*-harness/*",
