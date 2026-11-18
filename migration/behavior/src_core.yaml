@@ -613,10 +613,10 @@ behaviors:
     evidence: ["case:core-color-env-3-0", "case:core-color-env-4-0", "case:core-color-env-5-0", "case:core-color-env-6-0", "case:core-color-env-7-0", "case:core-color-colors-with-grep-color", "case:core-color-colors-deprecated-env-colors"]
     origin: capture
   - id: B-src_core-091
-    statement: "`--colors=` overrides GREP_COLORS per capability; a value without `=` is the deprecated SGR form and sets mt; with `--colors=` given twice only the last one is used; `--colors=ne` and `--colors=rv` are not letters-only no-ops here (see the suspicious entry on values without `=`)"
+    statement: "`--colors=` overrides GREP_COLORS per capability, but not the deprecated GREP_COLOR: with GREP_COLOR set and GREP_COLORS unset, `--colors=4` and `--colors=mt=4` leave the matches `ESC[1;33m` (only `--colors=ms=4` changes them; with GREP_COLORS also set GREP_COLOR is ignored and `--colors=4` wins; see the suspicious entry on GREP_COLOR); a value without `=` is the deprecated SGR form and sets mt; with `--colors=` given twice only the last one is used; `--colors=ne` and `--colors=rv` are not letters-only no-ops here (see the suspicious entry on values without `=`)"
     kind: normal
     status: observed
-    evidence: ["case:core-color-colors-v-0", "case:core-color-colors-v-1", "case:core-color-colors-v-2", "case:core-color-colors-v-3", "case:core-color-colors-v-4", "case:core-color-colors-v-5", "case:core-color-colors-v-6", "case:core-color-colors-v-7"]
+    evidence: ["case:core-color-colors-v-0", "case:core-color-colors-v-1", "case:core-color-colors-v-2", "case:core-color-colors-v-3", "case:core-color-colors-v-4", "case:core-color-colors-v-5", "case:core-color-colors-v-6", "case:core-color-colors-v-7", "case:core-color-colors-without-grep-color", "case:core-color-colors-eq-without-grep-color", "case:core-color-colors-with-grep-color", "case:core-color-colors-eq-with-grep-color", "case:core-color-colors-ms-with-grep-color", "case:core-color-colors-with-grep-color-and-colors-env"]
     origin: capture
   - id: B-src_core-092
     statement: "set_color maps the letters k r g y b m c w to 30-37 and K R G Y B M C W to 40-47, a leading `+` gives the bright 90-97 and 100-107, h=1, H=21, f=2, u=4, U=24, i=7, I=27, n=0, digits and `;` are copied, `,`, `;` and space separate parameters, unknown letters are ignored; the result is `ESC[`, the parameters and `m`, an empty result clears the colour; `mt=` with nothing recognised gives no colour sequence"
@@ -643,16 +643,16 @@ behaviors:
     evidence: ["case:core-hl-bare", "case:core-hl-nocolor", "case:core-hl-color-never", "case:core-hl-color-auto", "case:core-hl-tag", "case:core-hl-quiet", "case:core-hl-count", "case:core-hl-files", "case:core-hl-heading", "case:core-hl-format", "case:core-hl-column", "case:core-hl-pretty"]
     origin: capture
   - id: B-src_core-096
-    statement: "`hl` or `hl=PREFIX[+]` in GREP_COLORS or `--colors` enables --hyperlink when the option was not given (`hl` alone gives `file`, `hl=X` the prefix X); an explicit `--hyperlink=` wins over both"
+    statement: "`hl=PREFIX[+]` in GREP_COLORS or `--colors` enables --hyperlink when the option was not given (`hl=X` gives the prefix X when it comes first, `hl=` and `hl=+` give `file`; the prefix is read from offset 3 of the whole string, see the suspicious entry); `hl` without `=` enables a link in `--colors` (`--colors=hl`, `--colors=mt=1:hl`, `file`) and after another capability in GREP_COLORS (`mt=1:hl`), but `hl` alone in GREP_COLORS has no `=`, so the string is read as the deprecated SGR codes and no link is written (the cases need -H and two files, otherwise no file name is printed); an explicit `--hyperlink=` wins over both"
     kind: normal
     status: observed
-    evidence: ["case:core-hl-colors-hl-before-flag", "case:core-hl-flag-over-colors", "case:core-hl-env-hl-eq-first", "case:core-hl-colors-hl-env-hl-eq", "case:core-color-env-12-0", "case:core-color-env-13-0", "case:core-color-env-14-0", "case:core-color-env-15-0", "case:core-color-colors-58", "case:core-color-colors-59", "case:core-color-colors-60", "case:core-color-colors-61", "case:core-color-colors-62"]
+    evidence: ["case:core-hl-colors-hl-before-flag-H", "case:core-hl-flag-over-colors-H", "case:core-hl-env-hl-eq-first-H", "case:core-hl-env-hl-eq-lead-H", "case:core-hl-env-hl-eq-lead-plain-H", "case:core-hl-env-hl-eq-lead-empty-H", "case:core-hl-env-hl-eq-lead-file-H", "case:core-hl-env-hl-bare-H", "case:core-hl-env-hl-bare-mt-H", "case:core-hl-colors-hl-eq-lead-H", "case:core-hl-colors-hl-bare-H", "case:core-hl-colors-hl-env-hl-eq-H", "case:core-hl-flag-over-env-hl-eq-H", "case:core-color-env-13-0", "case:core-color-env-14-0", "case:core-color-env-15-0", "case:core-color-colors-58", "case:core-color-colors-59", "case:core-color-colors-60", "case:core-color-colors-61", "case:core-color-colors-62"]
     origin: capture
   - id: B-src_core-097
-    statement: "The hyperlink path is the working directory without a leading separator followed by the printed file name; a file from a sub directory, `sub/../a.txt` and a name with spaces give one link each as recorded; names read from standard input (`-`) are printed without a link when there is no file name"
+    statement: "The hyperlink path is the working directory without a leading separator followed by the printed file name; a file from a sub directory, `sub/../a.txt` (kept unnormalised in the link and in the printed name; needs -H or a second file to print a name), `./a.txt` and a name with spaces give one link each as recorded; names read from standard input (`-`) are printed without a link when there is no file name"
     kind: normal
     status: observed
-    evidence: ["case:core-hl-stdin", "case:core-hl-stdin-dash", "case:core-hl-subdir-path", "case:core-hl-dotdot", "case:core-hl-space-dir"]
+    evidence: ["case:core-hl-stdin", "case:core-hl-stdin-dash", "case:core-hl-subdir-path", "case:core-hl-dotdot-H", "case:core-hl-dotdot-two", "case:core-hl-dotdot-two-dirs", "case:core-hl-space-dir"]
     origin: capture
   - id: B-src_core-098
     statement: "trim() strips leading and trailing white space (space, TAB, CR, LF, VT, FF) from each line of a configuration file; blank, white-space-only and `#` lines (also after leading white space) are skipped; CRLF line endings and a last line without a newline work; the non-breaking space 0xA0 is not trimmed: the option becomes `--\\xa0ignore-case\\xa0` and is rejected with `invalid option` and `error in config file FILE at line N`, exit 2"
@@ -661,10 +661,10 @@ behaviors:
     evidence: ["case:core-trim-config-plain", "case:core-trim-config-pad", "case:core-trim-config-crlf", "case:core-trim-config-mixed", "case:core-trim-config-blank", "case:core-trim-config-comment", "case:core-trim-config-bang", "case:core-trim-config-ws-eq", "case:core-trim-config-empty", "case:core-trim-config-onlyws", "case:core-trim-config-nonl", "case:core-trim-config-opt-arg", "case:core-trim-config-utf8", "case:core-trim-config-bad"]
     origin: capture
   - id: B-src_core-099
-    statement: "A bad option or argument in a configuration file exits 2 with `invalid option --NAME, did you mean ...` (a very long name is printed in full) and `error in config file FILE at line N`; lines such as `max-count=1`, `sort=name`, `regexp=foo` and `file=pats.txt` work after trim; `---FILE` gives the same result as `--config=FILE`"
+    statement: "A bad option or argument in a configuration file exits 2 with `invalid option --NAME, did you mean ...` (a very long name is printed in full) and `error in config file FILE at line N`; lines such as `sort=name` and `regexp=foo` work after trim; `max-count=1` and `file=pats.txt` are accepted but have no effect, because load_config clears flag_max_count and flag_file after parsing (src/ugrep.cpp 4820-4823): with `max-count=1` every matching line is printed, with `file=pats.txt` the first word is still the pattern and the command reads standard input (exit 1); `---FILE` gives the same result as `--config=FILE`"
     kind: error
     status: observed
-    evidence: ["case:core-trim-config-bad", "case:core-trim-config-bad2", "case:core-trim-config-long", "case:core-trim-config-opt-arg", "case:core-trim-config-pat", "case:core-trim-config-file", "case:core-trim-config-dash-plain", "case:core-trim-config-dash-pad"]
+    evidence: ["case:core-trim-config-bad", "case:core-trim-config-bad2", "case:core-trim-config-long", "case:core-trim-config-opt-arg", "case:core-trim-config-pat", "case:core-trim-config-file", "case:core-init-cfgscan-file-from-config", "case:core-trim-config-dash-plain", "case:core-trim-config-dash-pad"]
     origin: capture
   - id: B-src_core-100
     statement: "import_globs() (--exclude-from, --include-from, --ignore-files, .gitignore) trims each line: padded names, TAB, CR LF endings, VT/FF, a last line without a newline and blank lines select the same files as the unpadded glob, and a line that is `#...` after trimming is a comment; a non-breaking space is not trimmed and the glob matches nothing; a name ending in an escaped space matches nothing"
@@ -691,22 +691,34 @@ behaviors:
     evidence: ["case:core-init-cfgscan-two-configs", "case:core-init-cfgscan-two-configs-dash", "case:core-init-cfgscan-config-and-dash", "case:core-init-cfgscan-missing", "case:core-init-cfgscan-missing-dash", "case:core-init-cfgscan-noconfig", "case:core-init-cfgscan-noconfig-with-config", "case:core-init-cfgscan-self-config", "case:core-init-cfgscan-nested-config"]
     origin: capture
   - id: B-src_core-104
-    statement: "`--config` without a file loads `.ugrep` from the home directory (USERPROFILE on Windows) when it exists, the XDG path is not used on Windows, and the default file is not read without `--config`; `~\\` and `~/` at the start of --config, --exclude-from, --ignore-files and -f arguments expand to the home directory, and `~/` is left as it is when the home directory has no such file"
+    statement: "`--config` without a file looks for `.ugrep` in the working directory first (a file owned by the user) and then in the home directory (USERPROFILE on Windows; src/ugrep.cpp 4662-4725): with `.ugrep` only in the working directory it is loaded, with it only in the home directory (`.home/.ugrep`, HOME and USERPROFILE set to `.home`) it is loaded, with both the working directory one wins (the home one is not read); a named `--config=my.cfg` follows the same order; the XDG path is not used on Windows and the default file is not read without `--config`; `~\\` and `~/` at the start of --config, --exclude-from, --ignore-files and -f arguments expand to the home directory, and `~/` is left as it is when the home directory has no such file. The older `core-init-home-*` cases set the home directory to `.`, the working directory, so they cannot tell the two apart; the `core-init-home-sub-*` cases can"
     kind: normal
     status: observed
-    evidence: ["case:core-init-home-dir-tilde", "case:core-init-home-dir-tilde-config", "case:core-init-home-default-config", "case:core-init-home-default-config-noconfig", "case:core-init-home-default-config-ug-only", "case:core-init-home-xdg-config", "case:core-init-home-tilde-backslash", "case:core-init-home-tilde-slash", "case:core-init-home-tilde-exclude", "case:core-init-home-tilde-ignore"]
+    evidence: ["case:core-init-cfgscan-home-config", "case:core-init-home-sub-only-home", "case:core-init-home-sub-only-home-no-config", "case:core-init-home-sub-only-wdir", "case:core-init-home-sub-both-wdir-first", "case:core-init-home-sub-both-wdir-first-i", "case:core-init-home-sub-neither", "case:core-init-home-sub-named-config", "case:core-init-home-sub-named-both", "case:core-init-home-dir-tilde", "case:core-init-home-dir-tilde-config", "case:core-init-home-default-config", "case:core-init-home-default-config-noconfig", "case:core-init-home-default-config-ug-only", "case:core-init-home-xdg-config", "case:core-init-home-tilde-backslash", "case:core-init-home-tilde-slash", "case:core-init-home-tilde-exclude", "case:core-init-home-tilde-ignore"]
     origin: capture
   - id: B-src_core-105
     statement: "A command with no PATTERN (`ugrep -q`, `ugrep` with options only) exits 2 with the `no search PATTERN specified` usage text; `--match` is an empty pattern; a word after `-e` or `-f` is a file name (`warning: foo: No such file or directory`, exit 2)"
     kind: error
     status: observed
-    evidence: ["case:core-init-nopattern-file", "case:core-init-nopattern-e-missing-file", "case:core-init-match-option", "case:core-init-match-option-e", "case:core-init-pattern-after-e", "case:core-init-pattern-after-f", "case:core-init-cfgscan-noargs", "case:core-init-cfgscan-only-e", "case:core-init-cfgscan-only-N"]
+    evidence: ["case:core-init-nopattern-file", "case:core-init-nopattern-e-missing-file", "case:core-init-match-option", "case:core-init-match-option-e", "case:core-init-pattern-after-e", "case:core-init-pattern-after-f", "case:core-init-cfgscan-noargs"]
+    origin: capture
+  - id: B-src_core-122
+    statement: "A trailing `-e` or `-N` with no word after it (`ugrep -e`, `ugrep -N`) is an empty pattern, not a missing argument: the command reads standard input (empty here) and exits 1 with no error message"
+    kind: edge-case
+    status: observed
+    evidence: ["case:core-init-cfgscan-only-e", "case:core-init-cfgscan-only-N"]
     origin: capture
   - id: B-src_core-106
-    statement: "-e, -N, --and, --andnot, --not and -% are collected in order into the CNF or into one regex: `-%` with --and/--not/--andnot builds a Boolean query, `-F` with `-%` and `-N` exits 2 with `option -F with -% or -Q does not support -N PATTERN`, a leading --and/--not/--andnot applies to the first pattern, an empty `-N` or `--not` pattern is ignored"
+    statement: "-e, -N, --and, --andnot, --not and -% are collected in order into the CNF or into one regex: `-%` with --and/--not/--andnot builds a Boolean query, `-F` with `-%` and `-N` exits 2 with `option -F with -% or -Q does not support -N PATTERN`, a leading --and/--not/--andnot applies to the first pattern, an empty `--not` pattern is ignored (`-e foo --not \"\"` selects the same lines as `-e foo`)"
     kind: normal
     status: observed
-    evidence: ["case:core-init-and-first", "case:core-init-andnot-first", "case:core-init-not-first", "case:core-init-bool-e-and", "case:core-init-bool-percent-and", "case:core-init-bool-percent-percent", "case:core-init-bool-e-only", "case:core-init-bool-e-N", "case:core-init-bool-F-N", "case:core-init-F-N", "case:core-init-e-N-empty", "case:core-init-e-not-empty"]
+    evidence: ["case:core-init-and-first", "case:core-init-andnot-first", "case:core-init-not-first", "case:core-init-bool-e-and", "case:core-init-bool-percent-and", "case:core-init-bool-percent-percent", "case:core-init-bool-e-only", "case:core-init-bool-e-N", "case:core-init-bool-F-N", "case:core-init-F-N", "case:core-init-e-not-empty"]
+    origin: capture
+  - id: B-src_core-123
+    statement: "An empty `-N` pattern is not ignored: `-e foo -N \"\" a.txt` prints every line of the file (all 7); only an empty `--not` pattern is ignored"
+    kind: edge-case
+    status: observed
+    evidence: ["case:core-init-e-N-empty"]
     origin: capture
   - id: B-src_core-107
     statement: "-o and -u disable -Y (no empty matches); -a, -I, --hex and --with-hex give the priority --hex > --with-hex > -I > -a; `--tabs` accepts only 1, 2, 4, 8; `--zmax` over 99, `-P` (not built in) and `-z` without libz are usage errors with exit 2 and the recorded messages"
@@ -739,13 +751,13 @@ behaviors:
     evidence: ["case:core-init-dir-arg", "case:core-init-dir-arg-trailing-sep", "case:core-init-dir-arg-trailing-seps", "case:core-init-dir-arg-backslash", "case:core-init-dir-arg-drive"]
     origin: capture
   - id: B-src_core-112
-    statement: "--exclude-fs and --include-fs with `.` select the current file system; a mount point that does not exist is reported with exit 2; `--exclude-from`, `--include-from` and `--ignore-files` with a missing file exit 2 with `option --exclude-from: cannot read FILE`"
+    statement: "On this Windows build `--exclude-fs` and `--include-fs` have no effect: with `.` the recorded run lists every file, and an unknown mount point (`--exclude-fs=nosuchdir`, `--include-fs=nosuchdir`) is accepted silently with exit 0 and the same output; `--exclude-from`, `--include-from` and `--ignore-files` with a missing file exit 2 with `option --exclude-from: cannot read FILE`"
     kind: error
     status: observed
     evidence: ["case:core-init-exclude-fs", "case:core-init-include-fs", "case:core-init-exclude-fs-bad", "case:core-init-include-fs-bad", "case:core-init-exclude-from-missing", "case:core-init-include-from-missing", "case:core-init-ignore-files-missing"]
     origin: capture
   - id: B-src_core-113
-    statement: "`-Q` with standard input and output not on a terminal does not start the query interface here: the command exits 2 with the file-name warning for the pattern argument; the warning carries the ANSI reset `ESC[m` although stderr is not a terminal"
+    statement: "In `-Q --no-config foo` the word `foo` is a file name, not a pattern, and it does not exist: init() removes it from the file list, prints the file-name warning and exits 2 (src/ugrep.cpp 6802-6803) before the query interface (tui_query) is started; the warning carries the ANSI reset `ESC[m` although stderr is not a terminal. This case does not reach the query interface"
     kind: edge-case
     status: observed
     evidence: ["case:core-init-query-flag-no-tty"]
@@ -790,13 +802,13 @@ behaviors:
     suspicious: true
     why: "inconsistent use of trim between the line readers"
   - id: B-src_core-119
-    statement: "The trailing path separators of a directory argument are not removed (`sub///` is printed as `sub///\\c.txt`) although trim_pathname_arg exists to remove them"
+    statement: "trim_pathname_arg is applied to a directory argument (src/ugrep.cpp 6814) but strips only PATHSEPCHR, which is `\\` on Windows (13546): `sub\\` and `sub\\\\\\` print `sub\\c.txt`, `sub/\\` strips the backslash, while `sub/`, `sub///`, `sub\\/` and `./` keep their forward slashes (`sub///\\c.txt`, `sub\\/\\c.txt`, `./\\a.txt`); `.\\` is removed completely"
     kind: edge-case
     status: hypothesis
-    evidence: ["case:core-init-dir-arg-trailing-sep", "case:core-init-dir-arg-trailing-seps"]
+    evidence: ["case:core-init-dir-arg-trailing-sep", "case:core-init-dir-arg-trailing-seps", "case:core-init-dir-arg-backslash", "case:core-init-dir-arg-trim-bs1", "case:core-init-dir-arg-trim-bs3", "case:core-init-dir-arg-trim-mix", "case:core-init-dir-arg-trim-mix2", "case:core-init-dir-arg-trim-fs1", "case:core-init-dir-arg-trim-fs3", "case:core-init-dir-arg-trim-dot-bs", "case:core-init-dir-arg-trim-dot-fs"]
     origin: capture
     suspicious: true
-    why: "mixed and repeated separators appear in the output; the argument trimming function is not applied on this path"
+    why: "only the native separator is trimmed, so on Windows a forward slash argument keeps its trailing slashes and the output mixes `/` and `\\`; the same argument with `\\` is cleaned"
   - id: B-src_core-120
     statement: "`-Q` without a terminal writes the ANSI reset `ESC[m` into a warning on stderr that is not a terminal, because the query mode forces colour on"
     kind: edge-case
@@ -813,6 +825,30 @@ behaviors:
     origin: capture
     suspicious: true
     why: "a capability name given without `=` is taken as colour letters: probably not the intent"
+  - id: B-src_core-124
+    statement: "For `hl=PREFIX` in GREP_COLORS or `--colors` init sets flag_hyperlink to the string plus 3 (src/ugrep.cpp 7692, 7694), the offset of the first `hl=` only when it is the first capability: `mt=1:hl=z+` gives the prefix `1` (the link starts `1://HOST/...`, with `+` ignored), `mt=1:hl=z` also `1`, `--colors=mt=1:hl=z+` also `1`, while `hl=z+:mt=1` gives `z` with `+`"
+    kind: edge-case
+    status: hypothesis
+    evidence: ["case:core-hl-env-hl-eq-first-H", "case:core-hl-env-hl-eq-late-H", "case:core-hl-env-hl-eq-late-plain-H", "case:core-hl-env-hl-eq-lead-H", "case:core-hl-colors-hl-eq-late-H", "case:core-hl-colors-hl-eq-lead-H"]
+    origin: capture
+    suspicious: true
+    why: "the prefix is taken from offset 3 of the whole string instead of after the located `hl=`, so `hl=` after another capability gives the wrong prefix (the text between the start and `hl=` is read as the scheme)"
+  - id: B-src_core-125
+    statement: "`--save-config` writes `hyperlink=%s` from flag_hyperlink, which can point into the GREP_COLORS copy that init frees (src/ugrep.cpp 7723 frees env_grep_colors, 4957 prints it): with GREP_COLORS=`hl=z+:mt=1` the saved file holds `hyperlink=z+:mt=1` and with `mt=1:hl=z+` it holds `hyperlink=1:hl=z+` (the rest of the string, not only the prefix; read from the file left behind in a manual run, the recorded fs state holds its hash), with `--hyperlink=z+` it holds `hyperlink=z+`"
+    kind: edge-case
+    status: hypothesis
+    evidence: ["case:core-hl-env-hl-eq-save-config", "case:core-hl-env-hl-eq-late-save-config", "case:core-hl-colors-hl-eq-save-config", "case:core-hl-flag-save-config", "case:core-hl-env-hl-bare-save-config"]
+    origin: capture
+    suspicious: true
+    why: "flag_hyperlink points into memory that was freed before save_config reads it (use after free; the recorded runs happen to read the old bytes) and the saved value is the whole remainder of GREP_COLORS"
+  - id: B-src_core-126
+    statement: "With GREP_COLOR=`1;33` (and GREP_COLORS unset) `--colors=4` and `--colors=mt=4` do not change the match colour: the matches stay `ESC[1;33m`, because init applies the deprecated GREP_COLOR to ms (src/ugrep.cpp 7641) and the `--colors` value without `=` or with `mt=` only sets mt (7647); `--colors=ms=4` does override it; without GREP_COLOR the same `--colors=4` gives `ESC[4m`"
+    kind: edge-case
+    status: hypothesis
+    evidence: ["case:core-color-colors-with-grep-color", "case:core-color-colors-eq-with-grep-color", "case:core-color-colors-ms-with-grep-color", "case:core-color-colors-without-grep-color", "case:core-color-colors-eq-without-grep-color", "case:core-color-colors-with-grep-color-and-colors-env"]
+    origin: capture
+    suspicious: true
+    why: "a command line option is expected to win over an environment variable: here the deprecated GREP_COLOR overrides --colors for the match colour"
 
 openQuestions: []
 
@@ -826,7 +862,7 @@ uncovered:
   - {region: "src/ugrep.cpp Windows-only vs POSIX branches", reason: platform-only, note: "recorded on Windows x64 only"}
   - {region: "src/ugrep.cpp terminal(): --pager and --color=auto/--pretty=auto with a terminal (isatty stdout/stderr, NO_COLOR, COLORTERM, TERM checks, pager pipe)", reason: platform-only, note: "needs a pty/ConPTY, the harness always pipes stdout; proposed mask: none (covered by the pipe cases only); Triage decision; follow-up pty harness"}
   - {region: "src/ugrep.cpp terminal(): Windows VT console mode setup and /dev/null quiet detection", reason: platform-only, note: "console handles only exist with a terminal; /dev/null check is POSIX only; proposed mask: none"}
-  - {region: "src/ugrep.cpp init(): -Q query mode with a terminal, query UI setup", reason: unreachable, note: "needs a terminal; only the no-tty exit-2 path is recorded (-Q case); proposed mask: none"}
+  - {region: "src/ugrep.cpp init() -Q: the no-TTY query path (CONIN$/CONOUT$ opened, tui_query), and the query UI with a terminal", reason: unreachable, note: "the recorded -Q case (core-init-query-flag-no-tty) is `-Q --no-config foo`: foo is a missing file, so init() exits 2 before tui_query; a -Q run with a valid pattern reaches tui_query, which opens CONIN$/CONOUT$ and needs a console, so it is not covered; proposed mask: none (needs a ConPTY harness); Triage decision"}
   - {region: "src/ugrep.cpp init(): program-name branches (ug, ug+, ugrep-indexer, grep, egrep, fgrep, zgrep, ...)", reason: deferred, note: "the harness fixes argv[0] as ugrep.exe; needs a per-case argv0 or a renamed binary copy; proposed mask: none"}
   - {region: "src/ugrep.cpp init(): ~ expansion with USERPROFILE and HOME both unset (crash, access violation)", reason: excluded, note: "crashes the C++, the harness always sets USERPROFILE; listed as suspicious for Triage; no recorded case"}
 
@@ -844,3 +880,4 @@ discovery:
     - {round: 10, source: surface-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "31 candidates: the already-recorded option cases with independent flags (-r, --sort=name, -s) reordered; 0 differ from a recorded observation, 0 flaky"}
     - {round: 11, source: surface-proposed, new_cases: 0, new_coverage: 0, new_behaviors: 0, note: "same generator with another seed: 31 candidates, 0 new observations, 0 flaky"}
     - {round: 12, source: llm-proposed, new_cases: 562, new_coverage: 0, new_behaviors: 41, note: "init, terminal, colour, trim and hyperlink; generator migration/harness/src_core/gen_init_terminal.py; recorded 3x, flaky 0; seven suspicious behaviors for Triage"}
+    - {round: 13, source: llm-proposed, new_cases: 45, new_coverage: 0, new_behaviors: 3, note: "review fixes; generator migration/harness/src_core/gen_init_review.py; hyperlinks from GREP_COLORS/--colors with -H and two files, --save-config, the home directory lookup with HOME=.home, GREP_COLOR with --colors, trailing separators; recorded 3x, flaky 0"}
