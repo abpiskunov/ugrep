@@ -16,7 +16,9 @@ $pins = @(
   @{ name = "lz4";   dir = "lz4";   file = "lz4-1.10.0.tar.gz";   url = "https://github.com/lz4/lz4/releases/download/v1.10.0/lz4-1.10.0.tar.gz";             sha = "537512904744B35E232912055CCF8EC66D768639FF3ABE5788D90D792EC5F48B" },
   @{ name = "zstd";  dir = "zstd";  file = "zstd-1.5.6.tar.gz";   url = "https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz";          sha = "8C29E06CF42AACC1EAFC4077AE2EC6C6FCB96A626157E0593D5E82A34FD403C1" },
   @{ name = "brotli"; dir = "brotli"; file = "brotli-1.1.0.tar.gz"; url = "https://github.com/google/brotli/archive/refs/tags/v1.1.0.tar.gz";                  sha = "E720A6CA29428B803F4AD165371771F5398FABA397EDF6778837A18599EA13FF" },
-  @{ name = "bzip3"; dir = "bzip3"; file = "bzip3-1.5.1.tar.gz";  url = "https://github.com/iczelia/bzip3/releases/download/1.5.1/bzip3-1.5.1.tar.gz";      sha = "CC7CACDA6D15F24D3FE73FD87B895D5FD2C0F8B6DD0630AE4993AA45C4853C3B" }
+  @{ name = "bzip3"; dir = "bzip3"; file = "bzip3-1.5.1.tar.gz";  url = "https://github.com/iczelia/bzip3/releases/download/1.5.1/bzip3-1.5.1.tar.gz";      sha = "CC7CACDA6D15F24D3FE73FD87B895D5FD2C0F8B6DD0630AE4993AA45C4853C3B" },
+  # sources only, for the product's codec configurations (msvc/pcre2.vcxproj builds them; D-fetch-pcre2)
+  @{ name = "pcre2"; dir = "pcre2"; file = "pcre2-10.39.tar.gz";  url = "https://github.com/PhilipHazel/pcre2/releases/download/pcre2-10.39/pcre2-10.39.tar.gz"; sha = "0781BD2536EF5279B1943471FDCDBD9961A2845E1D2C9AD849B9BD98BA1A9BD4" }
 )
 foreach ($p in $pins) {
   $f = Join-Path $arch $p.file
