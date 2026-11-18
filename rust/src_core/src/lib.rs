@@ -146,7 +146,7 @@ mod ffi {
 
     extern "Rust" {
         /// Seam function `src_core.find_text_preview`.
-        fn core_find_text_preview(filename: &[u8], partname: &[u8], from_lineno: usize, max: usize) -> TextPreview;
+        fn core_find_text_preview(filename: &[u8], partname: &[u8], from_lineno: usize, max: usize) -> Result<TextPreview>;
         /// Seam function `src_core.terminal`: reads and writes `ugrep_settings` directly.
         fn core_terminal();
         /// Seam function `src_core.set_terminal_hyperlink`.
@@ -326,13 +326,13 @@ fn cnf_anchor(pattern: &[u8], flags: &ffi::CnfFlags) -> ffi::CnfAnchored {
     ffi::CnfAnchored { pattern: a.pattern, enable_empty: a.enable_empty }
 }
 
-fn core_find_text_preview(filename: &[u8], partname: &[u8], from_lineno: usize, max: usize) -> ffi::TextPreview {
-    let r = sig::ui::find_text_preview(filename, partname, from_lineno, max);
-    ffi::TextPreview {
+fn core_find_text_preview(filename: &[u8], partname: &[u8], from_lineno: usize, max: usize) -> Result<ffi::TextPreview, String> {
+    let r = sig::ui::find_text_preview(filename, partname, from_lineno, max).map_err(|e| format!("{:?}", e))?;
+    Ok(ffi::TextPreview {
         lineno: r.lineno,
         num: r.num,
         text: r.text.into_iter().map(|data| ffi::Bytes { data }).collect(),
-    }
+    })
 }
 
 fn core_terminal() {

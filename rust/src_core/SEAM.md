@@ -92,7 +92,7 @@ statics) so the Port can keep them that way.
 | Crossing | Error kind |
 |----------|------------|
 | `cnf_*`, `stats_report` | infallible in C++ (no throw, no return code); Rust bodies must not fail and must not panic (`panic = "abort"`) |
-| `ugrep_find_text_preview` (facade, `..._TERMINAL`) | `std::runtime_error`/`bad_alloc` from the `Grep` body propagate through the C++ default; in the Rust path the Port maps them to `CoreError::Exception` and the facade rethrows |
+| `ugrep_find_text_preview` (facade, `..._TERMINAL`) | `std::runtime_error`/`bad_alloc` from the `Grep` body propagate through the C++ default; in the Rust path `core_find_text_preview` returns `Result<TextPreview>`: the Port maps them to `CoreError::Exception`, which cxx turns into a `rust::Error` exception that the caller's `catch (...)` handles |
 | `ugrep_extract` (entry, not switched) | Future work: no facade yet |
 | `abort(msg)`, `error(msg, arg)` | process exit (`exit(EXIT_ERROR)`), `CoreError::Abort/Errno`, never returned |
 | `report` writes | a short write to `FILE*` is ignored exactly as in the legacy `fprintf` |
@@ -136,7 +136,7 @@ Context. S1 made the `flag_*`, `color_*`, `match_*` scalars Rust-owned (`ugrep_s
 
 Types and signatures: `rust/src_core/src/signatures.rs` module `ui` (stubs: `todo!()` until the Ports; a Port does not change a signature). Build: msbuild `/p:CPP_RUST_IMPL_SRC_CORE_TERMINAL=rust` and/or `/p:CPP_RUST_IMPL_SRC_CORE_INIT=rust` define `CPP_RUST_IMPL_SRC_CORE_{TERMINAL,INIT}_RUST` (`msvc/rust.targets`); autotools builds the cpp path (`CPPFLAGS=-DCPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST` selects Rust by hand). The tap was deleted at Cleanup, so no tap macros were added; the replay is the surface corpus.
 
-Not switched by anything else: none of the six remain C++-only. `find_text_preview`: the facade `ugrep_find_text_preview` (src/ugrep.cpp, end of file) keeps the old body as `ugrep_find_text_preview_cpp` (which alone builds the `Grep`); its signature uses only boundary types, so the Rust entry is `core_find_text_preview(filename: &[u8], partname: &[u8], from_lineno, max) -> TextPreview{lineno, num, text: Vec<Bytes>}` and the facade copies the result into the out-parameters. Switch `..._TERMINAL`. A Port must reproduce the `Static::matcher == NULL` early return (outputs untouched) and the exceptions listed under Error kinds; the Rust body will need the `Grep` search as a callback until `Grep` is ported.
+Not switched by anything else: none of the six remain C++-only. `find_text_preview`: the facade `ugrep_find_text_preview` (src/ugrep.cpp, end of file) keeps the old body as `ugrep_find_text_preview_cpp` (which alone builds the `Grep`); its signature uses only boundary types, so the Rust entry is `core_find_text_preview(filename: &[u8], partname: &[u8], from_lineno, max) -> Result<TextPreview{lineno, num, text: Vec<Bytes>}>` and the facade copies the result into the out-parameters (assign into `text[i]` when it exists, else `emplace_back`; the tail is left untouched). Switch `..._TERMINAL`. The facade keeps the `Static::matcher == NULL` early return before calling Rust (outputs untouched); a Port must reproduce the exceptions listed under Error kinds via `Err`; the Rust body will need the `Grep` search as a callback until `Grep` is ported.
 
 ### Callbacks the Rust bodies need (extern C++, not declared yet)
 

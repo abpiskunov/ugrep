@@ -282,7 +282,7 @@ pub mod ui {
     }
 
     /// `ugrep_find_text_preview`: limited search of one file (or archive part) for the TUI preview.
-    pub fn find_text_preview(filename: &[u8], partname: &[u8], from_lineno: usize, max: usize) -> TextPreview {
+    pub fn find_text_preview(filename: &[u8], partname: &[u8], from_lineno: usize, max: usize) -> Result<TextPreview, super::CoreError> {
         let _ = (filename, partname, from_lineno, max);
         panic!("not ported yet: find_text_preview")
     }

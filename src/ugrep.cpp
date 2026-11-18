@@ -15257,11 +15257,26 @@ void trim(std::string& line)
 void ugrep_find_text_preview(const char *filename, const char *partname, size_t from_lineno, size_t max, size_t& lineno, size_t& num, std::vector<std::string>& text)
 {
 #ifdef CPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST
+  // outputs stay untouched before the search engine runs, as in the C++ body
+  if (!Static::matcher)
+    return;
+
+  // a Rust error becomes a rust::Error exception, caught by the caller like the C++ throw
   ugrep_rust::TextPreview r = ugrep_rust::core_find_text_preview(core_rust::to_slice(filename), core_rust::to_slice(partname), from_lineno, max);
   lineno = r.lineno;
   num = r.num;
+
+  // overwrite existing slots and leave the tail untouched, as the C++ body does
+  size_t i = 0;
   for (const auto& line : r.text)
-    text.emplace_back(reinterpret_cast<const char*>(line.data.data()), line.data.size());
+  {
+    const char *data = reinterpret_cast<const char*>(line.data.data());
+    if (i < text.size())
+      text[i].assign(data, line.data.size());
+    else
+      text.emplace_back(data, line.data.size());
+    ++i;
+  }
 #else
   ugrep_find_text_preview_cpp(filename, partname, from_lineno, max, lineno, num, text);
 #endif
