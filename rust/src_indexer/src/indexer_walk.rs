@@ -15,7 +15,7 @@ use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 
 #[path = "ffi.rs"]
-mod ffi;
+pub(super) mod ffi;
 #[path = "glob.rs"]
 mod glob;
 
@@ -67,7 +67,7 @@ fn os_path(path: &[u8]) -> std::path::PathBuf {
 }
 
 /// `fopenw_s(&file, path, mode)` for the modes the walk uses ("r", "rb", "r+b", "wb")
-fn open_mode(path: &[u8], mode: &str) -> std::io::Result<File> {
+pub(super) fn open_mode(path: &[u8], mode: &str) -> std::io::Result<File> {
     let mut options = std::fs::OpenOptions::new();
     match mode {
         "wb" => options.write(true).create(true).truncate(true),
@@ -138,14 +138,14 @@ fn is_space(c: u8) -> bool {
 }
 
 /// trim white space from either end of the line
-fn trim(line: &[u8]) -> &[u8] {
+pub(super) fn trim(line: &[u8]) -> &[u8] {
     let start = line.iter().position(|&c| !is_space(c)).unwrap_or(line.len());
     let end = line.iter().rposition(|&c| !is_space(c)).map_or(start, |p| p + 1);
     &line[start..end]
 }
 
 /// read the next line of `data` from `*pos`, None at the end of the input (`getline()` of the C++ returns true)
-fn getline(data: &[u8], pos: &mut usize) -> Option<Vec<u8>> {
+pub(super) fn getline(data: &[u8], pos: &mut usize) -> Option<Vec<u8>> {
     let mut line = Vec::new();
     let mut eof = true;
     while *pos < data.len() {
@@ -168,7 +168,7 @@ fn getline(data: &[u8], pos: &mut usize) -> Option<Vec<u8>> {
 }
 
 /// the whole text of an ignore file as `reflex::BufferedInput` over the `FILE*` delivers it
-fn read_text(mut file: File) -> Vec<u8> {
+pub(super) fn read_text(mut file: File) -> Vec<u8> {
     let mut raw = Vec::new();
     let _ = file.read_to_end(&mut raw);
     let mut input = Input::from_reader(Box::new(Cursor::new(text_mode(raw))));

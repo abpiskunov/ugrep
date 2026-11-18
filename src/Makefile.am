@@ -84,9 +84,6 @@ ugrep_indexer_SOURCES  = \
 	$(top_srcdir)/include/reflex/utf8.h \
 	$(top_srcdir)/lib/input.cpp \
 	ugrep-indexer.cpp \
-	ugrep-indexer_facade.cpp \
-	ugrep-indexer_seam.h \
-	indexer_rust.hpp \
 	glob.hpp \
 	glob_rust.hpp \
 	glob_facade.cpp \
