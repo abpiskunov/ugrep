@@ -16,8 +16,6 @@
     <CPP_RUST_IMPL_SRC_CORE Condition="'$(CPP_RUST_IMPL_SRC_CORE)'==''">rust</CPP_RUST_IMPL_SRC_CORE>
     <CPP_RUST_IMPL_SRC_TUI Condition="'$(CPP_RUST_IMPL_SRC_TUI)'==''">cpp</CPP_RUST_IMPL_SRC_TUI>
     <CPP_RUST_IMPL_SRC_INDEXER Condition="'$(CPP_RUST_IMPL_SRC_INDEXER)'==''">rust</CPP_RUST_IMPL_SRC_INDEXER>
-    <!-- Output (src/output.cpp): the facade selects the C++ or the Rust bodies at compile time; cpp until the Switch over task. -->
-    <CPP_RUST_IMPL_OUTPUT Condition="'$(CPP_RUST_IMPL_OUTPUT)'==''">cpp</CPP_RUST_IMPL_OUTPUT>
     <RustRoot>$(MSBuildThisFileDirectory)..\rust\</RustRoot>
     <RustTargetDir>$(MSBuildThisFileDirectory)..\build\cargo\$(MSBuildProjectName)</RustTargetDir>
     <RustUmbrellaLib>$(RustTargetDir)\release\rust_umbrella.lib</RustUmbrellaLib>

@@ -111,7 +111,14 @@ impl OutputSync {
             return owned;
         }
         let mut g = self.lock();
-        let last = self.last();
+        let mut last = self.last();
+        if last != self.stop && slot == last && !owned {
+            while g.held {
+                g = self.wait(g);
+            }
+            // cancel() may have run while the wait released the state mutex
+            last = self.last();
+        }
         if last == self.stop {
             if owned {
                 g.held = false;
@@ -120,11 +127,6 @@ impl OutputSync {
             self.turn.notify_all();
             false
         } else if slot == last {
-            if !owned {
-                while g.held {
-                    g = self.wait(g);
-                }
-            }
             let mut next = last.wrapping_add(1);
             while g.completed.remove(&next) {
                 next = next.wrapping_add(1);
@@ -217,6 +219,25 @@ mod tests {
     }
 
     #[test]
+    fn finish_does_not_undo_cancel() {
+        for _ in 0..200 {
+            let sync = Arc::new(OutputSync::new(true, STOP));
+            let owned = sync.acquire(false, 0);
+            let finisher = {
+                let sync = sync.clone();
+                std::thread::spawn(move || {
+                    sync.finish(false, 0);
+                })
+            };
+            std::thread::sleep(std::time::Duration::from_micros(200));
+            sync.cancel();
+            sync.drop_owner(owned);
+            finisher.join().unwrap();
+            assert!(sync.cancelled());
+        }
+    }
+
+    #[test]
     fn unordered_is_exclusive() {
         let sync = Arc::new(OutputSync::new(false, STOP));
         let counter = Arc::new(StdMutex::new(0usize));
@@ -292,6 +313,29 @@ mod loom_tests {
             };
             sync.cancel();
             t.join().unwrap();
+            assert!(sync.cancelled());
+        });
+    }
+
+    /// finish() waits for the owner while cancel() runs: the stop must survive, whatever the interleaving.
+    #[test]
+    fn finish_does_not_undo_cancel() {
+        loom::model(|| {
+            let sync = Arc::new(OutputSync::new(true, STOP));
+            let owned = sync.acquire(false, 0);
+            let finisher = {
+                let sync = sync.clone();
+                loom::thread::spawn(move || {
+                    sync.finish(false, 0);
+                })
+            };
+            let canceller = {
+                let sync = sync.clone();
+                loom::thread::spawn(move || sync.cancel())
+            };
+            sync.drop_owner(owned);
+            finisher.join().unwrap();
+            canceller.join().unwrap();
             assert!(sync.cancelled());
         });
     }

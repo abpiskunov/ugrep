@@ -3,7 +3,7 @@
 //!
 //! The shared structs are declared in the cxx bridge (`lib.rs`, module `ffi`) and are the types of these signatures.
 //! The bodies are stubs until the Port tasks (`panic!`; panic is abort in this workspace, so a call aborts the process). They are
-//! only reachable when the C++ is built with `CPP_RUST_IMPL_OUTPUT=rust`.
+//! only reachable once the C++ facade calls them.
 //!
 //! Shape of the seam: every function is a pure function of its inputs (except `--tree` headers, which stay in C++
 //! because they take the Sync lock and update the process-wide `Output::Tree` state). C++ keeps the `Output` object (buffer,
@@ -15,7 +15,7 @@ use super::ffi::{
 };
 
 fn not_ported(name: &str) -> ! {
-    panic!("output seam: {name} is not ported yet (CPP_RUST_IMPL_OUTPUT=rust)")
+    panic!("output seam: {name} is not ported yet")
 }
 
 /// `Output::quote(data, size)`: the text appended to the buffer.

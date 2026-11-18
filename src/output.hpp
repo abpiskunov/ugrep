@@ -47,7 +47,6 @@
 #include <condition_variable>
 #include <cstdint>
 
-#ifdef CPP_RUST_IMPL_OUTPUT_RUST
 // the ordered/unordered output synchronization of rust/src_core/src/output_sync.rs (C ABI, ffi/output_sync.rs)
 extern "C" {
   void *ugrep_output_sync_new(bool ordered, size_t stop);
@@ -59,8 +58,8 @@ extern "C" {
   void  ugrep_output_sync_cancel(const void *sync);
   bool  ugrep_output_sync_cancelled(const void *sync);
   void  ugrep_output_sync_drop_owner(const void *sync, bool owned);
+  void *ugrep_output_sync_retain(const void *sync);
 }
-#endif
 
 // max hexadecimal columns of bytes per line = 8*8
 #ifndef MAX_HEX_COLUMNS
@@ -86,20 +85,24 @@ class Output {
 
  public:
 
-#ifdef CPP_RUST_IMPL_OUTPUT_RUST
-
   // sync state to synchronize output produced by multiple threads, UNORDERED or ORDERED by slot number (Rust)
   struct Sync {
 
     enum class Mode { UNORDERED, ORDERED };
 
-    // ownership of the output, what std::unique_lock::owns_lock() was
+    // ownership of the output, what std::unique_lock::owns_lock() was; the lock holds its own reference to the Rust
+    // sync object, so it never touches the Sync, which may be destroyed before the lock
     struct Lock {
-      Lock(Sync *sync) : sync(sync), owned(false) { }
-      ~Lock() { ugrep_output_sync_drop_owner(sync->handle, owned); }
+      Lock(Sync *sync) : handle(ugrep_output_sync_retain(sync->handle)), owned(false) { }
+      ~Lock()
+      {
+        if (owned)
+          ugrep_output_sync_drop_owner(handle, true);
+        ugrep_output_sync_free(handle);
+      }
       Lock(const Lock&) = delete;
       Lock& operator=(const Lock&) = delete;
-      Sync *sync;
+      void *handle;
       bool  owned;
     };
 
@@ -158,173 +161,6 @@ class Output {
 
   };
 
-#else
-
-  // sync state to synchronize output produced by multiple threads, UNORDERED or ORDERED by slot number
-  struct Sync {
-
-    typedef std::unique_lock<std::mutex> Lock;
-
-    static Lock *make_lock(Sync *sync)
-    {
-      return new Lock(sync->mutex, std::defer_lock);
-    }
-
-    enum class Mode { UNORDERED, ORDERED };
-
-    Sync(Mode mode)
-      :
-        mode(mode),
-        mutex(),
-        turn(),
-        next(0),
-        last(0),
-        bits_mutex(),
-        completed()
-    { }
-
-    // acquire output access
-    void acquire(Lock *lock, size_t slot)
-    {
-      switch (mode)
-      {
-        case Mode::UNORDERED:
-          // if lock is not already acquired, acquire the lock
-          if (!lock->owns_lock())
-            lock->lock();
-          break;
-
-        case Mode::ORDERED:
-          // if lock is not already acquired, wait for our turn to acquire the lock
-          if (!lock->owns_lock())
-          {
-            lock->lock();
-            while (last != STOP && slot != last)
-              turn.wait(*lock);
-          }
-          break;
-      }
-    }
-
-    // try to acquire output access
-    bool try_acquire(Lock *lock)
-    {
-      switch (mode)
-      {
-        case Mode::UNORDERED:
-          // lock is owned or is available to be acquired
-          return lock->owns_lock() || lock->try_lock();
-
-        case Mode::ORDERED:
-          // lock is owned
-          return lock->owns_lock();
-      }
-
-      return false;
-    }
-
-    // release output access in UNORDERED mode, otherwise do nothing (until finish() is called later)
-    void release(Lock *lock)
-    {
-      switch (mode)
-      {
-        case Mode::UNORDERED:
-          // if lock is owned, release it
-          if (lock->owns_lock())
-            lock->unlock();
-          break;
-
-        case Mode::ORDERED:
-          break;
-      }
-    }
-
-    // release output access in ORDERED mode, otherwise do nothing
-    void finish(Lock *lock, size_t slot)
-    {
-      switch (mode)
-      {
-        case Mode::UNORDERED:
-          break;
-
-        case Mode::ORDERED:
-        {
-          // if this is our slot, bump last to allow next turn, release lock, and notify other threads
-          std::unique_lock<std::mutex> lock_bits(bits_mutex);
-
-          if (last == STOP)
-          {
-            if (lock->owns_lock())
-              lock->unlock();
-
-            turn.notify_all();
-          }
-          else if (slot == last)
-          {
-            if (!lock->owns_lock())
-              lock->lock();
-
-            do
-            {
-              ++last;
-              completed.rshift();
-            } while (completed[0]);
-
-            lock->unlock();
-
-            turn.notify_all();
-          }
-          else
-          {
-            // threads without output may run ahead but must mark off their completion
-            completed.insert(slot - last);
-          }
-          break;
-        }
-      }
-    }
-
-    // cancel sync, release all threads waiting on their turn in ORDERED mode
-    void cancel()
-    {
-      switch (mode)
-      {
-        case Mode::UNORDERED:
-          last = STOP;
-          break;
-
-        case Mode::ORDERED:
-        {
-          // set last to STOP to cancel sync in ORDERED mode
-          std::unique_lock<std::mutex> lock_bits(bits_mutex);
-
-          last = STOP;
-
-          lock_bits.unlock();
-
-          turn.notify_all();
-          break;
-        }
-      }
-    }
-
-    // true if sync was cancelled
-    bool cancelled()
-    {
-      return last == STOP;
-    }
-
-    Mode                         mode;       // UNORDERED or ORDERED (--sort by slot) mode
-    std::mutex                   mutex;      // mutex to synchronize output
-    std::condition_variable      turn;       // ORDERED: cv for threads to take turns by checking if last slot is their slot
-    size_t                       next;       // ORDERED: next slot assigned to thread
-    std::atomic_size_t           last;       // ORDERED: slot for threads to wait for their turn to output, or STOP to cancel
-    std::mutex                   bits_mutex; // ORDERED: mutex to synchronize bitset access and when setting last = STOP
-    reflex::Bits                 completed;  // ORDERED: bitset of completed slots marked by release() by threads that don't acquire() output
-
-  };
-
-#endif
 
   // hex dump state
   struct Dump {
@@ -386,7 +222,6 @@ class Output {
 
     // dump one line of hex
     void line();
-    void line_cpp();
 
     Output& out;                    // reference to the output state of this hex dump state
     size_t  offset;                 // current byte offset in the hex dump
@@ -989,13 +824,7 @@ class Output {
 
  protected:
 
-  // the C++ bodies behind the facade functions above (see rust/src_core/SEAM.md, "Seam: output"): the facade calls
-  // these unless the build selected CPP_RUST_IMPL_OUTPUT=rust; inner calls between them go through the facade
-  // functions, which is harmless: in the rust build the _cpp bodies are not reached
-  void color_cpp(const char *arg);
-  void header_cpp(const char *pathname, const std::string& partname, bool& heading, size_t lineno, reflex::AbstractMatcher *matcher, size_t byte_offset, const char *sep, bool newline);
-  void header_cpp(const char *pathname, const std::string& partname);
-  void binary_file_matches_cpp(const char *pathname, const std::string& partname);
+  // the C++ bodies of the members not ported yet (next unit, output-format), called by their facade functions
   void format_cpp(const char *format, size_t matches);
   bool format_cpp(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t *matching, reflex::AbstractMatcher *matcher, bool& heading, bool body, bool next);
   void format_invert_cpp(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t lineno, size_t offset, const char *ptr, size_t size, bool& heading, bool next);
@@ -1005,7 +834,6 @@ class Output {
   void hex_cpp(const char *data, size_t size);
   void json_cpp(const char *data, size_t size);
   void xml_cpp(const char *data, size_t size);
-  bool flush_truncated_lines_cpp(const char *data, size_t size);
 
   // acquire lock and flush the buffers, if not held back
   void flush()

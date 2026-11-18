@@ -63,3 +63,5 @@ migration/tools/cpp2rust-tools/target/
 /rust/target/
 
 __pycache__/
+
+artifacts-tmp/
