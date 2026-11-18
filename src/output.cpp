@@ -2261,7 +2261,7 @@ void Output::xml_cpp(const char *data, size_t size)
 }
 
 // flush a block of data as truncated lines limited to --width columns, taking into account tabs, UTF-8, ANSI
-bool Output::flush_truncated_lines(const char *data, size_t size)
+bool Output::flush_truncated_lines_cpp(const char *data, size_t size)
 {
   if (skip_)
   {
@@ -2491,6 +2491,7 @@ void Output::header(const char *pathname, const std::string& partname, bool& hea
   output_rust::Need need;
   need.columno = flag_column_number;
   ugrep_rust::OutputMatch m = output_rust::snapshot(matcher, window, need);
+  std::string link = output_rust::link();
   ugrep_rust::OutputArgs args{};
   args.heading = heading;
   args.lineno = lineno;
@@ -2501,7 +2502,7 @@ void Output::header(const char *pathname, const std::string& partname, bool& hea
       output_rust::slice(pathname),
       output_rust::slice(partname),
       output_rust::slice(sep),
-      output_rust::slice(window.data, window.size),
+      output_rust::slice(link),
       args,
       m,
       output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), pathname));
@@ -2513,15 +2514,33 @@ void Output::header(const char *pathname, const std::string& partname, bool& hea
 
 void Output::header(const char *pathname, const std::string& partname)
 {
-  // --tree takes the Sync lock and updates the process-wide Tree::path and Tree::depth: kept in C++ under the lock
+  std::string link = output_rust::link();
   if (flag_tree)
   {
-    header_cpp(pathname, partname);
+    // acquire lock on output and to access global Tree::path and Tree::depth
+    acquire();
+    std::string glyphs(Tree::bar);
+    glyphs.push_back('\0');
+    glyphs.append(Tree::ptr);
+    glyphs.push_back('\0');
+    glyphs.append(Tree::end);
+    ugrep_rust::OutputTreeResult t = ugrep_rust::output_header_tree(
+        output_rust::slice(pathname),
+        output_rust::slice(partname),
+        output_rust::slice(link),
+        output_rust::slice(glyphs),
+        output_rust::slice(Tree::path),
+        Tree::depth,
+        output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), pathname));
+    Tree::path.assign(reinterpret_cast<const char*>(t.path.data()), t.path.size());
+    Tree::depth = t.depth;
+    output_rust::append(*this, t.bytes);
     return;
   }
   ugrep_rust::OutputHeaderResult r = ugrep_rust::output_header_file(
       output_rust::slice(pathname),
       output_rust::slice(partname),
+      output_rust::slice(link),
       output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), pathname));
   if (r.complete_dump)
     dump.done();
@@ -2530,104 +2549,54 @@ void Output::header(const char *pathname, const std::string& partname)
 
 void Output::binary_file_matches(const char *pathname, const std::string& partname)
 {
+  std::string link = output_rust::link();
   ugrep_rust::OutputBinaryResult r = ugrep_rust::output_binary_file_matches(
       output_rust::slice(pathname),
       output_rust::slice(partname),
+      output_rust::slice(link),
       output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), pathname));
   output_rust::append(*this, r.bytes);
   if (r.set_binary)
     mode_ |= BINARY;
 }
 
-void Output::format(const char *format, size_t matches)
-{
-  output_rust::append(*this, ugrep_rust::output_format_count(
-      output_rust::slice(format),
-      matches,
-      output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), NULL)));
-}
+// format, format_invert and the quote/cpp/csv/hex/json/xml emitters are not ported yet (next unit, output-format):
+// the rust build keeps their C++ bodies, which call the ported functions above through the facade
+void Output::format(const char *format, size_t matches) { format_cpp(format, matches); }
 
 bool Output::format(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t *matching, reflex::AbstractMatcher *matcher, bool& heading, bool body, bool next)
 {
-  output_rust::Window window;
-  output_rust::Need need = output_rust::scan_format(format, body && lineno_ > 0);
-  ugrep_rust::OutputMatch m = output_rust::snapshot(matcher, window, need);
-  ugrep_rust::OutputArgs args{};
-  args.matches = matches;
-  args.has_matching = matching != NULL;
-  args.matching = matching != NULL ? *matching : 0;
-  args.heading = heading;
-  args.body = body;
-  args.next = next;
-  ugrep_rust::OutputFormatResult r = ugrep_rust::output_format_match(
-      output_rust::slice(format),
-      output_rust::slice(pathname),
-      output_rust::slice(partname),
-      output_rust::slice(window.data, window.size),
-      args,
-      m,
-      output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), pathname));
-  if (r.lineno_set)
-    lineno_ = r.lineno;
-  if (matching != NULL)
-    *matching = r.matching;
-  heading = r.heading;
-  output_rust::append(*this, r.bytes);
-  return r.ret;
+  return format_cpp(format, pathname, partname, matches, matching, matcher, heading, body, next);
 }
 
 void Output::format_invert(const char *format, const char *pathname, const std::string& partname, size_t matches, size_t lineno, size_t offset, const char *ptr, size_t size, bool& heading, bool next)
 {
-  ugrep_rust::OutputArgs args{};
-  args.matches = matches;
-  args.lineno = lineno;
-  args.offset = offset;
-  args.heading = heading;
-  args.next = next;
-  ugrep_rust::OutputFormatResult r = ugrep_rust::output_format_invert(
-      output_rust::slice(format),
-      output_rust::slice(pathname),
-      output_rust::slice(partname),
-      output_rust::slice(ptr, size),
-      args,
-      output_ctx(lineno_, (mode_ & BINARY) != 0, dump.incomplete(), pathname));
-  if (r.lineno_set)
-    lineno_ = r.lineno;
-  heading = r.heading;
-  output_rust::append(*this, r.bytes);
+  format_invert_cpp(format, pathname, partname, matches, lineno, offset, ptr, size, heading, next);
 }
 
-void Output::quote(const char *data, size_t size)
+void Output::quote(const char *data, size_t size) { quote_cpp(data, size); }
+void Output::cpp(const char *data, size_t size) { cpp_cpp(data, size); }
+void Output::csv(const char *data, size_t size) { csv_cpp(data, size); }
+void Output::hex(const char *data, size_t size) { hex_cpp(data, size); }
+void Output::json(const char *data, size_t size) { json_cpp(data, size); }
+void Output::xml(const char *data, size_t size) { xml_cpp(data, size); }
+
+// flush a block of data as truncated lines limited to --width columns: the Rust body returns the bytes to write
+bool Output::flush_truncated_lines(const char *data, size_t size)
 {
-  output_rust::append(*this, ugrep_rust::output_quote(output_rust::slice(data, size)));
+  ugrep_rust::OutputTruncResult r = ugrep_rust::output_truncate_lines(
+      output_rust::slice(data, size),
+      skip_,
+      cols_,
+      static_cast<uint8_t>(ansi_));
+  skip_ = r.skip;
+  cols_ = r.cols;
+  ansi_ = static_cast<ANSI>(r.ansi);
+  return !r.bytes.empty() && fwrite(r.bytes.data(), 1, r.bytes.size(), file) < r.bytes.size();
 }
-
-void Output::cpp(const char *data, size_t size)
-{
-  output_rust::append(*this, ugrep_rust::output_cpp(output_rust::slice(data, size)));
-}
-
-void Output::csv(const char *data, size_t size)
-{
-  output_rust::append(*this, ugrep_rust::output_csv(output_rust::slice(data, size)));
-}
-
-void Output::hex(const char *data, size_t size)
-{
-  output_rust::append(*this, ugrep_rust::output_hex(output_rust::slice(data, size)));
-}
-
-void Output::json(const char *data, size_t size)
-{
-  output_rust::append(*this, ugrep_rust::output_json(output_rust::slice(data, size)));
-}
-
-void Output::xml(const char *data, size_t size)
-{
-  output_rust::append(*this, ugrep_rust::output_xml(output_rust::slice(data, size)));
-}
-
 #else
+
+bool Output::flush_truncated_lines(const char *data, size_t size) { return flush_truncated_lines_cpp(data, size); }
 
 void Output::Dump::line() { line_cpp(); }
 void Output::color(const char *arg) { color_cpp(arg); }
