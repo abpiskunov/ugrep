@@ -323,7 +323,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>HAVE_LIBBZ2;HAVE_LIBLZ4;HAVE_LIBLZMA;HAVE_LIBZ;HAVE_LIBZSTD;HAVE_BOOST_REGEX;WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>HAVE_LIBBZ2;HAVE_LIBLZ4;HAVE_LIBLZMA;HAVE_LIBZ;HAVE_LIBZSTD;HAVE_LIBBROTLI;HAVE_LIBBZIP3;HAVE_BOOST_REGEX;WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <ForcedIncludeFiles>$(ProjectDir)include_ugrep\config.h</ForcedIncludeFiles>
       <AdditionalIncludeDirectories>../include;./include_ugrep;../../bzip2;../../lz4/lib;../../boost;../../xz/src/liblzma/api;../../zlib;../../zstd/lib</AdditionalIncludeDirectories>
@@ -342,7 +342,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>HAVE_LIBBZ2;HAVE_LIBLZ4;HAVE_LIBLZMA;HAVE_LIBZ;HAVE_LIBZSTD;HAVE_BOOST_REGEX;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>HAVE_LIBBZ2;HAVE_LIBLZ4;HAVE_LIBLZMA;HAVE_LIBZ;HAVE_LIBZSTD;HAVE_LIBBROTLI;HAVE_LIBBZIP3;HAVE_BOOST_REGEX;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <ForcedIncludeFiles>$(ProjectDir)include_ugrep\config.h</ForcedIncludeFiles>
       <AdditionalIncludeDirectories>../include;./include_ugrep;../../bzip2;../../lz4/lib;../../boost;../../xz/src/liblzma/api;../../zlib;../../zstd/lib</AdditionalIncludeDirectories>
@@ -363,7 +363,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>HAVE_LIBBZ2;HAVE_LIBLZ4;HAVE_LIBLZMA;HAVE_LIBZ;HAVE_LIBZSTD;HAVE_BOOST_REGEX;WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>HAVE_LIBBZ2;HAVE_LIBLZ4;HAVE_LIBLZMA;HAVE_LIBZ;HAVE_LIBZSTD;HAVE_LIBBROTLI;HAVE_LIBBZIP3;HAVE_BOOST_REGEX;WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <ForcedIncludeFiles>$(ProjectDir)include_ugrep\config.h</ForcedIncludeFiles>
       <AdditionalIncludeDirectories>../include;./include_ugrep;../../bzip2;../../lz4/lib;../../boost;../../xz/src/liblzma/api;../../zlib;../../zstd/lib</AdditionalIncludeDirectories>
@@ -386,7 +386,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>HAVE_LIBBZ2;HAVE_LIBLZ4;HAVE_LIBLZMA;HAVE_LIBZ;HAVE_LIBZSTD;HAVE_BOOST_REGEX;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>HAVE_LIBBZ2;HAVE_LIBLZ4;HAVE_LIBLZMA;HAVE_LIBZ;HAVE_LIBZSTD;HAVE_LIBBROTLI;HAVE_LIBBZIP3;HAVE_BOOST_REGEX;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <ForcedIncludeFiles>$(ProjectDir)include_ugrep\config.h</ForcedIncludeFiles>
       <AdditionalIncludeDirectories>../include;./include_ugrep;../../bzip2;../../lz4/lib;../../boost;../../xz/src/liblzma/api;../../zlib;../../zstd/lib</AdditionalIncludeDirectories>
@@ -407,7 +407,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>HAVE_LIBBZ2;HAVE_LIBLZ4;HAVE_LIBLZMA;HAVE_LIBZ;HAVE_LIBZSTD;HAVE_PCRE2;WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>HAVE_LIBBZ2;HAVE_LIBLZ4;HAVE_LIBLZMA;HAVE_LIBZ;HAVE_LIBZSTD;HAVE_LIBBROTLI;HAVE_LIBBZIP3;HAVE_PCRE2;WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <ForcedIncludeFiles>$(ProjectDir)include_ugrep\config.h</ForcedIncludeFiles>
       <AdditionalIncludeDirectories>../include;./include_ugrep;../../bzip2;../../lz4/lib;../../pcre2/src;../../xz/src/liblzma/api;../../zlib;../../zstd/lib</AdditionalIncludeDirectories>
@@ -425,7 +425,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>HAVE_LIBBZ2;HAVE_LIBLZ4;HAVE_LIBLZMA;HAVE_LIBZ;HAVE_LIBZSTD;HAVE_PCRE2;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>HAVE_LIBBZ2;HAVE_LIBLZ4;HAVE_LIBLZMA;HAVE_LIBZ;HAVE_LIBZSTD;HAVE_LIBBROTLI;HAVE_LIBBZIP3;HAVE_PCRE2;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <ForcedIncludeFiles>$(ProjectDir)include_ugrep\config.h</ForcedIncludeFiles>
       <AdditionalIncludeDirectories>../include;./include_ugrep;../../bzip2;../../lz4/lib;../../pcre2/src;../../xz/src/liblzma/api;../../zlib;../../zstd/lib</AdditionalIncludeDirectories>
@@ -445,7 +445,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>HAVE_LIBBZ2;HAVE_LIBLZ4;HAVE_LIBLZMA;HAVE_LIBZ;HAVE_LIBZSTD;HAVE_PCRE2;WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>HAVE_LIBBZ2;HAVE_LIBLZ4;HAVE_LIBLZMA;HAVE_LIBZ;HAVE_LIBZSTD;HAVE_LIBBROTLI;HAVE_LIBBZIP3;HAVE_PCRE2;WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <ForcedIncludeFiles>$(ProjectDir)include_ugrep\config.h</ForcedIncludeFiles>
       <AdditionalIncludeDirectories>../include;./include_ugrep;../../bzip2;../../lz4/lib;../../pcre2/src;../../xz/src/liblzma/api;../../zlib;../../zstd/lib</AdditionalIncludeDirectories>
@@ -467,7 +467,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>HAVE_LIBBZ2;HAVE_LIBLZ4;HAVE_LIBLZMA;HAVE_LIBZ;HAVE_LIBZSTD;HAVE_PCRE2;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>HAVE_LIBBZ2;HAVE_LIBLZ4;HAVE_LIBLZMA;HAVE_LIBZ;HAVE_LIBBROTLI;HAVE_LIBBZIP3;HAVE_LIBZSTD;HAVE_PCRE2;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <ForcedIncludeFiles>$(ProjectDir)include_ugrep\config.h</ForcedIncludeFiles>
       <AdditionalIncludeDirectories>../include;./include_ugrep;../../bzip2;../../lz4/lib;../../pcre2/src;../../xz/src/liblzma/api;../../zlib;../../zstd/lib</AdditionalIncludeDirectories>
@@ -570,8 +570,14 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="brotli.vcxproj">
+      <Project>{6c0f4e0a-5b1d-4f7e-9a53-2f6f1d7a8b01}</Project>
+    </ProjectReference>
     <ProjectReference Include="bzip2.vcxproj">
       <Project>{a7401914-d84d-4995-b913-5f0a52f12197}</Project>
+    </ProjectReference>
+    <ProjectReference Include="bzip3.vcxproj">
+      <Project>{b3d2c8e4-71a9-4c36-8e0d-5a9c4f1e2d02}</Project>
     </ProjectReference>
     <ProjectReference Include="lz4.vcxproj">
       <Project>{44e88a6e-0220-4aa1-9ab6-1b3bb8fb8e6c}</Project>
