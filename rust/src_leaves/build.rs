@@ -14,6 +14,9 @@ use std::path::PathBuf;
 // brotlidec stands for the brotli decoder (the Rust code calls only it; brotlicommon is linked with it); bzip3 is the bz3_* API.
 const LIBS: [&str; 9] = ["zlib", "bz2", "lzma", "lz4", "zstd", "viiz", "brotlidec", "brotlicommon", "bzip3"];
 
+// The libraries used when CPP2RUST_CODEC_LIBS is unset in linker mode.
+const DEFAULT_LIBS: [&str; 6] = ["zlib", "bz2", "lzma", "lz4", "zstd", "viiz"];
+
 fn main() {
     println!("cargo:rerun-if-changed=src/lib.rs");
     println!("cargo:rerun-if-changed=build.rs");
@@ -39,12 +42,12 @@ fn main() {
     }
     if std::env::var_os("CPP2RUST_CODECS_FROM_LINKER").is_some() {
         // Only the libraries named in CPP2RUST_CODEC_LIBS (comma separated) are called; the others are stubbed, like the
-        // C++ without their HAVE_LIB* macro. Unset means all of them.
-        if let Ok(list) = std::env::var("CPP2RUST_CODEC_LIBS") {
-            for lib in LIBS {
-                if !list.split(',').any(|l| l.trim() == lib) {
-                    println!("cargo:rustc-cfg=ugrep_no_{lib}");
-                }
+        // C++ without their HAVE_LIB* macro. Unset means the original six; brotli and bzip3 must be named explicitly
+        // (builds whose link line has no projects for them would fail to link otherwise).
+        let list = std::env::var("CPP2RUST_CODEC_LIBS").unwrap_or_else(|_| DEFAULT_LIBS.join(","));
+        for lib in LIBS {
+            if !list.split(',').any(|l| l.trim() == lib) {
+                println!("cargo:rustc-cfg=ugrep_no_{lib}");
             }
         }
         return;
