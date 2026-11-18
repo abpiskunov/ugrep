@@ -585,6 +585,8 @@
     <ProjectReference Include="pcre2.vcxproj">
       <Project>{5af584ca-c0a0-4109-8529-29fe39483a38}</Project>
     </ProjectReference>
+    <ProjectReference Include="viiz.vcxproj">
+    </ProjectReference>
     <ProjectReference Include="xz.vcxproj">
       <Project>{ca95dc5d-2549-4b15-ad80-6f52ba094872}</Project>
     </ProjectReference>
