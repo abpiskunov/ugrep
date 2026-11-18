@@ -24,6 +24,12 @@ const Z_END: &str = "    --zmax=NUM\n";
 const ZMAX_START: &str = "Increasing NUM values gradually degrades performance.\n";
 const WINDOWS_LINE: &str = "\nWindows mode: short options may start with `-' or with `/'.\n";
 const GREP_LINE: &str = "\nGrep compatibility mode: -Z and -z reassigned to --null and --null-data.\n";
+const EXCLUDE_FS_END: &str = "            --exclude-fs=MOUNTS take priority over --include-fs=MOUNTS.  This\n            option may be repeated.\n";
+const INCLUDE_FS_END: &str = "            priority over --include-fs=MOUNTS.  This option may be repeated.\n";
+const GREP_PATH_LINE: &str = "            exist, the GREP_PATH environment variable is used as path to FILE.\n";
+const HIDDEN_WIN: &str = "Search Windows system and hidden files";
+const FUZZY_OPT: &str = "    -Z[best][+-~][MAX], --fuzzy[=";
+const DECOMPRESS_OPT: &str = "    -z, --decompress\n";
 const NOT_AVAILABLE: &str = "            This option is not available in this build configuration of ugrep.\n";
 
 /// Regex engine of the build for option -P.
@@ -36,7 +42,7 @@ pub enum Perl {
 
 /// The `#if` conditions of the C++ help text and version.
 #[derive(Clone, Copy, Debug)]
-pub struct BuildConfig {
+pub struct BuildConfig<'a> {
     pub perl: Perl,
     pub zlib: bool,
     pub no_7zip: bool,
@@ -48,6 +54,12 @@ pub struct BuildConfig {
     pub bzip3: bool,
     pub decompression_thread: bool,
     pub os_win: bool,
+    /// `OS_WIN_OR_MINGW`: wording of `--hidden`
+    pub os_win_or_mingw: bool,
+    /// `HAVE_STATVFS` or `HAVE_STATFS`: `--exclude-fs` and `--include-fs` are available
+    pub statfs: bool,
+    /// `GREP_PATH` of the build, if defined
+    pub grep_path: Option<&'a [u8]>,
     /// `flag_grep` at the time of the call
     pub grep: bool,
 }
@@ -87,6 +99,25 @@ fn replace_between(text: &mut String, start: &str, end: &str, with: &str, includ
 pub fn help_text(cfg: &BuildConfig) -> String {
     let mut text = HELP_RECORDED.strip_suffix(HELP_TRAILER).unwrap_or(HELP_RECORDED).to_string();
 
+        if cfg.statfs {
+            for end in [EXCLUDE_FS_END, INCLUDE_FS_END] {
+                let with_note = format!("{end}{NOT_AVAILABLE}");
+                text = text.replacen(&with_note, end, 1);
+            }
+        }
+        if let Some(path) = cfg.grep_path {
+            let line = format!("{GREP_PATH_LINE}            If that fails, looks for FILE in {}.\n", String::from_utf8_lossy(path));
+            text = text.replacen(GREP_PATH_LINE, &line, 1);
+        }
+        if !cfg.os_win_or_mingw {
+            text = text.replacen(HIDDEN_WIN, "Search hidden files", 1);
+        }
+        if cfg.grep {
+            text = text.replacen(FUZZY_OPT, "    --fuzzy[=", 1);
+            text = text.replacen(DECOMPRESS_OPT, "    --decompress\n", 1);
+        text = text.replacen("\n    --null, -0\n", "\n    --null, -0, -Z\n", 1);
+        text = text.replacen("\n    --null-data, -00\n", "\n    --null-data, -00, -z\n", 1);
+        }
     let perl = match cfg.perl {
         Perl::Pcre2 => " using PCRE2.\n".to_string(),
         Perl::Boost => " using Boost.Regex.\n".to_string(),
@@ -162,7 +193,16 @@ fn find_bytes(hay: &[u8], needle: &[u8], from: usize) -> Option<usize> {
 }
 
 /// `help(const char *what)`: the bytes written to standard output; the process exits with status 2 afterwards.
-pub fn help_what(what: Option<&[u8]>, cfg: &BuildConfig) -> Vec<u8> {
+/// Result of `help(WHAT)`: the bytes written before the end, and whether the C++ `str.at()` ran past the end of
+/// the text (the exception is then reported as `ugrep: error: invalid string position`).
+pub struct HelpOut {
+    pub out: Vec<u8>,
+    pub past_end: bool,
+}
+
+pub const PAST_END_MESSAGE: &[u8] = b"invalid string position";
+
+pub fn help_what(what: Option<&[u8]>, cfg: &BuildConfig) -> HelpOut {
     let mut what = what;
     // strip = from =WHAT
     if let Some(w) = what {
@@ -189,7 +229,7 @@ pub fn help_what(what: Option<&[u8]>, cfg: &BuildConfig) -> Vec<u8> {
         _ => {
             let mut out = text.into_bytes();
             out.extend_from_slice(HELP_TRAILER.as_bytes());
-            return out;
+            return HelpOut { out, past_end: false };
         }
     };
 
@@ -210,7 +250,8 @@ pub fn help_what(what: Option<&[u8]>, cfg: &BuildConfig) -> Vec<u8> {
                 while j < what.len() {
                     match s.get(i + j) {
                         Some(&c) if (what[j] ^ c) & !0x20 == 0 => j += 1,
-                        _ => break,
+                        Some(_) => break,
+                        None => return HelpOut { out, past_end: true },
                     }
                 }
                 let at_end = j == what.len();
@@ -252,7 +293,7 @@ pub fn help_what(what: Option<&[u8]>, cfg: &BuildConfig) -> Vec<u8> {
     if let Some(t) = topic {
         out.extend_from_slice(t.as_bytes());
     }
-    out
+    HelpOut { out, past_end: false }
 }
 
 /// `usage()`: the text for standard error. When `message` is not `NULL`; `arg` and `valid` may be absent.
@@ -424,13 +465,74 @@ mod tests {
         bzip3: false,
         decompression_thread: true,
         os_win: true,
+        os_win_or_mingw: true,
+        statfs: false,
+        grep_path: None,
         grep: false,
     };
 
     #[test]
     fn recorded_text_is_reproduced_for_the_recorded_configuration() {
         let full = help_what(None, &BASE);
-        assert_eq!(String::from_utf8(full).unwrap(), HELP_RECORDED);
+        assert!(!full.past_end);
+        assert_eq!(String::from_utf8(full.out).unwrap(), HELP_RECORDED);
+    }
+
+    #[test]
+    fn grep_mode_drops_z_options() {
+        let cfg = BuildConfig { grep: true, ..BASE };
+        let t = help_text(&cfg);
+        assert!(!t.contains("-Z[best][+-~][MAX], "));
+        assert!(!t.contains("    -z, --decompress"));
+        assert!(t.contains("\n    --fuzzy[=[best][+-~][MAX]]\n"));
+        assert!(t.contains("\n    --decompress\n"));
+        assert!(t.contains("\n    --null, -0, -Z\n"));
+        assert!(t.contains("\n    --null-data, -00, -z\n"));
+        assert!(!help_text(&BASE).contains("-0, -Z"));
+        let fuzzy = String::from_utf8(help_what(Some(b"fuzzy"), &cfg).out).unwrap();
+        assert!(fuzzy.contains("    --fuzzy[="));
+        assert!(!fuzzy.contains("-Z[best][+-~][MAX], --fuzzy"));
+        let dec = String::from_utf8(help_what(Some(b"decompress"), &cfg).out).unwrap();
+        assert!(dec.contains("    --decompress\n"));
+        assert!(!dec.contains("-z, --decompress"));
+        assert!(help_text(&BASE).contains("    -z, --decompress\n"));
+    }
+
+    #[test]
+    fn statfs_drops_not_available_lines_of_fs_options() {
+        let t = help_text(&BuildConfig { statfs: true, ..BASE });
+        let base = help_text(&BASE);
+        assert_eq!(base.matches(NOT_AVAILABLE).count(), t.matches(NOT_AVAILABLE).count() + 2);
+        assert!(t.contains("This\n            option may be repeated.\n    -F, --fixed-strings\n"));
+        assert!(t.contains("option may be repeated.\n    --index\n"));
+    }
+
+    #[test]
+    fn grep_path_sentence_is_inserted() {
+        let t = help_text(&BuildConfig { grep_path: Some(b"/usr/share/ugrep/patterns"), ..BASE });
+        assert!(t.contains(
+            "path to FILE.\n            If that fails, looks for FILE in /usr/share/ugrep/patterns.\n            When FILE is a `-'"
+        ));
+        assert!(!help_text(&BASE).contains("If that fails"));
+    }
+
+    #[test]
+    fn hidden_wording_follows_os_win_or_mingw() {
+        let posix = help_text(&BuildConfig { os_win_or_mingw: false, ..BASE });
+        assert!(posix.contains("Search hidden files and directories\n"));
+        assert!(!posix.contains("Windows system and"));
+        assert!(posix.contains("Windows mode"));
+        let mingw = help_text(&BuildConfig { os_win: false, ..BASE });
+        assert!(mingw.contains("Search Windows system and hidden files"));
+        assert!(!mingw.contains("Windows mode"));
+    }
+
+    #[test]
+    fn what_past_the_end_of_the_text_is_reported() {
+        let r = help_what(Some(b"occurred.**x"), &BASE);
+        assert!(r.past_end);
+        assert_eq!(PAST_END_MESSAGE, b"invalid string position");
+        assert!(!help_what(Some(b"nosuchword"), &BASE).past_end);
     }
 
     #[test]
@@ -454,6 +556,6 @@ mod tests {
     #[test]
     fn help_what_unmatched() {
         let out = help_what(Some(b"nosuchword"), &BASE);
-        assert_eq!(out, b"ugrep --help: nothing appropriate for nosuchword\n\n");
+        assert_eq!(out.out, b"ugrep --help: nothing appropriate for nosuchword\n\n");
     }
 }

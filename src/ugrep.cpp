@@ -11484,6 +11484,9 @@ struct CoreDiagEnv
   int bzip3;
   int decompression_thread;
   int os_win;
+  int os_win_or_mingw;
+  int statfs;
+  const char *grep_path;
 };
 
 // the callback table of the Rust main, the field order mirrors Rust's MainEnv
@@ -11621,6 +11624,21 @@ CoreDiagEnv diag_env()
   env.os_win = 1;
 #else
   env.os_win = 0;
+#endif
+#ifdef OS_WIN_OR_MINGW
+  env.os_win_or_mingw = 1;
+#else
+  env.os_win_or_mingw = 0;
+#endif
+#if defined(HAVE_STATVFS) || defined(HAVE_STATFS)
+  env.statfs = 1;
+#else
+  env.statfs = 0;
+#endif
+#ifdef GREP_PATH
+  env.grep_path = GREP_PATH;
+#else
+  env.grep_path = NULL;
 #endif
   return env;
 }

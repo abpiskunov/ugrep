@@ -44,6 +44,11 @@ pub struct DiagEnv {
     pub bzip3: c_int,
     pub decompression_thread: c_int,
     pub os_win: c_int,
+    pub os_win_or_mingw: c_int,
+    /// `HAVE_STATVFS` or `HAVE_STATFS`
+    pub statfs: c_int,
+    /// `GREP_PATH`, or NULL when undefined
+    pub grep_path: *const c_char,
 }
 
 /// Mirrors `struct CoreMainEnv` of src/ugrep.cpp.
@@ -88,7 +93,7 @@ macro_rules! setting {
     };
 }
 
-fn config(env: &DiagEnv) -> BuildConfig {
+fn config(env: &DiagEnv) -> BuildConfig<'_> {
     BuildConfig {
         perl: match env.perl {
             1 => Perl::Pcre2,
@@ -105,6 +110,10 @@ fn config(env: &DiagEnv) -> BuildConfig {
         bzip3: env.bzip3 != 0,
         decompression_thread: env.decompression_thread != 0,
         os_win: env.os_win != 0,
+        os_win_or_mingw: env.os_win_or_mingw != 0,
+        statfs: env.statfs != 0,
+        // SAFETY: the table holds NULL or a NUL-terminated string that outlives it.
+        grep_path: unsafe { bytes(env.grep_path) },
         grep: setting!(flag_grep),
     }
 }
@@ -180,7 +189,12 @@ pub unsafe extern "C" fn ugrep_core_help(env: *const DiagEnv, what: *const c_cha
     guarded(|| {
         // SAFETY: see above.
         let (env, what) = unsafe { (&*env, bytes(what)) };
-        write_cout(env, &hm::help_what(what, &config(env)));
+        let help = hm::help_what(what, &config(env));
+        write_cout(env, &help.out);
+        if help.past_end {
+            // C++ `str.at()` threw out_of_range, which main() reports as an error
+            write_errout(env, &with_colors(|c| hm::abort_what_text(c, Some(b"error: "), hm::PAST_END_MESSAGE)));
+        }
         EXIT_ERROR
     })
 }
