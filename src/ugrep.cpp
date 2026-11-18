@@ -9001,7 +9001,7 @@ void ugrep()
 }
 
 // perform a limited ugrep search on a single file with optional archive part and store up to num results in a vector, may throw an exception, used by the TUI
-void ugrep_find_text_preview(const char *filename, const char *partname, size_t from_lineno, size_t max, size_t& lineno, size_t& num, std::vector<std::string>& text)
+void ugrep_find_text_preview_cpp(const char *filename, const char *partname, size_t from_lineno, size_t max, size_t& lineno, size_t& num, std::vector<std::string>& text)
 {
   // we can only return a text preview when the main search engine ugrep() already started and executes, or after it ends
   if (!Static::matcher)
@@ -15251,5 +15251,18 @@ void trim(std::string& line)
   line.erase(0, r.begin);
 #else
   trim_cpp(line);
+#endif
+}
+
+void ugrep_find_text_preview(const char *filename, const char *partname, size_t from_lineno, size_t max, size_t& lineno, size_t& num, std::vector<std::string>& text)
+{
+#ifdef CPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST
+  ugrep_rust::TextPreview r = ugrep_rust::core_find_text_preview(core_rust::to_slice(filename), core_rust::to_slice(partname), from_lineno, max);
+  lineno = r.lineno;
+  num = r.num;
+  for (const auto& line : r.text)
+    text.emplace_back(reinterpret_cast<const char*>(line.data.data()), line.data.size());
+#else
+  ugrep_find_text_preview_cpp(filename, partname, from_lineno, max, lineno, num, text);
 #endif
 }

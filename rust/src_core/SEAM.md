@@ -11,7 +11,8 @@ Behavior is unchanged: `CPP_RUST_IMPL_SRC_CORE` defaults to `cpp` and the produc
 |---|----------|-----------|----------------|
 | 1 | `CNF::compile/new_pattern/prune/split/adjoin/first/report/quote/anchor` | C++ callers (`ugrep.cpp`) -> component | yes (facade) |
 | 2 | `Stats::report(FILE*)` | `ugrep.cpp` -> component | yes (facade) |
-| 3 | `ugrep()`, `ugrep_find_text_preview()`, `ugrep_extract()`, `terminal()`, `set_terminal_hyperlink()` | TUI / `main` -> component | no (tapped only, see Retained) |
+| 3 | `ugrep()`, `ugrep_extract()` | TUI / `main` -> component | no (tapped only, see Retained) |
+| 3b | `terminal()`, `set_terminal_hyperlink()`, `set_color()`, `trim()`, `init()`, `ugrep_find_text_preview()` | `main` / TUI -> component | yes (facades, sub-switches; see S2b) |
 | 4 | `tui_query()`, `tui_screen_getsize()` | component -> retained `src_tui` | via `src/tui_entry.hpp` (was `query.hpp`) |
 | 5 | `flag_*` globals, `Static::*`, `Stats` counters, `color_*` | read by TUI C++, option parser, RE-flex callbacks | stays C++ |
 | 6 | `warning()`, `error()`, `abort()` | everyone -> component | stays C++ (`exit`) |
@@ -91,15 +92,15 @@ statics) so the Port can keep them that way.
 | Crossing | Error kind |
 |----------|------------|
 | `cnf_*`, `stats_report` | infallible in C++ (no throw, no return code); Rust bodies must not fail and must not panic (`panic = "abort"`) |
-| `ugrep_find_text_preview`, `ugrep_extract` (entry, not switched) | Future work: these have no facade yet; once they get one, `std::runtime_error`/`bad_alloc` in C++ -> `CoreError::Exception`, rethrown by the facade |
+| `ugrep_find_text_preview` (facade, `..._TERMINAL`) | `std::runtime_error`/`bad_alloc` from the `Grep` body propagate through the C++ default; in the Rust path the Port maps them to `CoreError::Exception` and the facade rethrows |
+| `ugrep_extract` (entry, not switched) | Future work: no facade yet |
 | `abort(msg)`, `error(msg, arg)` | process exit (`exit(EXIT_ERROR)`), `CoreError::Abort/Errno`, never returned |
 | `report` writes | a short write to `FILE*` is ignored exactly as in the legacy `fprintf` |
 
 ## Retained (stays C++, not switched by this seam)
 
-`ugrep()`, `ugrep_find_text_preview`, `ugrep_extract`, `terminal`, `set_terminal_hyperlink` (tapped as unit entry
-functions, listed in `signatures::entry` so a later task can facade them without changing types), `Output`, `MMap`,
-`Static::matchers_clone`, `Grep`/`GrepWorker`, `Flag`/`flag.hpp`, the `Stats` counters, option parsing.
+`ugrep()` and `ugrep_extract` (tapped as unit entry functions), `Output`, `MMap`,
+`Static::matchers_clone`, `Grep`/`GrepWorker`, `Flag`/`flag.hpp`, the `Stats` counters, option parsing. `terminal`, `set_terminal_hyperlink`, `set_color`, `trim`, `init` and `ugrep_find_text_preview` now have facades (see S2b).
 
 ## Unknown ownership (to resolve before porting those parts)
 
@@ -121,9 +122,7 @@ to the Behavior task.
 headers are listed in `src/Makefile.am`/`.in`; no autotools Rust glue exists for src_leaves either, so none was added.
 `/p:CPP_RUST_IMPL_SRC_CORE=rust` builds and links with the `todo!()` stubs (calls panic -> abort at run time).
 
-## Units judged by the surface corpus, not the seam replay
-
-## S2b seam: init, terminal, set_terminal_hyperlink, set_color, trim (Prepare seam, supersedes the retained notes for these functions)
+## S2b seam: init, terminal, set_terminal_hyperlink, set_color, trim, find_text_preview (Prepare seam, supersedes the retained notes for these functions)
 
 Context. S1 made the `flag_*`, `color_*`, `match_*` scalars Rust-owned (`ugrep_settings`, `settings.rs`), so the functions below work on that struct directly: no snapshot crossing and no flag write-back. Since Cleanup, `CPP_RUST_IMPL_SRC_CORE` is inert (CNF/Stats have no C++ body), so it cannot select these functions; two sub-switches do (same pattern as D-zstream-switch). Default `cpp`; behavior is unchanged.
 
@@ -137,7 +136,7 @@ Context. S1 made the `flag_*`, `color_*`, `match_*` scalars Rust-owned (`ugrep_s
 
 Types and signatures: `rust/src_core/src/signatures.rs` module `ui` (stubs: `todo!()` until the Ports; a Port does not change a signature). Build: msbuild `/p:CPP_RUST_IMPL_SRC_CORE_TERMINAL=rust` and/or `/p:CPP_RUST_IMPL_SRC_CORE_INIT=rust` define `CPP_RUST_IMPL_SRC_CORE_{TERMINAL,INIT}_RUST` (`msvc/rust.targets`); autotools builds the cpp path (`CPPFLAGS=-DCPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST` selects Rust by hand). The tap was deleted at Cleanup, so no tap macros were added; the replay is the surface corpus.
 
-Not switched here: `find_text_preview`. `Grep::find_text_preview` is a member of `Grep` (RE-flex matcher, `Output`) and `ugrep_find_text_preview` only builds a `Grep` around the cloned matchers; there is no facade that does not drag `Grep` across. It stays C++ until `Grep` is ported (flag for Planning; the Port A unit should drop it or depend on the Grep port).
+Not switched by anything else: none of the six remain C++-only. `find_text_preview`: the facade `ugrep_find_text_preview` (src/ugrep.cpp, end of file) keeps the old body as `ugrep_find_text_preview_cpp` (which alone builds the `Grep`); its signature uses only boundary types, so the Rust entry is `core_find_text_preview(filename: &[u8], partname: &[u8], from_lineno, max) -> TextPreview{lineno, num, text: Vec<Bytes>}` and the facade copies the result into the out-parameters. Switch `..._TERMINAL`. A Port must reproduce the `Static::matcher == NULL` early return (outputs untouched) and the exceptions listed under Error kinds; the Rust body will need the `Grep` search as a callback until `Grep` is ported.
 
 ### Callbacks the Rust bodies need (extern C++, not declared yet)
 
@@ -157,9 +156,9 @@ Terminal group:
 
 Known C++ quirk for Triage (preserve until classified): init tests `argv[1]`, not `argv[i]`, for `-e/-g/-N/--regexp` near the start of the option loop.
 
-## Units judged by the surface corpus, not the seam replay (older note)
+## Units judged by the surface corpus, not the seam replay
 
-- `src_core.ugrep`, `terminal` and `set_terminal_hyperlink` are tapped for call order only and are not replayed. The driver, options, init and terminal parts of ugrep.cpp therefore have no seam cases: their Port units are judged by the surface corpus (migration/corpus/src_core, 1097 cases) and the switch gate, so expect the unit gate's seam-replay check to have nothing to compare for them.
+- `src_core.ugrep` is tapped for call order only and is not replayed. The driver, options, init and terminal parts of ugrep.cpp therefore have no seam cases: their Port units are judged by the surface corpus (migration/corpus/src_core, 1097 cases) and the switch gate, so expect the unit gate's seam-replay check to have nothing to compare for them.
 - `cnf_anchor` writes `flag_empty`, which the tap does not record; the seam compares the anchored pattern only.
 
 ## output.cpp retained (D-src_core-output-retained)

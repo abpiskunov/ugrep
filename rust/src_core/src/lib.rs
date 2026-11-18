@@ -137,7 +137,16 @@ mod ffi {
         end: usize,
     }
 
+    /// Result of `ugrep_find_text_preview`: the out-parameters the facade copies back.
+    struct TextPreview {
+        lineno: usize,
+        num: usize,
+        text: Vec<Bytes>,
+    }
+
     extern "Rust" {
+        /// Seam function `src_core.find_text_preview`.
+        fn core_find_text_preview(filename: &[u8], partname: &[u8], from_lineno: usize, max: usize) -> TextPreview;
         /// Seam function `src_core.terminal`: reads and writes `ugrep_settings` directly.
         fn core_terminal();
         /// Seam function `src_core.set_terminal_hyperlink`.
@@ -315,6 +324,15 @@ fn cnf_quote(pattern: &[u8]) -> Vec<u8> {
 fn cnf_anchor(pattern: &[u8], flags: &ffi::CnfFlags) -> ffi::CnfAnchored {
     let a = sig::cnf::anchor(pattern, &flags_in(flags));
     ffi::CnfAnchored { pattern: a.pattern, enable_empty: a.enable_empty }
+}
+
+fn core_find_text_preview(filename: &[u8], partname: &[u8], from_lineno: usize, max: usize) -> ffi::TextPreview {
+    let r = sig::ui::find_text_preview(filename, partname, from_lineno, max);
+    ffi::TextPreview {
+        lineno: r.lineno,
+        num: r.num,
+        text: r.text.into_iter().map(|data| ffi::Bytes { data }).collect(),
+    }
 }
 
 fn core_terminal() {

@@ -250,10 +250,18 @@ pub struct TrimRange {
     pub end: usize,
 }
 
+/// Result of `find_text_preview`: the `lineno`, `num` and `text` out-parameters of `ugrep_find_text_preview`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextPreview {
+    pub lineno: usize,
+    pub num: usize,
+    pub text: Vec<Vec<u8>>,
+}
+
 /// Seam functions of the terminal group and `init` (src/ugrep.cpp, Prepare seam "init/terminal/hyperlink/set_color/trim").
 /// They work on `ugrep_settings` (S1) directly; the C++ they need is listed in `SEAM.md` (callbacks). Stubs until the Ports.
 pub mod ui {
-    use super::TrimRange;
+    use super::{TextPreview, TrimRange};
     use std::os::raw::c_char;
 
     /// `terminal()`: TTY check, `flag_tty_term`, color defaults and `GREP_COLORS`, pager and query decisions.
@@ -271,6 +279,12 @@ pub mod ui {
     pub fn set_color(colors: &[u8], parameter: &[u8], color: &mut [u8]) {
         let _ = (colors, parameter, color);
         panic!("not ported yet: set_color")
+    }
+
+    /// `ugrep_find_text_preview`: limited search of one file (or archive part) for the TUI preview.
+    pub fn find_text_preview(filename: &[u8], partname: &[u8], from_lineno: usize, max: usize) -> TextPreview {
+        let _ = (filename, partname, from_lineno, max);
+        panic!("not ported yet: find_text_preview")
     }
 
     /// `trim(line)`: the range of `line` left after removing white space from both ends.
