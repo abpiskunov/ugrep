@@ -1,0 +1,22 @@
+schema: cpp-rust-unit/1
+unit: init
+component: src_core
+functions: [src_core.init]
+cpp_files: [src/ugrep.cpp]
+rust_files: rust/src_core/src/init.rs rust/src_core/src/ffi/init.rs
+rust_crate_name: src_core
+harness_crate_name: src_core-harness
+depends_on: [settings, options, terminal]
+status: ported
+notes:
+  - 'init() is a thin shim in src/ugrep.cpp: it fills struct InitEnv (callback table, field order mirrors ffi/init.rs) and calls ugrep_core_init (ffi/init.rs, #[export_name]; the entry now takes the env table first). The logic is in init.rs on the S1 Settings struct through an Env trait. init_cpp, its prototype and the CPP_RUST_IMPL_SRC_CORE_INIT sub-switch (msvc/rust.props, msvc/rust.targets, facade) are deleted; no autotools wiring referenced the sub-switch.'
+  - 'Reached by callbacks only: CNF Static::bcnf, Static::arg_pattern/arg_files, magic_pattern/magic_matcher/filter_magic_pattern, pattern_args (owned by the InitCtx), load_config/save_config, import_globs, fopen_smart + BufferedInput getline, stat_fs/fsid_to_uint64, type_table/encoding_table, std::cerr, usage/warning/error/abort/exit (real exits), trim_pathname_arg, options, terminal, the OS_WIN wildcard expansion.'
+  - 'Settings are never borrowed across a callback: Env::settings() returns a fresh borrow per access because load_config and options re-enter Rust on the same settings (resolves the deferred raw-pointer item of D-terminal-unsafe-review).'
+  - 'faithful quirk (Q-core-114): the config pre-scan loop tests argv[1], not argv[i], against -e/-g/-N/--regexp and then skips i.'
+  - 'suspected C++ bug (kept): usage() returns only in config mode (flag_usage_warnings); the C++ then reads past the end of type_table/encoding_table after an invalid -t TYPE or --encoding, and the --hexdump digit loop never ends if strtoull consumes nothing. Rust returns after usage at those points (no UB, no endless loop); normal runs exit in usage.'
+  - 'suspected C++ bug (kept): the "--from: empty" warning uses whatever errno is current.'
+  - 'errno: check_arg_file sets errno (ENOENT/EACCES) itself before Rust calls warning; file_open leaves errno from fopen_smart for error().'
+  - 'known risk: trim_pathname_arg modifies argv strings in place while Rust holds read-only slices over them; the slices are not read afterwards.'
+  - 'unsafe is confined to ffi/init.rs (callback table, C strings, settings access, getenv).'
+  - 'build: msvc Base-Release x64 PASS; autotools evidence comes from PR CI (no make on the Windows worker).'
+  - 'unit-cleaned gate (init belongs to a cleaned component, so gate-check runs unit-cleaned): GATE unit-cleaned init: PASS  (migration/out\gates\unit-cleaned\init\report.json); surface 2416 cases, divergent_cases=0 (18 --version/--help cases included); build-lint, rust-tests (34), build-default, policy PASS. policy-scan --base origin/master PASS (0 findings); linked-check on the default map PASS (no init_cpp, ugrep/output/query/screen/vkey/settings objects and rust_umbrella:src_core linked). Elapsed about 25 minutes from start of the Port to the passing gate; one divergence round (file_open created a BufferedInput that consumed the FILE before import_globs; now created on first getline).'

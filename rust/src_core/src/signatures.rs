@@ -258,21 +258,6 @@ pub struct TextPreview {
     pub text: Vec<Vec<u8>>,
 }
 
-/// Seam functions of the terminal group and `init` (src/ugrep.cpp, Prepare seam "init/terminal/hyperlink/set_color/trim").
-/// They work on `ugrep_settings` (S1) directly; the C++ they need is listed in `SEAM.md` (callbacks). Stubs until the Ports.
-pub mod ui {
-    use std::os::raw::c_char;
-
-    /// `init(argc, argv)`: parses options into `ugrep_settings` and the opaque C++ containers.
-    ///
-    /// `argv` is the process argument vector (`argc` entries, valid NUL-terminated strings that live for the whole
-    /// process: the settings keep pointers into them, and `trim_pathname_arg` modifies them in place).
-    pub fn init(argv: &mut [*const c_char]) {
-        let _ = argv;
-        panic!("not ported yet: init")
-    }
-}
-
 /// Facade function of `Stats` (src/stats.cpp).
 pub mod stats {
     use super::{Bytes, StatsInput};
