@@ -517,6 +517,34 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='None|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='None|x64'">true</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="..\..\xz\src\liblzma\common\file_info.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='None|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='None|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\..\xz\src\liblzma\common\lzip_decoder.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='None|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='None|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\..\xz\src\liblzma\common\microlzma_decoder.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='None|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='None|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\..\xz\src\liblzma\common\microlzma_encoder.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='None|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='None|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\..\xz\src\liblzma\common\stream_decoder_mt.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='None|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='None|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\..\xz\src\liblzma\common\string_conversion.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='None|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='None|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\..\xz\src\liblzma\simple\arm64.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='None|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='None|x64'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="include_common\empty.c" />
   </ItemGroup>
   <ItemGroup>
@@ -547,6 +575,8 @@
     <ClInclude Include="..\..\xz\src\liblzma\common\filter_decoder.h" />
     <ClInclude Include="..\..\xz\src\liblzma\common\filter_encoder.h" />
     <ClInclude Include="..\..\xz\src\liblzma\common\index.h" />
+    <ClInclude Include="..\..\xz\src\liblzma\common\index_decoder.h" />
+    <ClInclude Include="..\..\xz\src\liblzma\common\lzip_decoder.h" />
     <ClInclude Include="..\..\xz\src\liblzma\common\index_encoder.h" />
     <ClInclude Include="..\..\xz\src\liblzma\common\memcmplen.h" />
     <ClInclude Include="..\..\xz\src\liblzma\common\outqueue.h" />
