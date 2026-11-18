@@ -212,35 +212,33 @@ The ugrep.cpp ~4670-4765 (main/wmain) and ~5282-6354 (options, option_regexp/and
 
 ## Seam: output (src/output.cpp, src/output.hpp) - Prepare seam
 
-Switch: removed by the output-core Port. The ported members (colour, `Dump::line`, both `header`, `binary_file_matches`, `flush_truncated_lines`, `Sync`) call Rust unconditionally and their `*_cpp` bodies and the C++ `Sync` are deleted; `CPP_RUST_IMPL_OUTPUT` no longer exists. Only `format*`, `format_invert*` and the quote/cpp/csv/hex/json/xml emitters keep their `*_cpp` C++ bodies until the output-format unit. `Output::Sync::Lock` holds its own reference to the reference-counted Rust sync object, so it never touches the C++ `Sync`. Only `src/ugrep.cpp` includes `output.hpp`; **no call site changed**, the public
+Switch: removed by the output-core and output-format Ports. Every ported member (colour, `Dump::line`, both `header`, `binary_file_matches`, `flush_truncated_lines`, `Sync`, `format` x2, `format_invert`, `quote`, `cpp`, `csv`, `hex`, `json`, `xml`) calls Rust unconditionally; all `*_cpp` bodies, the inline matcher overloads (`mat`, `quote(matcher)`, ...), `capture` and the C++ `Sync` are deleted; `CPP_RUST_IMPL_OUTPUT` no longer exists. `Output::Sync::Lock` holds its own reference to the reference-counted Rust sync object, and `Sync::acquire/try_acquire/release/finish` use that retained `lock->handle`, never `this->handle`, so an `~Output` flush after the `Sync` is destroyed never reads a destroyed object. Only `src/ugrep.cpp` includes `output.hpp`; **no call site changed**, the public
 `Output` API is the facade.
 
 Facade (members of `Output`, in `src/output.cpp`, end of file): `color`, `header` x2, `binary_file_matches`, `format` x2,
-`format_invert`, `quote`, `cpp`, `csv`, `hex`, `json`, `xml`, `Dump::line`. Legacy bodies renamed `*_cpp` (declared protected in
-`output.hpp`; `Dump::line_cpp` is public). Rust bridge: `output_*` in `rust/src_core/src/lib.rs`, types and signatures
-`rust/src_core/src/output.rs` (stub bodies `panic!`, panic = abort). C++ conversions: `src/output_rust.hpp`.
+`format_invert`, `quote`, `cpp`, `csv`, `hex`, `json`, `xml`, `Dump::line`. Rust bridge: `output_*` in `rust/src_core/src/lib.rs`, bodies in
+`rust/src_core/src/output.rs` and `output_format.rs`. C++ conversions: `src/output_rust.hpp`.
 
 ### Decision: matcher handoff = plain-data snapshot (not a callback table)
 
 Rust cannot own `reflex::AbstractMatcher`. C++ builds `OutputMatch` per call. Always: first, last, size, wsize, lineno, accept and
 `begin`/`end` as offsets into `window`. `text()` is never called (it writes a NUL at `txt_[len_]`, inside the window); `begin()`
 is used for `text_off` and the capture offsets. The rest is computed only under the flags or format characters the C++ checks
-(`output_rust::scan_format` mirrors the `format_cpp` parse): `eol()` (may refill and grow the buffer, so callers' pointers such as
+(`output_rust::scan_format` mirrors the format parse of `output_format.rs`): `eol()` (may refill and grow the buffer, so callers' pointers such as
 `to`/`begin` in ugrep.cpp could dangle) only for `%O %Q` and `%C %V %J %X %Y` without `-o`, or `%{+N}` forms; `bol()` for those and `%{-N}`;
 `columno` for `%K %k` (and `-k` headers: `flag_column_number`); `lines`/`lineno_end` for `%L %l` and the same-line check; fuzzy
 `edits`/`distance` for `%Z`; `groups` (a `Vec` per call) only for `%G %g %[..] %0-%9`. The window is `bol()..max(eol(), end())` when
-`has_bol`/`has_eol`, else `begin()..end()`. Reason: the accessors are cheap and stable during a call; a callback table
+`has_bol`/`has_eol`, else `begin()..end()`; it is widened to hold a group capture that starts before `begin()` (PCRE2 lookbehind), and capture offsets are relative to the window start. Reason: the accessors are cheap and stable during a call; a callback table
 would cost one crossing per accessor and make Rust call back into C++ (re-entrancy). `eol()` is called before `bol()` as the
 C++ requires, and the pointers are read after it. The matcher and its buffer are not changed by the snapshot.
 
 ### Decision: bytes out, C++ keeps the buffer (this stage)
 
 Every seam function is pure except the `--tree` header: inputs are slices plus small structs, output is `Vec<u8>` that the facade appends with `Output::str`.
-`header(pathname, partname)` with `flag_tree` stays in C++ (`header_cpp`): it takes the Sync lock with `acquire()` (ordered mode waits for
-the worker's turn) and reads and writes the process-wide `Output::Tree::path`/`depth`, so the facade does not call Rust for it.
-If the Port moves it, the facade must `acquire()` first, pass `Tree::path`/`depth` in, return the new values and write them back under the lock.
+`header(pathname, partname)` with `flag_tree` calls Rust too (`output_header_tree`): the facade takes the Sync lock with `acquire()` first (ordered mode waits for
+the worker's turn), passes the process-wide `Output::Tree::path`/`depth` in and writes the returned values back under that lock.
 `Output` (Buffer, Sync, Dump state, `FILE*`, `mode_`, `lineno_`) stays in C++: it is embedded by value in `Grep`, its inline
-primitives (`chr`, `str`, `num`, `nl`, `hex`, `uri`, `mat`, `try_flush`) are hot and stay inline, so **no per-token bridge crossing**:
+primitives (`chr`, `str`, `num`, `nl`, `hex`, `uri`, `try_flush`) are hot and stay inline, so **no per-token bridge crossing**:
 one crossing per header, per format, per emitted data item (`quote`...`xml`) and per hex-dump line. The Rust side reads the options
 it already owns (`settings`, `color`), so no flag snapshot crosses. State a function changes comes back in the result:
 `heading`, `matching`, `lineno_` (`lineno_set`), BINARY bit (`set_binary`), `Dump::done()` request (`complete_dump`),
@@ -259,8 +257,8 @@ Known differences the Port must settle (listed, not decided here):
 ### Decision: threading (cpp-rust-concurrency)
 
 This stage adds no Rust thread state: the seam functions are stateless and thread-neutral, so they are safe from any `GrepWorker`
-(the `--tree` header is not a seam function: it stays C++ because of the Sync lock and the `Tree` statics).
-`Sync` (UNORDERED/ORDERED, `acquire/try_acquire/release/finish/cancel`, STOP) and the buffers stay C++ until Port Unit A. The shape
+(the `--tree` header is a seam function: `Tree::path`/`depth` and the Sync lock are handled by the facade).
+`Sync` (UNORDERED/ORDERED, `acquire/try_acquire/release/finish/cancel`, STOP) is Rust (`output_sync.rs`, `Mutex + Condvar`); the buffers stay C++. The shape
 planned for Unit A: `Sync` as `Mutex + Condvar` with a slot counter, `Output` `Send` per worker (one per thread, never shared),
 `std::unique_lock` ownership mapped to a guard stored in the worker's `Output`; `cancel()` sets an atomic `eof` and wakes waiters.
 

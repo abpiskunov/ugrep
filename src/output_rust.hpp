@@ -1,6 +1,6 @@
-// C++ side of the output seam (CPP_RUST_IMPL_OUTPUT=rust): builds the plain-data snapshots of the retained C++
+// C++ side of the output seam: builds the plain-data snapshots of the retained C++
 // objects (reflex::AbstractMatcher, Output state) for the cxx bridge of rust/src_core. See rust/src_core/SEAM.md,
-// section "Seam: output". Only included by src/output.cpp when CPP_RUST_IMPL_OUTPUT_RUST is defined.
+// section "Seam: output". Included by src/output.cpp; the Rust code is always linked (no build switch).
 #ifndef OUTPUT_RUST_HPP
 #define OUTPUT_RUST_HPP
 
@@ -9,6 +9,7 @@
 
 #include <cstring>
 #include <string>
+#include <vector>
 
 namespace output_rust {
 
@@ -52,10 +53,10 @@ struct Need {
   bool lines = false;
   bool fuzzy = false;
   bool groups = false;
+  std::vector<size_t> indices; // group indices the format reads directly with (*matcher)[index]
 };
 
-// mirrors the parsing of Output::format_cpp and the conditions under which its inline mat/quote/... overloads
-// call eol() and bol()
+// mirrors the parsing of the format strings and the conditions under which the Rust format code calls eol() and bol()
 inline Need scan_format(const char *format, bool body_lines)
 {
   Need need;
@@ -83,8 +84,19 @@ inline Need scan_format(const char *format, bool body_lines)
     {
       has_arg = true;
       ++s;
+      const char *arg = s;
       while (*s != '\0' && *s != ']')
         ++s;
+      // every alternative that starts with a digit names a group index
+      for (const char *a = arg; a < s; )
+      {
+        if (isdigit(static_cast<unsigned char>(*a)))
+          need.indices.push_back(strtoul(a, NULL, 10));
+        while (a < s && *a != '|')
+          ++a;
+        if (a < s)
+          ++a;
+      }
       if (*s == '\0' || *(s + 1) == '\0')
       {
         need.groups = true;
@@ -121,6 +133,8 @@ inline Need scan_format(const char *format, bool body_lines)
       case '8':
       case '9':
         need.groups = true;
+        if (c >= '0' && c <= '9')
+          need.indices.push_back(static_cast<size_t>(c - '0'));
         break;
       case 'O':
       case 'Q':
@@ -194,6 +208,59 @@ inline ugrep_rust::OutputMatch snapshot(reflex::AbstractMatcher *matcher, Window
     b = matcher->bol();
     m.has_bol = true;
   }
+  // captures of every group the pattern defines, in group_id()/group_next_id() order (group 0 is the match itself)
+  // a capture may start before begin() (PCRE2 lookbehind) or end after end(): widen the window to hold it
+  std::vector<const char*> cap_first;
+  if (need.groups)
+  {
+    std::pair<size_t,const char*> id = matcher->group_id();
+    while (id.first != 0)
+    {
+      ugrep_rust::OutputCapture c{};
+      c.index = id.first;
+      c.has_name = id.second != NULL;
+      if (id.second != NULL)
+        c.name = to_vec(id.second, strlen(id.second));
+      std::pair<const char*,size_t> cap = (*matcher)[id.first];
+      c.found = cap.first != NULL;
+      c.listed = true;
+      if (c.found)
+      {
+        if (cap.first < b)
+          b = cap.first;
+        if (cap.first + cap.second > e)
+          e = cap.first + cap.second;
+      }
+      c.size = cap.second;
+      cap_first.push_back(cap.first);
+      m.groups.push_back(std::move(c));
+      id = matcher->group_next_id();
+    }
+    // indices the format reads directly work without the walk: (*matcher)[n] is the match for n == 0 or n == accept()
+    for (size_t n : need.indices)
+    {
+      bool seen = false;
+      for (const ugrep_rust::OutputCapture& g : m.groups)
+        if (g.index == n)
+          seen = true;
+      if (seen)
+        continue;
+      ugrep_rust::OutputCapture c{};
+      c.index = n;
+      std::pair<const char*,size_t> cap = (*matcher)[n];
+      c.found = cap.first != NULL;
+      if (c.found)
+      {
+        if (cap.first < b)
+          b = cap.first;
+        if (cap.first + cap.second > e)
+          e = cap.first + cap.second;
+      }
+      c.size = cap.second;
+      cap_first.push_back(cap.first);
+      m.groups.push_back(std::move(c));
+    }
+  }
   window.data = b;
   window.size = static_cast<size_t>(e - b);
   m.first = matcher->first();
@@ -205,6 +272,9 @@ inline ugrep_rust::OutputMatch snapshot(reflex::AbstractMatcher *matcher, Window
   m.begin_off = static_cast<size_t>(begin - b);
   m.text_off = m.begin_off;
   m.end_off = static_cast<size_t>(end - b);
+  for (size_t i = 0; i < cap_first.size(); ++i)
+    if (cap_first[i] != NULL)
+      m.groups[i].offset = static_cast<size_t>(cap_first[i] - b);
   if (need.columno)
     m.columno = matcher->columno();
   if (need.lines)
@@ -220,26 +290,6 @@ inline ugrep_rust::OutputMatch snapshot(reflex::AbstractMatcher *matcher, Window
       m.has_fuzzy = true;
       m.edits = fuzzy->edits();
       m.distance = fuzzy->distance();
-    }
-  }
-  // captures of every group the pattern defines, in group_id()/group_next_id() order (group 0 is the match itself)
-  if (need.groups)
-  {
-    std::pair<size_t,const char*> id = matcher->group_id();
-    while (id.first != 0)
-    {
-      ugrep_rust::OutputCapture c{};
-      c.index = id.first;
-      c.has_name = id.second != NULL;
-      if (id.second != NULL)
-        c.name = to_vec(id.second, strlen(id.second));
-      std::pair<const char*,size_t> cap = (*matcher)[id.first];
-      c.found = cap.first != NULL;
-      if (c.found)
-        c.offset = static_cast<size_t>(cap.first - begin);
-      c.size = cap.second;
-      m.groups.push_back(std::move(c));
-      id = matcher->group_next_id();
     }
   }
   return m;

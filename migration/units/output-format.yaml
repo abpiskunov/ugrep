@@ -1,0 +1,17 @@
+schema: cpp-rust-unit/1
+unit: output-format
+component: src_core
+functions: [src_core.output_format_count, src_core.output_format_match, src_core.output_format_invert, src_core.output_quote, src_core.output_cpp, src_core.output_csv, src_core.output_hex, src_core.output_json, src_core.output_xml]
+cpp_files: [src/output.cpp, src/output.hpp, src/output_rust.hpp]
+rust_files: rust/src_core/src/output_format.rs rust/src_core/src/output.rs rust/src_core/src/ffi/output.rs rust/src_core/src/lib.rs
+rust_crate_name: src_core
+harness_crate_name: src_core-harness
+depends_on: [output-core]
+status: ported
+notes:
+  - 'Gate: GATE unit-cleaned output-format: PASS (migration/out/gates/unit-cleaned/output-format/report.json); surface 5034 cases, 0 divergent; 68 Rust tests; policy-scan PASS. Component src_core is cleaned, so the unit gate runs unit-cleaned on the default build.'
+  - 'Scope: Output::format (count and match overloads), format_invert, capture (Mt::capture in output_format.rs) and the quote/cpp/csv/hex/json/xml emitters. The matcher is a plain-data snapshot built by C++ per match (output_rust::snapshot, SEAM.md Decision: matcher handoff); Rust returns the bytes and C++ appends them.'
+  - 'Rust is the only path, no build switch: the *_cpp bodies, Output::capture and the inline matcher overloads (mat, quote/cpp/csv/json/hex/xml(matcher), match_context) are deleted from src/output.cpp and src/output.hpp.'
+  - 'Snapshot change: capture offsets are relative to the window start, and the window is widened to hold a group capture that starts before begin() (PCRE2 lookbehind), so no offset wraps.'
+  - 'Operator notes of the output-core review applied: Sync::acquire/try_acquire/release/finish use lock->handle; stale wording fixed in src/output_rust.hpp and SEAM.md.'
+  - 'Known differences (listed, not silently decided): %Z without a fuzzy matcher prints nothing where C++ dereferences NULL; line-buffered flush points inside one call move to the append (Output::lines flushes after each newline); strtol clamps to 32-bit long on Windows as the MSVC C++ does.'

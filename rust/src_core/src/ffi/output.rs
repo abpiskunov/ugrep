@@ -34,13 +34,14 @@ pub fn opts<'a>(hyperlink_prefix: &'a [u8], hyperlink_host: &'a [u8], hyperlink_
     // SAFETY: the settings are written by C++ option parsing before any output is produced and are only read here;
     // the pointers inside refer to C strings that live for the whole process.
     let s: &'a Settings = unsafe { &*crate::settings_ffi::UGREP_SETTINGS.as_ptr() };
-    // SAFETY: the colour pointers are NULL or NUL-terminated strings with process lifetime (see above).
-    let (hl, st, del, off) = unsafe {
+    // SAFETY: the colour and separator pointers are NULL or NUL-terminated strings with process lifetime (see above).
+    let (hl, st, del, off, sep) = unsafe {
         (
             (!s.color_hl.is_null()).then(|| cstr(s.color_hl)),
             cstr(s.color_st),
             cstr(s.color_del),
             cstr(s.color_off),
+            cstr(s.flag_separator),
         )
     };
     Opts {
@@ -78,6 +79,18 @@ pub fn opts<'a>(hyperlink_prefix: &'a [u8], hyperlink_host: &'a [u8], hyperlink_
         hex_hbr: s.flag_hex_hbr,
         hex_columns: s.flag_hex_columns,
         width: s.flag_width,
+        separator: sep,
+        with_filename: s.flag_with_filename,
+        brk: flag(s.flag_break),
+        files_with_matches: s.flag_files_with_matches,
+        count: s.flag_count,
+        invert_match: s.flag_invert_match,
+        only_matching: s.flag_only_matching,
+        hex_all: s.flag_hex,
+        with_hex: s.flag_with_hex,
+        match_all: s.flag_match,
+        ungroup: flag(s.flag_ungroup),
+        fuzzy: s.flag_fuzzy,
         hyperlink_prefix,
         hyperlink_host,
         hyperlink_path,
