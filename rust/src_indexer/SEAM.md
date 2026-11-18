@@ -188,3 +188,7 @@ or propose a mask.
   Switch-over tasks), so every build links the umbrella; the indexer code path only changes with `CPP_RUST_IMPL_SRC_INDEXER`.
 - Building the workspace outside the product build needs the codec libraries of `src_leaves`: set
   `CPP2RUST_CODECS_FROM_LINKER=1` for `cargo check --workspace`, or fetch them (see `rust/src_leaves/SEAM.md`).
+
+## S3: options and main are Rust
+
+The facade, the cxx bridge and the seam header are gone. `src/ugrep-indexer.cpp` is only `main`, which calls `ugrep_indexer_main` (`src/ffi/entry.rs`) and runs `indexer_cli::run`. See D-S3-1..4 in migration/decisions.md.

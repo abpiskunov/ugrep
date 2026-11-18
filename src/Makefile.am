@@ -6,7 +6,7 @@ RUST_INCLUDES = -I$(RUST_CARGO_DIR)/@RUST_TRIPLE@/cxxbridge
 BUILT_SOURCES = rust-umbrella
 .PHONY: rust-umbrella
 rust-umbrella:
-	cd $(abs_top_srcdir)/rust && CPP2RUST_CODECS_FROM_LINKER=1 CPP2RUST_CODEC_LIBS=@RUST_CODEC_LIBS@ $(CARGO) build --release --locked -p rust_umbrella @RUST_FEATURES@ @RUST_TARGET@ --target-dir $(RUST_CARGO_DIR)
+	cd $(abs_top_srcdir)/rust && PLATFORM="$(PLATFORM)" CPP2RUST_CODECS_FROM_LINKER=1 CPP2RUST_CODEC_LIBS=@RUST_CODEC_LIBS@ $(CARGO) build --release --locked -p rust_umbrella @RUST_FEATURES@ @RUST_TARGET@ --target-dir $(RUST_CARGO_DIR)
 $(RUST_UMBRELLA): rust-umbrella
 clean-local:
 	rm -rf $(RUST_CARGO_DIR)
@@ -84,9 +84,6 @@ ugrep_indexer_SOURCES  = \
 	$(top_srcdir)/include/reflex/utf8.h \
 	$(top_srcdir)/lib/input.cpp \
 	ugrep-indexer.cpp \
-	ugrep-indexer_facade.cpp \
-	ugrep-indexer_seam.h \
-	indexer_rust.hpp \
 	glob.hpp \
 	glob_rust.hpp \
 	glob_facade.cpp \
