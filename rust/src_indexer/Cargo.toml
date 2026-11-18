@@ -12,9 +12,5 @@ path = "src/lib.rs"
 [features]
 # Seam tap build variant (see rust/src_indexer/cpp2rust_tap.hpp).
 tap = []
-
-[dependencies]
-cxx = "1"
-
-[build-dependencies]
-cxx-build = "1"
+# The C++ was built with HAVE_LIBZ: `-z` is accepted and the help text lists the codecs (see build.rs).
+codecs = []
