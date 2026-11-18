@@ -271,6 +271,33 @@ gates:
           - {json: "{out}/catalog.json", field: open_questions, op: "==", value: 0}
           - {json: "{out}/catalog.json", field: unreasoned_uncovered, op: "==", value: 0}
 
+  # D-unit-cleaned: a unit of a cleaned component has no C++ seam trace for newly ported functions, and the product
+  # already ships the Rust, so the component's surface cases against the product judge it. gate-check runs this
+  # gate whenever `unit` is asked for on a unit whose component is `cleaned: true`.
+  unit-cleaned:
+    scope: unit
+    checks:
+      - name: build-lint
+        run: "cargo clippy -p {rust_crate_name} --locked --manifest-path rust/Cargo.toml -- -D warnings"
+      - name: rust-tests
+        run: "cargo nextest run -p {rust_crate_name} --locked --manifest-path rust/Cargo.toml --profile ci"
+        expect: [{junit: "rust/target/nextest/ci/junit.xml", max_failures: 0}]
+      - name: build-default
+        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1"
+      - name: surface
+        run: >-
+          {tools} run-cases --bin {product_bin_cpp} --impl rust
+          --cases migration/corpus/{component}/cases.jsonl --env-matrix migration/env-matrix.json --out {out}/surface.rust.jsonl
+          && {tools} trace-diff diff --a migration/corpus/{component}/surface/cases.trace.jsonl
+          --b {out}/surface.rust.jsonl --masks migration/masks/{component}.json --out {out}/surface.json
+        expect:
+          - {json: "{out}/surface.json", field: divergent_cases, op: "==", value: 0}
+          - {json: "{out}/surface.json", field: cases, op: ">=", value: 20}
+      - name: policy
+        run: >-
+          {tools} policy-scan --base {base} --plan migration/validation-plan.yaml
+          --forbid-todo {rust_files} --out {out}/policy.json
+
   # After Cleanup (Q-cleanup-1, D-cleanup-gate) a switched component has no C++ variant and no tap: the default build
   # is the product. This gate replaces `switch` for src_leaves, src_core and src_indexer. The deleted C++ stays
   # forbidden (linked_args), the retained C++ must still link (retained_args), and no tap is left in the product.

@@ -304,6 +304,33 @@ fn blocked_code(rc: i64) -> bool {
     rc == 126 || rc == 127 || (cfg!(windows) && rc == 9009)
 }
 
+/// The gate a run of `gate` on `target` uses: `<gate>-cleaned` when the plan defines it and
+/// the target's component is marked `cleaned: true`, otherwise `gate`.
+///
+/// A cleaned component has no C++ left to record a seam from or to measure coverage of, so
+/// a gate that needs either (a unit's seam replay, `behavior-ready`'s seam recording) cannot
+/// pass for it however correct the change is. Applied to explicit `--gate` runs as well as
+/// to `--changed`, because a task names the gate its template gives it.
+pub fn effective_gate(plan: &Value, gate: &str, target: &str, mig: &Path) -> R<String> {
+    let cleaned_gate = format!("{gate}-cleaned");
+    let gates = get(plan, "gates");
+    let (Some(g), Some(_)) = (gates.and_then(|gs| get(gs, gate)), gates.and_then(|gs| get(gs, &cleaned_gate))) else {
+        return Ok(gate.to_string());
+    };
+    let comp = if get(g, "scope").and_then(Value::as_str).unwrap_or("unit") == "unit" {
+        let rec = load_yaml_file(&mig.join("units").join(format!("{target}.yaml")).to_string_lossy())?;
+        rec.get("component").map(py_str).unwrap_or_default()
+    } else {
+        target.to_string()
+    };
+    let cleaned = get(plan, "components")
+        .and_then(|cs| cs.get(&comp))
+        .and_then(|c| get(c, "cleaned"))
+        .and_then(Value::as_bool)
+        == Some(true);
+    Ok(if cleaned { cleaned_gate } else { gate.to_string() })
+}
+
 pub fn run_gate(plan: &Value, gate: &str, target: &str, ctx: &Ctx) -> R<Value> {
     let g = get(plan, "gates")
         .and_then(|gs| get(gs, gate))
@@ -590,7 +617,11 @@ pub fn main(argv: &[String]) -> R<i32> {
     };
     let mut all_ok = true;
     for (g, t) in todo {
-        let r = run_gate(&plan, &g, &t, &ctx)?;
+        let used = effective_gate(&plan, &g, &t, &mig)?;
+        if used != g {
+            println!("gate-check: {t} belongs to a cleaned component; running {used} instead of {g}");
+        }
+        let r = run_gate(&plan, &used, &t, &ctx)?;
         all_ok &= matches!(r["result"].as_str(), Some("pass" | "dry-run"));
     }
     Ok(if all_ok { 0 } else { 1 })
@@ -686,6 +717,26 @@ mod tests {
             ("behavior-ready".to_string(), "core".to_string()),
             ("behavior-ready-cleaned".to_string(), "leaves".to_string()),
         ]);
+    }
+
+    /// A unit of a cleaned component has no seam trace to replay, so `--gate unit` runs `unit-cleaned`.
+    #[test]
+    fn a_gate_on_a_cleaned_components_target_uses_its_cleaned_variant() {
+        let d = TempDir::new("geffective");
+        let mig = d.path().join("migration");
+        d.write("migration/units/opts.yaml", "unit: opts\ncomponent: core\nstatus: ported\n");
+        d.write("migration/units/walk.yaml", "unit: walk\ncomponent: tui\nstatus: ported\n");
+        let plan = json!({"components": {"core": {"cleaned": true}, "tui": {}},
+                          "gates": {"unit": {"scope": "unit"}, "unit-cleaned": {"scope": "unit"},
+                                    "switch": {"scope": "component"},
+                                    "behavior-ready": {"scope": "component"},
+                                    "behavior-ready-cleaned": {"scope": "component"}}});
+        let used = |g: &str, t: &str| effective_gate(&plan, g, t, &mig).unwrap();
+        assert_eq!(used("unit", "opts"), "unit-cleaned");
+        assert_eq!(used("unit", "walk"), "unit", "a component with C++ left keeps the seam replay");
+        assert_eq!(used("behavior-ready", "core"), "behavior-ready-cleaned");
+        assert_eq!(used("switch", "core"), "switch", "no cleaned variant, no change");
+        assert_eq!(used("unit-cleaned", "opts"), "unit-cleaned", "an explicit cleaned gate is kept");
     }
 
     /// The Switch over task may forget to mark its units `switched`; the build file still decides.
