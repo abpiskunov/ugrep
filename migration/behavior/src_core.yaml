@@ -861,6 +861,15 @@ behaviors:
     origin: capture
     suspicious: true
     why: "a command line option is expected to win over an environment variable: here the deprecated GREP_COLOR overrides --colors for the match colour"
+  - id: B-src_core-127
+    statement: "`--hexdump` with A, B or C followed by a non-digit (`--hexdump=Ax`, `--hexdump=C-`) loops forever in the C++ (strtoull converts nothing and contexts 1-3 never call usage); the Rust reports `invalid argument --hexdump=[1-8][a][bch][A[NUM]][B[NUM]][C[NUM]]` and exits 2, like the other invalid --hexdump forms. Not recorded: the C++ reference hangs; Rust unit tests cover Ax, Bx and C-"
+    kind: error
+    status: bug-fix
+    decision: D-src_core-hexdump
+    evidence: ["case:core-init-hexdump-bad"]
+    origin: review
+    suspicious: true
+    why: "a hang cannot be preserved; the fix reuses the existing usage message and exit code (operator decision on PR #81)"
 
   - id: B-src_core-127
     statement: "`--help` and `-?` print the whole help text (usage line, option list, the trailer `Specify `ugrep --help WHAT' for help on WHAT.`) to standard output with empty standard error and exit 2; `-s`, `-q`, `--color=always`, `--no-config`, `--help=` and `--help ''` print the same text. The text is recorded in migration/corpus/src_core/help/help.txt"
