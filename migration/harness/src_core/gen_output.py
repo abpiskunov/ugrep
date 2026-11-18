@@ -112,7 +112,7 @@ for i, fmt in enumerate(["%f:%n:%O%~", "%H%N%K%B%T%O%~", "%[,]>%m%,%o%~", "%F%[ 
                          "%[ms]=%o%=%~", "%u|%O%~", "%J%~", "%V%~", "%X%~", "%Y%~", "%C%~", "%c,%j,%v,%x,%y,%q%~", "%o%R%~",
                          "%n%s%[|]>%k%~", "%[1;32m]=%f%=%s%O%~", "no fields", "", "%~%~", "%%n %%%n%~", "%m/%M/%L/%l%~"]):
     for tag, extra in (("", []), ("o", ["-o"]), ("v", ["-v"]), ("cx", ["-C1"]), ("br", ["--break"]), ("hd", ["--heading"]),
-                       ("ml", ["-e", "foo.*\\n.*bar"]), ("col", ["--color=always"]), ("j", ["-J3"]), ("z", ["-z"]),
+                       ("ml", ["-e", "foo.*\\n.*bar"]), ("col", ["--color=always"]), ("j", ["-J3", "--sort=name"]), ("z", ["-z"]),
                        ("bin", ["-a"])):
         files = FB if tag in ("bin",) else F3
         c("ff-%d-%s" % (i, tag), ["--format=" + fmt] + extra + ["foo"] + sorted(files), files)
@@ -218,7 +218,7 @@ for w in (0, 1, 5, 20, 40, 80, 200):
         c("w-%d-%s" % (w, tag), ["--width=%d" % w] + extra + ["foo", "long.txt", "u.txt"], {"long.txt": LONG, "u.txt": UNI})
 for tag, extra in (("", []), ("n", ["-nH"]), ("c", ["--color=always", "-C1"]), ("j", ["--json"]), ("x", ["--xml"]), ("s", ["--csv"]),
                    ("hx", ["-X"]), ("f", ["--format=%f:%O%~"]), ("o", ["-o"]), ("v", ["-v"]), ("J", ["-J4", "--sort=name", "-r"])):
-    c("lb-" + tag, ["--line-buffered"] + extra + ["foo", "." if tag == "J" else "t.txt"], dict(MANY, **F1) if tag == "J" else F1)
+    c("lb-" + tag, ["--line-buffered"] + extra + ["foo", "." if tag == "J" else "t.txt"], dict(MANY, **F1) if tag == "J" else F1, force=True)
 for ml in (1, 10, 50, 100000):
     for tag, extra in (("", []), ("o", ["-o"]), ("c", ["--color=always", "-n"]), ("j", ["--json"]), ("v", ["-v"])):
         c("ml-max-%d-%s" % (ml, tag), ["--max-line=%d" % ml] + extra + ["foo", "long.txt"], {"long.txt": LONG})
@@ -234,7 +234,9 @@ for j in (1, 2, 3, 4, 8, 16):
                        ("bin", ["-a", "-n"]), ("pr", ["--pretty"]), ("ug", ["--ungroup", "-nH"])):
         files = dict(MANY)
         files["m/bin.dat"] = BIN
-        c("th-%d-%s" % (j, tag), ["-J%d" % j, "--sort=name", "-r"] + extra + ["foo", "m"], files, force=j > 1)
+        if j > 1 and tag in ("fm", "lm"):
+            continue  # --max-files with -J>1 races: not recorded
+        c("th-%d-%s" % (j, tag), ["-J%d" % j, "--sort=name", "-r"] + extra + ["foo", "m"], files, force=True)
 for tag, extra in (("m1", ["-m1"]), ("m2", ["-m2"]), ("m3n", ["-m3", "-nH"]), ("m1c", ["-m1", "-C1", "-n"]), ("m1v", ["-m1", "-v"]),
                    ("m1o", ["-m1", "-o"]), ("m1j", ["-m1", "--json"]), ("m1x", ["-m1", "--xml"]), ("m1s", ["-m1", "--csv"]),
                    ("m1hx", ["-m1", "-X"]), ("m1f", ["-m1", "--format=%f:%O%~"]), ("m1co", ["-m1", "--color=always", "-nH"]),
@@ -243,7 +245,7 @@ for tag, extra in (("m1", ["-m1"]), ("m2", ["-m2"]), ("m3n", ["-m3", "-nH"]), ("
                    ("mz", ["-m0"]), ("m1b", ["-m1", "-a", "--binary-files=text"]), ("m1u", ["-m1", "-u", "-o"]),
                    ("m1z", ["-m1", "-z"]), ("mf1", ["--max-files=1"]), ("mf2", ["--max-files=2", "-c"]), ("mf1l", ["--max-files=1", "-l"])):
     c("st-" + tag, extra + ["foo", "t.txt", "u.txt", "nofile.txt"], F2)
-    c("stj-" + tag, ["-J3", "--sort=name"] + extra + ["foo", "m", "t.txt"], dict(MANY, **F1))
+    c("stj-" + tag, ["-J3", "--sort=name"] + extra + ["foo", "m", "t.txt"], dict(MANY, **F1), force=True)
 c("st-stdin-m1", ["-m1", "-n", "foo"], stdin=TXT)
 c("st-stdin-q", ["-q", "foo"], stdin=TXT)
 c("st-stdin-q-nomatch", ["-q", "zzz"], stdin=TXT)
