@@ -1,0 +1,17 @@
+schema: cpp-rust-unit/1
+unit: config
+component: src_core
+functions: [src_core.load_config, src_core.save_config]
+cpp_files: [src/ugrep.cpp]
+rust_files: rust/src_core/src/config.rs rust/src_core/src/ffi/config.rs
+rust_crate_name: src_core
+harness_crate_name: src_core-harness
+depends_on: [settings, options]
+status: ported
+notes:
+  - 'load_config() and save_config() are thin shims in src/ugrep.cpp: they fill a struct ConfigEnv (callback table, plus the OptionsEnv of the options unit) and call the Rust entries ugrep_core_load_config / ugrep_core_save_config (ffi/config.rs, #[export_name]). The logic (home/working directory/XDG lookup, line loop, option rejection, recursion, clearing of options that do not make sense in a config file, the text of the saved file) is in config.rs on the S1 Settings struct; load_config calls the Rust options parser directly.'
+  - 'Stays C++ behind callbacks: fopen_smart and the Windows/POSIX owner check of the working-directory file, reflex::BufferedInput line reading with getline/trim, flag_config_files (std::set), the std::string/std::vector options, warning/error/usage, rename + errno = EEXIST, and the standard streams. The config line lives in the C++ std::string like before, so pointers the parser keeps into it behave as in C++.'
+  - 'The C++ bodies of load_config and save_config are deleted.'
+  - 'faithful quirk kept: save_config writes exclude-dir= for the --exclude list; it prints delay=4 as the default text while DEFAULT_QUERY_DELAY is 3.'
+  - 'unit-cleaned gate: GATE unit-cleaned config: PASS  (migration/out\gates\unit-cleaned\config\report.json); surface 2416 cases, divergent_cases=0; build-lint, rust-tests (17), build-default, policy PASS.'
+ a baseline C++ build (ugrep.exe before the change) against the new build on load/save cases (named, stdout, .old, nested config, ---FILE, missing file): identical output and saved file hashes.'
