@@ -29,10 +29,10 @@ fn flag(v: i32) -> bool {
     v == 1
 }
 
-/// The `Opts` of the format calls (no `--hyperlink` strings), built once: the settings are final when output starts.
-pub fn format_opts() -> &'static Opts<'static> {
-    static OPTS: std::sync::OnceLock<Opts<'static>> = std::sync::OnceLock::new();
-    OPTS.get_or_init(|| opts(&[], &[], &[]))
+/// The `Opts` of the format calls (no `--hyperlink` strings), built on every call: flags change after the first call
+/// (`-Q` `set_flags`, `--format-begin` before `--match -x -v`).
+pub fn format_opts() -> Opts<'static> {
+    opts(&[], &[], &[])
 }
 
 /// Builds the `Opts` snapshot from `ugrep_settings` and the `--hyperlink` strings that C++ passes.
@@ -100,5 +100,29 @@ pub fn opts<'a>(hyperlink_prefix: &'a [u8], hyperlink_host: &'a [u8], hyperlink_
         hyperlink_prefix,
         hyperlink_host,
         hyperlink_path,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ffi::OutputCtx;
+
+    #[test]
+    fn format_opts_follow_flag_changes_between_calls() {
+        let ctx = OutputCtx { lineno: 0, binary: false, dump_incomplete: false, stdin_label: false };
+        let p = crate::settings_ffi::UGREP_SETTINGS.as_ptr();
+        // SAFETY: the test is the only writer of this flag and restores it; the C++ side is not linked here.
+        let old = unsafe { (*p).flag_initial_tab };
+        // SAFETY: see above.
+        unsafe { (*p).flag_initial_tab = 0 };
+        let a = crate::output_format::format_count(&format_opts(), b"%T", 1, &ctx);
+        // SAFETY: see above.
+        unsafe { (*p).flag_initial_tab = 1 };
+        let b = crate::output_format::format_count(&format_opts(), b"%T", 1, &ctx);
+        // SAFETY: see above.
+        unsafe { (*p).flag_initial_tab = old };
+        assert_eq!(a, b"");
+        assert_eq!(b, b"\t");
     }
 }

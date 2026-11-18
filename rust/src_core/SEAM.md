@@ -227,7 +227,7 @@ is used for `text_off` and the capture offsets. The rest is computed only under 
 (`output_rust::scan_format` mirrors the format parse of `output_format.rs`): `eol()` (may refill and grow the buffer, so callers' pointers such as
 `to`/`begin` in ugrep.cpp could dangle) only for `%O %Q` and `%C %V %J %X %Y` without `-o`, or `%{+N}` forms; `bol()` for those and `%{-N}`;
 `columno` for `%K %k` (and `-k` headers: `flag_column_number`); `lines`/`lineno_end` for `%L %l` and the same-line check; fuzzy
-`edits`/`distance` for `%Z`; `groups` (a `Vec` per call) only for `%G %g %[..] %0-%9`. The window is `bol()..max(eol(), end())` when
+`edits`/`distance` for `%Z`; `groups` (a `Vec` per call) only for the fields that read captures (`%b %d %e %o %# %q %c %v %j %x %y %G %g %0-%9`); `%[..]` alone, as in the `--json/--csv/--xml` presets, does not fill them. `Opts` is rebuilt on every format call because flags change between calls (`-Q` `set_flags`, `--format-begin`). The window is `bol()..max(eol(), end())` when
 `has_bol`/`has_eol`, else `begin()..end()`; it is widened to hold a group capture that starts before `begin()` (PCRE2 lookbehind), and capture offsets are relative to the window start. Reason: the accessors are cheap and stable during a call; a callback table
 would cost one crossing per accessor and make Rust call back into C++ (re-entrancy). `eol()` is called before `bol()` as the
 C++ requires, and the pointers are read after it. The matcher and its buffer are not changed by the snapshot.

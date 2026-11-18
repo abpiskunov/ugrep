@@ -44,7 +44,22 @@ MSVC Release x64, same machine, interleaved runs, min of 9, wall time, output to
 | -v --format | 470 | 533 | 1.13 |
 | --replace | 645 | 615 | 0.95 |
 
-Noise is high (a single-pass run gave 0.50 for plain `-c`). The emitter paths are about 40-50% slower: each field crosses the bridge and allocates a `Vec`, and `Opts` is rebuilt per call.
+Noise is high (a single-pass run gave 0.50 for plain `-c`).
+
+### Re-measurement after review fixes (groups gated, `Opts` rebuilt per call)
+
+Setup: 300000 lines of `line N foo bar baz quick brown fox M` (14.4 MB), pattern `quick` (one match per line), C++ baseline commit 1672755 worktree vs this head, MSVC Release x64, interleaved, min of 9, wall ms, output to NUL.
+
+| case | C++ ms | Rust ms | ratio |
+|---|---|---|---|
+| --format %j | 189 | 294 | 1.55 |
+| --json | 467 | 713 | 1.53 |
+| --csv | 403 | 584 | 1.45 |
+| --xml | 479 | 714 | 1.49 |
+
+The earlier `--format %j` ratio of 1.08 was not reproduced on this file; all four are about 1.5x here, so the emitter paths stay slower than C++.
+The previous wording was wrong: there is one bridge crossing per format call, not one per field. The remaining cost is not the crossing; it is the per-call snapshot, the `Vec` result and the copy back to the C++ buffer, plus `Opts` built per call.
+`Opts` is built on every call because flags change between calls (`-Q` `set_flags`, `--format-begin`); a unit test covers this.
 Not resolved. With no threshold in the plan this needs a user decision: accept, or follow up with batching or a Rust-owned buffer.
 
 ## Known differences (listed, not silently decided)

@@ -69,7 +69,7 @@ mod ffi {
     /// `window[bol_off..eol_off]`. C++ sets them only when the
     /// format or flags need the line, as the inline `mat`/`quote` overloads do, because `eol()` may refill the buffer.
     /// `columno`, `lines`, `lineno_end`, `edits`/`distance` and `groups` are filled only when the format characters
-    /// or flags that read them are present (`%K %k`, `%L %l`, `%Z`, `%G %g %[..] %1-%9`); otherwise they are zero/empty.
+    /// or flags that read them are present (`%K %k`, `%L %l`, `%Z`, and `groups` only for `%b %d %e %o %# %q %c %v %j %x %y %G %g %0-%9`, not for `%[..]` alone); otherwise they are zero/empty.
     /// `text()` is never called (it writes a NUL into the buffer); `text_off` equals `begin_off`.
     struct OutputMatch {
         present: bool,
@@ -615,7 +615,7 @@ fn output_truncate_lines(data: &[u8], skip: bool, cols: usize, ansi: u8) -> ffi:
     ffi::OutputTruncResult { bytes, skip: st.skip, cols: st.cols, ansi: st.ansi }
 }
 fn output_format_count(format: &[u8], matches: usize, ctx: &ffi::OutputCtx) -> Vec<u8> {
-    output_format::format_count(output_ffi::format_opts(), format, matches, ctx)
+    output_format::format_count(&output_ffi::format_opts(), format, matches, ctx)
 }
 
 fn output_format_match(
@@ -627,7 +627,7 @@ fn output_format_match(
     matcher: &ffi::OutputMatch,
     ctx: &ffi::OutputCtx,
 ) -> ffi::OutputFormatResult {
-    output_format::format_match(output_ffi::format_opts(), format, (pathname, partname), window, args, matcher, ctx)
+    output_format::format_match(&output_ffi::format_opts(), format, (pathname, partname), window, args, matcher, ctx)
 }
 
 fn output_format_invert(
@@ -638,5 +638,5 @@ fn output_format_invert(
     args: &ffi::OutputArgs,
     ctx: &ffi::OutputCtx,
 ) -> ffi::OutputFormatResult {
-    output_format::format_invert(output_ffi::format_opts(), format, (pathname, partname), line, args, ctx)
+    output_format::format_invert(&output_ffi::format_opts(), format, (pathname, partname), line, args, ctx)
 }
