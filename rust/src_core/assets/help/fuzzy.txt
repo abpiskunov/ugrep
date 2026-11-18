@@ -1,0 +1,40 @@
+Fuzzy (approximate) search is performed with option -Z:
+
+ -Z    fuzzy match
+ ----  ---------------------------------------------------------------------
+       allow 1 character insertion, deletion or substitution (-Z default)
+ 2     allow 2 character insertions, deletions and/or substitutions
+ +1    allow 1 character insertion, e.g. pattern 'foo' also matches 'fomo'
+ -1    allow 1 character deletion, e.g. pattern 'food' also matches 'fod'
+ ~1    allow 1 character substitution, e.g. pattern 'foo' also matches 'for'
+ +-1   allow 1 character insertion or deletion
+ +~1   allow 1 character insertion or substitution
+ -~1   allow 1 character deletion or substitution
+ best  when prefixed to the above, output the best matches only
+
+No whitespace may be given between -Z and its argument.
+
+Insertions, deletions and/or substitutions are applied to Unicode characters,
+except when option -U is specified for ASCII/binary pattern search.
+
+The 'best' prefix outputs the best matching lines with the lowest cost (minimal
+edit distance) per file.  For example, if a file has an exact match anywhere,
+then only exact matches are output, no approximate matches.  This requires two
+passes over an input file to determine the minimal edit distance, which reduces
+performance significantly.  This option cannot be used with standard input or
+with Boolean queries.
+
+Option --sort=best sorts the directory output by best fuzzy match based on edit
+distance, i.e. files with at least one exact match are output first, followed
+by files with at least a match that is one edit distance from exact, and so on.
+This sort option requires two passes over each input file, which reduces
+performance significantly.
+
+NOTE: Fuzzy search anchors each pattern match at the beginning character of the
+specified regex pattern.  This significantly improves search performance and
+prevents overmatching.  For example, the regex pattern `[1-9]buzz' starts with
+a nonzero digit at which all matches are anchored.  Replace the beginning of a
+regex pattern with a wildcard to match any character, for example `.buzz', or
+make the first characters of the regex pattern optional, for example
+`[1-9]?buzz' or `.?buzz'.
+

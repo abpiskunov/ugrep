@@ -23,6 +23,10 @@ pub mod config_ffi;
 pub mod init;
 #[path = "ffi/init.rs"]
 pub mod init_ffi;
+// `usage`, `help`, `version`, `warning`, `error`, `abort`, `is_directory`, `cannot_decompress` and `main`
+pub mod help_main;
+#[path = "ffi/help_main.rs"]
+pub mod help_main_ffi;
 // `set_color` and `trim`
 pub mod color;
 // `terminal()` and `set_terminal_hyperlink()` and their C-ABI entries (callbacks into the retained C++)

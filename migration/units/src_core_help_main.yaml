@@ -1,0 +1,17 @@
+schema: cpp-rust-unit/1
+unit: src_core_help_main
+component: src_core
+functions: [src_core.usage, src_core.help, src_core.version, src_core.warning, src_core.error, src_core.abort, src_core.is_directory, src_core.cannot_decompress, src_core.main]
+cpp_files: [src/ugrep.cpp]
+rust_files: rust/src_core/src/help_main.rs rust/src_core/src/ffi/help_main.rs
+rust_crate_name: src_core
+harness_crate_name: src_core-harness
+depends_on: [init, terminal, options]
+status: ported
+notes:
+  - 'usage(), help(const char*), version(), is_directory(), cannot_decompress(), warning(), error(), abort() (both overloads) and the body of main()/wmain() are Rust (help_main.rs, ffi/help_main.rs, C-ABI entries ugrep_core_usage/help/version/is_directory/cannot_decompress/warning/error/abort/main). help(std::ostream&) is deleted from src/ugrep.cpp.'
+  - 'The C++ keeps thin shims with the same names (callers unchanged): they fill a CoreDiagEnv table (std::cerr/std::cout/Static::errout writers, strerror_s, build configuration) and call Rust; exit() stays in C++, Rust returns the status (-1 = continue, for usage() while reading a config file); no panic crosses (catch_unwind gives status 2). main()/wmain() stay C++ only for the UTF-8 argv conversion and the signal handlers, then call core_main -> ugrep_core_main, which runs init/tui_query/ugrep through callbacks (C++ catches the exceptions and hands the text to Rust) and computes the exit status.'
+  - 'Help text: include_str! of migration/corpus/src_core/help/help.txt (recorded from the C++ --help, never retyped); the WHAT topics format, regex, glob(s), fuzzy are rust/src_core/assets/help/*.txt, cut from the output of the C++ `ugrep --help <topic>` (Base-Release x64). The build-dependent parts of the C++ (#if HAVE_PCRE2/BOOST, codec lists, WITH_DECOMPRESSION_THREAD, OS_WIN, flag_grep) are substituted at marked places of the recorded text from flags passed by C++; a unit test reproduces help.txt byte for byte for the recorded configuration. The fragments of the other configurations are copies of the C++ literals and were not recorded (only the Base build runs locally).'
+  - 'bug-preserve (Q-help-1..6): --help exits 2; --no stripped from any WHAT; heading directly followed by the help for `--help --`; did-you-mean list text; -s keeps exit 2.'
+  - 'Verification: old (pre-change) and new msvc Base-Release x64 ugrep.exe compared on 42 invocations (help variants, version, usage errors, warning/error/is_directory, exit codes): stdout, stderr and exit code identical.'
+  - 'Autotools evidence (autoreconf, configure, make) cannot run on this worker; by operator direction it comes from the PR CI jobs build and autobuild-static.'

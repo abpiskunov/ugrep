@@ -1,0 +1,69 @@
+FORMAT fields for --format and --replace:
+
+ field       output                      field       output
+ ----------  --------------------------  ----------  --------------------------
+ %%          %                           %[...]<     text ... if %m = 1
+ %~          newline (LF or CRLF)        %[...]>     text ... if %m > 1
+ %a          basename of matching file   %,          , if %m > 1, same as %[,]>
+ %A          byte range in hex of match  %:          : if %m > 1, same as %[:]>
+ %b          byte offset of a match      %;          ; if %m > 1, same as %[;]>
+ %B %[...]B  ... + byte offset, if -b    %|          | if %m > 1, same as %[|]>
+ %c          matching pattern as C/C++   %[...]$     assign ... to separator
+ %C          matching line as C/C++      %$          reset to default separator
+ %d          byte size of a match        %[ms]=...%= color of ms ... color off
+ %e          end offset of a match       --------------------------------------
+ %f          pathname of matching file   
+ %F %[...]F  ... + pathname, if -H       
+ %+          %F as heading/break, if -+  Fields that require -P for captures:
+ %h          quoted "pathname"           
+ %H %[...]H  ... + "pathname", if -H     field       output
+ %i          pathname as XML             ----------  --------------------------
+ %I %[...]I  ... + pathname XML, if -H   %1 %2...%9  group capture
+ %j          matching pattern as JSON    %[n]#       nth group capture
+ %J          matching line as JSON       %[n]b       nth capture byte offset
+ %k          column number of a match    %[n]d       nth capture byte size
+ %K %[...]K  ... + column number, if -k  %[n]e       nth capture end offset
+ %l          last line number of match   %[n]j       nth capture as JSON
+ %L          number of lines of a match  %[n]q       nth capture quoted
+ %m          number of matches           %[n]v       nth capture as CSV
+ %M          number of matching lines    %[n]x       nth capture as XML
+ %n          line number of a match      %[n]y       nth capture as hex
+ %N %[...]N  ... + line number, if -n    %[name]#    named group capture
+ %o          matching pattern, also %0   %[name]b    named capture byte offset
+ %O          matching line               %[name]d    named capture byte size
+ %p          path to matching file       %[name]e    named capture end offset
+ %q          quoted matching pattern     %[name]j    named capture as JSON
+ %Q          quoted matching line        %[name]q    named capture quoted
+ %R          newline, if --break         %[name]v    named capture as CSV
+ %s          separator (: by default)    %[name]x    named capture as XML
+ %S %[...]S  ... + separator, if %m > 1  %[name]y    named capture as hex
+ %t          tab                         %[n|...]#   capture n,... that matched
+ %T %[...]T  ... + tab, if -T            %[n|...]b   capture n,... byte offset
+ %u          unique lines, unless -u     %[n|...]d   capture n,... byte size
+ %[hhhh]U    U+hhhh Unicode code point   %[n|...]e   capture n,... end offset
+ %v          matching pattern as CSV     %[n|...]j   capture n,... as JSON
+ %V          matching line as CSV        %[n|...]q   capture n,... quoted
+ %w          match width in wide chars   %[n|...]v   capture n,... as CSV
+ %x          matching pattern as XML     %[n|...]x   capture n,... as XML
+ %X          matching line as XML        %[n|...]y   capture n,... as hex
+ %y          matching pattern as hex     %g          capture number or name
+ %Y          matching line as hex        %G          all capture numbers/names
+ %z          path in archive             %[t|...]g   text t indexed by capture
+ %Z          edit distance cost, if -Z   %[t|...]G   all t indexed by captures
+ --------------------------------------  --------------------------------------
+
+Options -X and -W change the %o and %O fields to output hex and hex/text.
+
+Option -o changes the %O and %Q fields to output the match only.
+
+Options -c, -l and -o change the output of %C, %J, %V, %X and %Y accordingly.
+
+Numeric fields such as %n are padded with spaces when %{width}n is specified.
+
+Matching line fields such as %O are cut to width when %{width}O is specified or
+when %{-width}O is specified to cut from the end of the line.
+
+Character context on a matching line before or after a match is output when
+%{-width}o or %{+width}o is specified for match fields such as %o, where
+%{width}o without a +/- sign cuts the match to the specified width.
+

@@ -1,0 +1,96 @@
+Extended regular expression syntax overview (excludes some advanced patterns):
+
+ pattern     matches                     pattern     removes special meaning   
+ ----------  --------------------------  ----------  --------------------------
+ .           any character except \n     \.          escapes . to match .
+ a           the character a             \Q...\E     the literal string ...
+ ab          the string ab               --------------------------------------
+ a|b         a or b                      
+ a*          zero or more a's            pattern     special characters
+ a+          one or more a's             ----------  --------------------------
+ a?          zero or one a               \f          form feed
+ a{3}        3 a's                       \n          newline
+ a{3,}       3 or more a's               \r          carriage return
+ a{3,7}      3 to 7 a's                  \R          any Unicode line break
+ a*?         zero or more a's lazily     \t          tab
+ a+?         one or more a's lazily      \v          vertical tab
+ a??         zero or one a lazily        \X          any character and \n
+ a{3}?       3 a's lazily                \cZ         control character ^Z
+ a{3,}?      3 or more a's lazily        \0          NUL
+ a{3,7}?     3 to 7 a's lazily           \0ddd       octal character code ddd
+ a(b|cd?)    ab or ac or acd             \xhh        hex character code hh
+ --------------------------------------  \x{hhhh}    Unicode code point U+hhhh
+                                         \u{hhhh}    Unicode code point U+hhhh
+ pattern     character classes           --------------------------------------
+ ----------  --------------------------  
+ [abc-e]     one character a,b,c,d,e     pattern     anchors and boundaries
+ [^abc-e]    one char not a,b,c,d,e,\n   ----------  --------------------------
+ [[:name:]]  one char in POSIX class:    ^           begin of line anchor
+    alnum      a-z,A-Z,0-9               $           end of line anchor
+    alpha      a-z,A-Z                   \A          begin of file anchor
+    ascii      ASCII char \x00-\x7f      \Z          end of file anchor
+    blank      space or tab              \b          word boundary
+    cntrl      control characters        \B          non-word boundary
+    digit      0-9                       \<          start of word boundary
+    graph      visible characters        \>          end of word boundary
+    lower      a-z                       (?=...)     lookahead (-P)
+    print      visible chars and space   (?!...)     negative lookahead (-P)
+    punct      punctuation characters    (?<=...)    lookbehind (-P)
+    space      space,\t,\v,\f,\r         (?<!...)    negative lookbehind (-P)
+    upper      A-Z                       --------------------------------------
+     word      a-z,A-Z,0-9,_             (-P): pattern requires option -P
+   xdigit      0-9,a-f,A-F               
+ \p{class}   one character in class      pattern     grouping
+ \P{class}   one char not in class       ----------  --------------------------
+ \d          a digit                     (...)       non-capturing group
+ \D          a non-digit                 (...)       capturing group (-P)
+ \h          a space or tab              (?:...)     non-capturing group (-P)
+ \H          not a space or tab          (?<X>...)   capturing, named X (-P)
+ \s          a whitespace except \n      \1          matches group 1 (-P)
+ \S          a non-whitespace            \g{10}      matches group 10 (-P)
+ \w          a word character            \g{X}       matches group name X (-P)
+ \W          a non-word character        (?#...)     comments ... are ignored
+ --------------------------------------  --------------------------------------
+                                         (-P): pattern requires option -P
+
+Option -P enables Perl regex matching with Unicode patterns, lookarounds and
+capturing groups.
+
+Option -U disables full Unicode pattern matching: non-POSIX Unicode character
+classes \p{class} are disabled, ASCII, LATIN1 and binary regex patterns only.
+
+To match multiple lines, specify a pattern that matches line breaks, such as
+\n or \R.  Character classes do not match a newline character, except for
+\P, \D, \H, \W and \X and when a \n or a \R is explicitly specified,
+such as [\s\n].
+
+Options -% (--bool --lines) and -%% (--bool --files) augments pattern syntax:
+
+ pattern     operation                   pattern     operation
+ ----------  --------------------------  ----------  --------------------------
+ (...)       grouping                    "..."       the literal string ...
+ -a          logical not a               NOT a       locical not a
+ a|b         logical a or b              a OR b      logical a or b
+ a b         logical a and b             a AND b     locical a and b
+ --------------------------------------  --------------------------------------
+
+Listed from the highest level of precedence to the lowest, NOT is performed
+before OR and OR is performed before AND.  Thus, `-x|y z' is `((-x)|y) z'.
+Spacing of the logical AND, OR and NOT operators is required.
+
+Nested parentheses that are part of a regex sub-pattern do not group logical
+operators.  For example, `((x y)z)' matches `x yz'.  Note that `((x y){3} z)'
+matches `x y' three times and a `z', since the outer parentheses group the AND
+(a space).
+
+Option -% matches lines satisfying the Boolean query.  The double short option
+-%% matches files satisfying the Boolean query.
+
+See also options --and, --andnot, --not to specify sub-patterns as command-line
+arguments with these options as logical operators and option -e as logical OR.
+
+Option --stats displays the options and patterns applied to the matching files.
+
+NOTE: always quote regex patterns to prevent the shell from expanding globs.
+NOTE: a pattern starting with a `-' requires option -e as in -e '-PATTERN'.
+

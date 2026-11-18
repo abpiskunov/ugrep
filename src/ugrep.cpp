@@ -307,7 +307,7 @@ void trim_pathname_arg(const char *arg);
 bool is_output(ino_t inode);
 void import_globs(FILE *file, std::vector<std::string>& files, std::vector<std::string>& dirs, bool gitignore = false, const char *pathname = NULL);
 void usage(const char *message, const char *arg = NULL, const char *valid = NULL);
-void help(std::ostream& out);
+static int core_main(int argc, const char **argv);
 void help(const char *what = NULL);
 void version();
 void is_directory(const char *pathname);
@@ -4535,47 +4535,7 @@ int main(int argc, const char **argv)
 
 #endif
 
-  try
-  {
-    init(argc, argv);
-  }
-
-  catch (std::exception& error)
-  {
-    abort("error: ", error.what());
-  }
-
-  if (flag_query)
-  {
-    if (!flag_no_messages && Static::warnings > 0)
-      abort("option -Q: warnings are present, specify -s to ignore");
-
-    // increase worker threads queue
-    flag_max_queue = 65536;
-
-    // -Q: TUI query mode
-    tui_query();
-  }
-  else
-  {
-    if (!flag_no_messages && flag_pager != NULL && Static::warnings > 0)
-      abort("option --pager: warnings are present, specify -s to ignore");
-
-    try
-    {
-      ugrep();
-    }
-
-    catch (reflex::regex_error& error)
-    {
-      abort("error: ", error.what());
-    }
-
-    catch (std::exception& error)
-    {
-      abort("error: ", error.what());
-    }
-  }
+  int status = core_main(argc, argv);
 
 #ifdef OS_WIN_OR_MINGW
 
@@ -4583,7 +4543,7 @@ int main(int argc, const char **argv)
 
 #endif
 
-  return Static::warnings > 0 ? EXIT_ERROR : Stats::found_any_file() ? EXIT_OK : EXIT_FAIL;
+  return status;
 }
 
 // the callback table of the Rust options parser (ffi/options.rs), the order of the list numbers mirrors Rust's List
@@ -11497,1373 +11457,361 @@ void trim_pathname_arg(const char *arg)
     const_cast<char*>(path)[len] = '\0';
 }
 
+// usage(), help(), version(), is_directory(), cannot_decompress(), warning(), error(), abort() and the body of main()
+// are Rust (rust/src_core/src/help_main.rs, ffi/help_main.rs): the C++ keeps the streams, errno, exit() and the
+// build configuration, and hands them over in a callback table
+
+// the callback table and build configuration of the Rust messages, the field order mirrors Rust's DiagEnv
+struct CoreDiagEnv
+{
+  void *ctx;
+  void (*cerr_write)(void *, const char *, size_t);
+  void (*cout_write)(void *, const char *, size_t);
+  void (*errout_write)(void *, const char *, size_t);
+  void (*strerror_text)(void *, int, char *, size_t);
+  const char *version;
+  const char *platform;
+  const char *simd;
+  const char *regex;
+  int perl;
+  int zlib;
+  int no_7zip;
+  int bzip2;
+  int lzma;
+  int zstd;
+  int lz4;
+  int brotli;
+  int bzip3;
+  int decompression_thread;
+  int os_win;
+  int os_win_or_mingw;
+  int statfs;
+  const char *grep_path;
+  const char *default_pager;
+  const char *default_ignore_file;
+  void (*past_end_text)(void *, size_t, size_t, char *, size_t);
+};
+
+// the callback table of the Rust main, the field order mirrors Rust's MainEnv
+struct CoreMainEnv
+{
+  void *ctx;
+  const CoreDiagEnv *diag;
+  const char *(*init)(void *, int, const char **);
+  void (*tui_query)(void *);
+  const char *(*ugrep)(void *);
+  size_t (*warnings)(void *);
+  int (*found_any)(void *);
+};
+
+extern "C" int ugrep_core_usage(const CoreDiagEnv *env, const char *message, const char *arg, const char *valid);
+extern "C" int ugrep_core_help(const CoreDiagEnv *env, const char *what);
+extern "C" int ugrep_core_version(const CoreDiagEnv *env);
+extern "C" void ugrep_core_is_directory(const CoreDiagEnv *env, const char *pathname);
+extern "C" void ugrep_core_cannot_decompress(const CoreDiagEnv *env, const char *pathname, const char *message);
+extern "C" void ugrep_core_warning(const CoreDiagEnv *env, const char *message, const char *arg, int errnum);
+extern "C" int ugrep_core_error(const CoreDiagEnv *env, const char *message, const char *arg, int errnum);
+extern "C" int ugrep_core_abort(const CoreDiagEnv *env, const char *message, const char *what);
+extern "C" int ugrep_core_main(const CoreMainEnv *env, int argc, const char **argv);
+
+namespace
+{
+
+void diag_cerr(void *, const char *data, size_t len)
+{
+  std::cerr.write(data, len);
+  std::cerr.flush();
+}
+
+void diag_cout(void *, const char *data, size_t len)
+{
+  std::cout.write(data, len);
+}
+
+void diag_errout(void *, const char *data, size_t len)
+{
+  fwrite(data, 1, len, Static::errout);
+}
+
+// use safe strerror_s() instead of strerror() when available
+void diag_strerror(void *, int errnum, char *buf, size_t size)
+{
+#if defined(__STDC_LIB_EXT1__) || defined(OS_WIN_OR_MINGW)
+  strerror_s(buf, size, errnum);
+#else
+  const char *errmsg = strerror(errnum);
+  strncpy(buf, errmsg, size - 1);
+  buf[size - 1] = '\0';
+#endif
+}
+
+// the text of the std::out_of_range exception of std::string::at(), as produced by the C++ standard library
+void diag_past_end(void *, size_t n, size_t size, char *buf, size_t bufsize)
+{
+  try
+  {
+    std::string(size, ' ').at(n);
+  }
+
+  catch (std::out_of_range& e)
+  {
+    strncpy(buf, e.what(), bufsize - 1);
+    buf[bufsize - 1] = '\0';
+    return;
+  }
+
+  buf[0] = '\0';
+}
+
+CoreDiagEnv diag_env()
+{
+  CoreDiagEnv env;
+  env.ctx = NULL;
+  env.cerr_write = diag_cerr;
+  env.cout_write = diag_cout;
+  env.errout_write = diag_errout;
+  env.strerror_text = diag_strerror;
+  env.version = UGREP_VERSION;
+  env.platform = PLATFORM;
+  env.simd =
+#if defined(HAVE_AVX512BW)
+    (reflex::have_HW_AVX512BW() ? " +avx512" : (reflex::have_HW_AVX2() ? " +avx2" : reflex::have_HW_SSE2() ?  " +sse2" : " (no sse2!)"));
+#elif defined(HAVE_AVX2)
+    (reflex::have_HW_AVX2() ? " +avx2" : reflex::have_HW_SSE2() ?  " +sse2" : " (no sse2!)");
+#elif defined(HAVE_SSE2)
+    (reflex::have_HW_SSE2() ?  " +sse2" : " (no sse2!)");
+#elif defined(HAVE_NEON)
+    " +neon/AArch64";
+#else
+    "";
+#endif
+#if defined(HAVE_PCRE2)
+  uint32_t tmp = 0;
+  env.regex = pcre2_config(PCRE2_CONFIG_JIT, &tmp) >= 0 && tmp != 0 ? "; -P:pcre2jit" : "; -P:pcre2";
+  env.perl = 1;
+#elif defined(HAVE_BOOST_REGEX)
+  env.regex = "; -P:boost_regex";
+  env.perl = 2;
+#else
+  env.regex = "";
+  env.perl = 0;
+#endif
+#ifdef HAVE_LIBZ
+  env.zlib = 1;
+#else
+  env.zlib = 0;
+#endif
+#ifdef WITH_NO_7ZIP
+  env.no_7zip = 1;
+#else
+  env.no_7zip = 0;
+#endif
+#ifdef HAVE_LIBBZ2
+  env.bzip2 = 1;
+#else
+  env.bzip2 = 0;
+#endif
+#ifdef HAVE_LIBLZMA
+  env.lzma = 1;
+#else
+  env.lzma = 0;
+#endif
+#ifdef HAVE_LIBZSTD
+  env.zstd = 1;
+#else
+  env.zstd = 0;
+#endif
+#ifdef HAVE_LIBLZ4
+  env.lz4 = 1;
+#else
+  env.lz4 = 0;
+#endif
+#ifdef HAVE_LIBBROTLI
+  env.brotli = 1;
+#else
+  env.brotli = 0;
+#endif
+#ifdef HAVE_LIBBZIP3
+  env.bzip3 = 1;
+#else
+  env.bzip3 = 0;
+#endif
+#ifdef WITH_DECOMPRESSION_THREAD
+  env.decompression_thread = 1;
+#else
+  env.decompression_thread = 0;
+#endif
+#ifdef OS_WIN
+  env.os_win = 1;
+#else
+  env.os_win = 0;
+#endif
+#ifdef OS_WIN_OR_MINGW
+  env.os_win_or_mingw = 1;
+#else
+  env.os_win_or_mingw = 0;
+#endif
+#if defined(HAVE_STATVFS) || defined(HAVE_STATFS)
+  env.statfs = 1;
+#else
+  env.statfs = 0;
+#endif
+#ifdef GREP_PATH
+  env.grep_path = GREP_PATH;
+#else
+  env.grep_path = NULL;
+#endif
+  env.default_pager = DEFAULT_PAGER_COMMAND;
+  env.default_ignore_file = DEFAULT_IGNORE_FILE;
+  env.past_end_text = diag_past_end;
+  return env;
+}
+
+// the exception text handed to Rust must outlive the callback
+std::string core_main_what;
+
+const char *core_main_init(void *, int argc, const char **argv)
+{
+  try
+  {
+    init(argc, argv);
+  }
+
+  catch (std::exception& error)
+  {
+    core_main_what = error.what();
+    return core_main_what.c_str();
+  }
+
+  return NULL;
+}
+
+void core_main_tui_query(void *)
+{
+  tui_query();
+}
+
+const char *core_main_ugrep(void *)
+{
+  try
+  {
+    ugrep();
+  }
+
+  catch (reflex::regex_error& error)
+  {
+    core_main_what = error.what();
+    return core_main_what.c_str();
+  }
+
+  catch (std::exception& error)
+  {
+    core_main_what = error.what();
+    return core_main_what.c_str();
+  }
+
+  return NULL;
+}
+
+size_t core_main_warnings(void *)
+{
+  return Static::warnings;
+}
+
+int core_main_found_any(void *)
+{
+  return Stats::found_any_file() ? 1 : 0;
+}
+
+} // namespace
+
+// the body of main() after the arguments and signal handlers are set up
+static int core_main(int argc, const char **argv)
+{
+  CoreDiagEnv diag = diag_env();
+  CoreMainEnv env;
+  env.ctx = NULL;
+  env.diag = &diag;
+  env.init = core_main_init;
+  env.tui_query = core_main_tui_query;
+  env.ugrep = core_main_ugrep;
+  env.warnings = core_main_warnings;
+  env.found_any = core_main_found_any;
+  return ugrep_core_main(&env, argc, argv);
+}
+
 // print a diagnostic message
 void usage(const char *message, const char *arg, const char *valid)
 {
-  std::cerr << "ugrep: " << message << (arg != NULL ? arg : "");
-  if (valid != NULL)
-  {
-    std::cerr << ", did you mean " << valid << "?" << std::endl;
-    std::cerr << "For more help, run `ugrep --help' or `ugrep --help WHAT'" << std::endl;
-  }
-  else
-  {
-    const char *s = message;
-    while (*s != '\0' && *s != '-')
-      ++s;
-    std::cerr << std::endl;
-    std::cerr << "For more help, run `ugrep --help' or `ugrep --help ";
-    if (*s == '\0')
-    {
-      std::cerr << "WHAT'" << std::endl;
-    }
-    else
-    {
-      const char *e = s;
-      while (*e == '-')
-        ++e;
-      if (*e == '\0')
-      {
-        if (arg != NULL)
-          std::cerr << std::string(s, e - s) << arg << "'" << std::endl;
-        else
-          std::cerr << "WHAT'" << std::endl;
-      }
-      else
-      {
-        while (*e != '\0' && (*e == '-' || isalpha(static_cast<unsigned char>(*e))))
-          ++e;
-        std::cerr << std::string(s, e - s) << "'" << std::endl;
-      }
-    }
-  }
+  CoreDiagEnv env = diag_env();
+  int status = ugrep_core_usage(&env, message, arg, valid);
 
   // do not exit when reading a config file
-  if (!flag_usage_warnings)
-    exit(EXIT_ERROR);
+  if (status >= 0)
+    exit(status);
 
   ++Static::warnings;
-}
-
-// print usage/help information and exit
-void help(std::ostream& out)
-{
-  out <<
-    "Usage: ugrep [OPTIONS] [PATTERN] [-f FILE] [-e PATTERN] [FILE ...]\n\n\
-    -A NUM, --after-context=NUM\n\
-            Output NUM lines of trailing context after matching lines.  Places\n\
-            a --group-separator between contiguous groups of matches.  If -o is\n\
-            specified, output the match with context to fit NUM columns after\n\
-            the match or shortens the match.  See also options -B, -C and -y.\n\
-    -a, --text\n\
-            Process a binary file as if it were text.  This is equivalent to\n\
-            the --binary-files=text option.  This option might output binary\n\
-            garbage to the terminal, which can have problematic consequences if\n\
-            the terminal driver interprets some of it as terminal commands.\n\
-    --all, -@\n\
-            Search all files except hidden: cancel previous file and directory\n\
-            search restrictions and cancel --ignore-binary and --ignore-files\n\
-            when specified.  Restrictions specified after this option, i.e. to\n\
-            the right, are still applied.  For example, -@I searches all\n\
-            non-binary files and -@. searches all files including hidden files.\n\
-            Note that hidden files and directories are never searched, unless\n\
-            option -. or --hidden is specified.\n\
-    --and [-e] PATTERN\n\
-            Specify additional PATTERN that must match.  Additional -e PATTERN\n\
-            following this option is considered an alternative pattern to\n\
-            match, i.e. each -e is interpreted as an OR pattern enclosed within\n\
-            the AND.  For example, -e A -e B --and -e C -e D matches lines with\n\
-            (`A' or `B') and (`C' or `D').  Note that multiple -e PATTERN are\n\
-            alternations that bind more tightly together than --and.  Option\n\
-            --stats displays the search patterns applied.  See also options\n\
-            --not, --andnot, --bool, --files and --lines.\n\
-    --andnot [-e] PATTERN\n\
-            Combines --and --not.  See also options --and, --not and --bool.\n\
-    -B NUM, --before-context=NUM\n\
-            Output NUM lines of leading context before matching lines.  Places\n\
-            a --group-separator between contiguous groups of matches.  If -o is\n\
-            specified, output the match with context to fit NUM columns before\n\
-            the match or shortens the match.  See also options -A, -C and -y.\n\
-    -b, --byte-offset\n\
-            The offset in bytes of a pattern match is displayed in front of the\n\
-            respective matched line.  When -u or --ungroup is specified,\n\
-            displays the offset for each pattern matched on the same line.\n\
-            Byte offsets are exact for ASCII, UTF-8 and raw binary input.\n\
-            Otherwise, the offset in the UTF-8-normalized input is displayed.\n\
-    --binary-files=TYPE\n\
-            Controls searching and reporting pattern matches in binary files.\n\
-            TYPE can be `binary', `without-match`, `text`, `hex` and\n\
-            `with-hex'.  The default is `binary' to search binary files and to\n\
-            report a match without displaying the match.  `without-match'\n\
-            ignores binary matches.  `text' treats all binary files as text,\n\
-            which might output binary garbage to the terminal, which can have\n\
-            problematic consequences if the terminal driver interprets some of\n\
-            it as commands.  `hex' reports all matches in hexadecimal.\n\
-            `with-hex' only reports binary matches in hexadecimal, leaving text\n\
-            matches alone.  Files having NUL (zero) bytes are binary and files\n\
-            with invalid UTF encoding are binary unless option -U or --ascii\n\
-            or --binary is specified.  Short options are -a, -I, -W, -X.\n\
-    --bool, -%, -%%\n\
-            Specifies Boolean query patterns.  A Boolean query pattern is\n\
-            composed of `AND', `OR', `NOT' operators and grouping with `(' `)'.\n\
-            Spacing between subpatterns is the same as `AND', `|' is the same\n\
-            as `OR' and a `-' is the same as `NOT'.  The `OR' operator binds\n\
-            more tightly than `AND'.  For example, --bool 'A|B C|D' matches\n\
-            lines with (`A' or `B') and (`C' or `D'), --bool 'A -B' matches\n\
-            lines with `A' and not `B'.  Operators `AND', `OR', `NOT' require\n\
-            proper spacing.  For example, --bool 'A OR B AND C OR D' matches\n\
-            lines with (`A' or `B') and (`C' or `D'), --bool 'A AND NOT B'\n\
-            matches lines with `A' without `B'.  Quoted subpatterns are matched\n\
-            literally as strings.  For example, --bool 'A \"AND\"|\"OR\"' matches\n\
-            lines with `A' and also either `AND' or `OR'.  Parentheses are used\n\
-            for grouping.  For example, --bool '(A B)|C' matches lines with `A'\n\
-            and `B', or lines with `C'.  Note that all subpatterns in a Boolean\n\
-            query pattern are regular expressions, unless -F is specified.\n\
-            Options -E, -F, -G, -P and -Z can be combined with --bool to match\n\
-            subpatterns as strings or regular expressions (-E is the default.)\n\
-            This option does not apply to -f FILE patterns.  The double short\n\
-            option -%% enables options --bool --files.  Option --stats displays\n\
-            the Boolean search patterns applied.  See also options --and,\n\
-            --andnot, --not, --files and --lines.\n\
-    --break\n\
-            Adds a line break between results from different files.  This\n\
-            option is enabled by --heading.\n\
-    -C NUM, --context=NUM\n\
-            Output NUM lines of leading and trailing context surrounding each\n\
-            matching line.  Places a --group-separator between contiguous\n\
-            groups of matches.  If -o is specified, output the match with\n\
-            context to fit NUM columns before and after the match or shortens\n\
-            the match.  See also options -A, -B and -y.\n\
-    -c, --count\n\
-            Only a count of selected lines is written to standard output.\n\
-            When -o or -u is specified, counts the number of patterns matched.\n\
-            When -v is specified, counts the number of non-matching lines.\n\
-            When -m1, (with a comma or --min-count=1) is specified, counts only\n\
-            matching files without outputting zero matches.\n\
-    --color[=WHEN], --colour[=WHEN]\n\
-            Mark up the matching text with the colors specified with option\n\
-            --colors or the GREP_COLOR or GREP_COLORS environment variable.\n\
-            WHEN can be `never', `always', or `auto', where `auto' marks up\n\
-            matches only when output on a terminal.  The default is `auto'.\n\
-    --colors=COLORS, --colours=COLORS\n\
-            Use COLORS to mark up text.  COLORS is a colon-separated list of\n\
-            one or more parameters `sl=' (selected line), `cx=' (context line),\n\
-            `mt=' (matched text), `ms=' (match selected), `mc=' (match\n\
-            context), `fn=' (file name), `ln=' (line number), `cn=' (column\n\
-            number), `bn=' (byte offset), `se=' (separator), `qp=' (TUI\n\
-            prompt), `qe=' (TUI errors), `qr=' (TUI regex), `qm=' (TUI regex\n\
-            meta characters), `ql=' (TUI regex lists and literals), `qb=' (TUI\n\
-            regex braces).  Parameter values are ANSI SGR color codes or `k'\n\
-            (black), `r' (red), `g' (green), `y' (yellow), `b' (blue), `m'\n\
-            (magenta), `c' (cyan), `w' (white), or leave empty for no color.\n\
-            Upper case specifies background colors.  A `+' qualifies a color as\n\
-            bright.  A foreground and a background color may be combined with\n\
-            font properties `n' (normal), `f' (faint), `h' (highlight), `i'\n\
-            (invert), `u' (underline).  Parameter `hl' enables file name\n\
-            hyperlinks.  Parameter `rv' reverses the `sl=' and `cx=' parameters\n\
-            when option -v is specified.  Selectively overrides GREP_COLORS.\n\
-            Legacy grep single parameter codes may be specified, for example\n\
-            --colors='7;32' or --colors=ig to set ms (match selected).\n\
-    --config[=FILE], ---[FILE]\n\
-            Use configuration FILE.  The default FILE is `.ugrep'.  The working\n\
-            directory is checked first for FILE, then the home directory.  The\n\
-            options specified in the configuration FILE are parsed first,\n\
-            followed by the remaining options specified on the command line.\n\
-            The ug command automatically loads a `.ugrep' configuration file\n\
-            when present, unless --config=FILE or --no-config is specified.\n\
-    --no-config\n\
-            Do not automatically load the default .ugrep configuration file.\n\
-    --no-confirm\n\
-            Do not confirm actions in -Q query TUI.  The default is confirm.\n\
-    --cpp\n\
-            Output file matches in C++.  See also options --format and -u.\n\
-    --csv\n\
-            Output file matches in CSV.  When -H, -n, -k, or -b is specified,\n\
-            additional values are output.  See also options --format and -u.\n\
-    -D ACTION, --devices=ACTION\n\
-            If an input file is a device, FIFO or socket, use ACTION to process\n\
-            it.  When ACTION is `skip', devices are ignored.  When ACTION is\n\
-            `read', devices are read just as if they were ordinary files.  The\n\
-            default ACTION is `skip', except for devices specified as arguments\n\
-            on the command line, which can be explicitly skipped with -Dskip.\n\
-    -d ACTION, --directories=ACTION\n\
-            If an input file is a directory, use ACTION to process it.  When\n\
-            ACTION is `read', warn when directories are read as input.  When\n\
-            ACTION is `recurse', read all files under each directory,\n\
-            recursively, following symbolic links only if they are on the\n\
-            command line.  This is equivalent to the -r option.  When ACTION is\n\
-            `dereference-recurse', read all files under each directory,\n\
-            recursively, following symbolic links.  This is equivalent to the\n\
-            -R option.  When no files or directories are specified on the\n\
-            command line, ACTION defaults to `recurse` or option -r.\n\
-    --delay=DELAY\n\
-            Set the default -Q key response delay.  Default is 3 for 300ms.\n\
-    --depth=[MIN,][MAX], -1, -2, -3, ... -9, -10, -11, ...\n\
-            Restrict recursive searches from MIN to MAX directory levels deep,\n\
-            where -1 (--depth=1) searches the specified path without recursing\n\
-            into subdirectories.  The short forms -3 -5, -3-5 and -3,5 search 3\n\
-            to 5 levels deep.  Enables -r if -R or -r is not specified.\n\
-    --dotall\n\
-            Dot `.' in regular expressions matches anything, including newline.\n\
-            Note that `.*' matches all input and should not be used.\n\
-    -E, --extended-regexp\n\
-            Interpret patterns as extended regular expressions (EREs). This is\n\
-            the default.\n\
-    -e PATTERN, --regexp=PATTERN\n\
-            Specify a PATTERN to search the input.  An input line is selected\n\
-            if it matches any of the specified patterns.  This option is useful\n\
-            when multiple -e options are used to specify multiple patterns, or\n\
-            when a pattern starts with a dash (`-'), or to specify a pattern\n\
-            after option -f or after the FILE arguments.\n\
-    --encoding=ENCODING\n\
-            The encoding format of the input.  The default ENCODING is binary\n\
-            or UTF-8 which are treated the same.  Therefore, --encoding=binary\n\
-            has no effect.  Contrast this with option -U or --ascii or --binary\n\
-            that specifies raw binary PATTERN matching.  ENCODING can be:\n\
-           ";
-  size_t k = 10;
-  for (int i = 0; encoding_table[i].format != NULL; ++i)
-  {
-    size_t n = strlen(encoding_table[i].format);
-    k += n + 4;
-    out << (i == 0 ? "" : ",");
-    if (k > 79)
-    {
-      out << "\n           ";
-      k = 14 + n;
-    }
-    out << " `" << encoding_table[i].format << "'";
-  }
-  out << ".\n\
-    --exclude=GLOB\n\
-            Exclude files whose name matches GLOB, same as -g ^GLOB.  GLOB can\n\
-            use **, *, ?, and [...] as wildcards and \\ to quote a wildcard or\n\
-            backslash character literally.  When GLOB contains a `/', full\n\
-            pathnames are matched.  Otherwise basenames are matched.  When GLOB\n\
-            ends with a `/', directories are excluded as if --exclude-dir is\n\
-            specified.  Otherwise files are excluded.  Note that --exclude\n\
-            patterns take priority over --include patterns.  GLOB should be\n\
-            quoted to prevent shell globbing.  This option may be repeated.\n\
-    --exclude-dir=GLOB\n\
-            Exclude directories whose name matches GLOB from recursive\n\
-            searches, same as -g ^GLOB/.  GLOB may use **, *, ?, and [...] as\n\
-            wildcards and \\ to quote a wildcard or backslash character\n\
-            literally.  When GLOB contains a `/', full pathnames are matched.\n\
-            Otherwise basenames are matched.  Note that --exclude-dir patterns\n\
-            take priority over --include-dir patterns.  GLOB should be quoted\n\
-            to prevent shell globbing.  This option may be repeated.\n\
-    --exclude-from=FILE\n\
-            Read the globs from FILE and skip files and directories whose name\n\
-            matches one or more globs.  A glob may use **, *, ?, and [...] as\n\
-            wildcards and \\ to quote a wildcard or backslash character\n\
-            literally.  When a glob contains a `/', full pathnames are matched.\n\
-            Otherwise basenames are matched.  When a glob ends with a `/',\n\
-            directories are excluded as if --exclude-dir is specified.\n\
-            Otherwise files are excluded.  A glob starting with a `!' overrides\n\
-            previously-specified exclusions by including matching files.  Lines\n\
-            starting with a `#' in FILE are ignored.  When FILE is a `-',\n\
-            standard input is read.  This option may be repeated.  See also\n\
-            related option --ignore-files for subdirectory-specific exclusions.\n\
-    --exclude-fs=MOUNTS\n\
-            Exclude file systems specified by MOUNTS from recursive searches.\n\
-            MOUNTS is a comma-separated list of mount points or pathnames to\n\
-            directories.  When MOUNTS is not specified, only descends into the\n\
-            file systems associated with the specified file and directory\n\
-            search targets, i.e. excludes all other file systems.  Note that\n\
-            --exclude-fs=MOUNTS take priority over --include-fs=MOUNTS.  This\n\
-            option may be repeated.\n"
-#if !defined(HAVE_STATVFS) && !defined(HAVE_STATFS)
-            "\
-            This option is not available in this build configuration of ugrep.\n"
-#endif
-            "\
-    -F, --fixed-strings\n\
-            Interpret pattern as a set of fixed strings, separated by newlines,\n\
-            any of which is to be matched.  This makes ugrep behave as fgrep.\n\
-            If a PATTERN is specified, or -e PATTERN or -N PATTERN, then this\n\
-            option has no effect on -f FILE patterns to allow -f FILE patterns\n\
-            to narrow or widen the scope of the PATTERN search.\n\
-    -f FILE, --file=FILE\n\
-            Read newline-separated patterns from FILE.  White space in patterns\n\
-            is significant.  Empty lines in FILE are ignored.  If FILE does not\n\
-            exist, the GREP_PATH environment variable is used as path to FILE.\n"
-#ifdef GREP_PATH
-            "\
-            If that fails, looks for FILE in " GREP_PATH ".\n"
-#endif
-            "\
-            When FILE is a `-', standard input is read.  Empty files contain no\n\
-            patterns; thus nothing is matched.  This option may be repeated.\n\
-    --files, -%%\n\
-            Boolean file matching mode, the opposite of --lines.  When combined\n\
-            with option --bool, matches a file if all Boolean conditions are\n\
-            satisfied.  For example, --bool --files 'A B|C -D' matches a file\n\
-            if some lines match `A', and some lines match either `B' or `C',\n\
-            and no line matches `D'.  See also options --and, --andnot, --not,\n\
-            --bool and --lines.  The double short option -%% enables options\n\
-            --bool --files.\n\
-    --filter=COMMANDS\n\
-            Filter files through the specified COMMANDS first before searching.\n\
-            COMMANDS is a comma-separated list of `exts:command arguments',\n\
-            where `exts' is a comma-separated list of filename extensions and\n\
-            `command' is a filter utility.  Files matching one of `exts' are\n\
-            filtered.  A `*' matches any file.  The specified `command' may\n\
-            include arguments separated by spaces.  An argument may be quoted\n\
-            to include spacing, commas or a `%'.  A `%' argument expands into\n\
-            the pathname to search.  For example, --filter='pdf:pdftotext % -'\n\
-            searches PDF files.  The `%' expands into a `-' when searching\n\
-            standard input.  When a `%' is not specified, the filter command\n\
-            should read from standard input and write to standard output.\n\
-            Option --label=.ext may be used to specify extension `ext' when\n\
-            searching standard input.  Note that `exts` filename extension\n\
-            matching is case insensitive.  This option may be repeated.\n\
-    --filter-magic-label=[+]LABEL:MAGIC\n\
-            Associate LABEL with files whose signature \"magic bytes\" match the\n\
-            MAGIC regex pattern.  Only files that have no filename extension\n\
-            are labeled, unless +LABEL is specified.  When LABEL matches an\n\
-            extension specified in --filter=COMMANDS, the corresponding command\n\
-            is invoked.  This option may be repeated.\n\
-    --format=FORMAT\n\
-            Output FORMAT-formatted matches.  For example --format='%f:%n:%O%~'\n\
-            outputs matching lines `%O' with filename `%f` and line number `%n'\n\
-            followed by a newline `%~'.  If -P is specified, FORMAT may include\n\
-            `%1' to `%9', `%[NUM]#' and `%[NAME]#' to output group captures.  A\n\
-            `%%' outputs `%'.  See `ugrep --help format' and `man ugrep'\n\
-            section FORMAT for details.  When option -o is specified, option -u\n\
-            is also enabled.  Context options -A, -B, -C and -y are ignored.\n\
-    --free-space\n\
-            Spacing (blanks and tabs) in regular expressions are ignored.\n\
-    --from=FILE\n\
-            Read additional pathnames of files to search from FILE.  When FILE\n\
-            is a `-', standard input is read.  This option is useful with `find\n\
-            ... -print | ugrep --from=- ...' to search specific files.\n\
-    -G, --basic-regexp\n\
-            Interpret patterns as basic regular expressions (BREs).\n\
-    -g GLOBS, --glob=GLOBS, --iglob=GLOBS\n\
-            Only search files whose name matches the specified comma-separated\n\
-            list of GLOBS, same as --include='glob' for each `glob' in GLOBS.\n\
-            When a `glob' is preceded by a `!' or a `^', skip files whose name\n\
-            matches `glob', same as --exclude='glob'.  When `glob' contains a\n\
-            `/', full pathnames are matched and option -r is enabled to recurse\n\
-            into directories if -d, -r or -R is not already specified.\n\
-            Otherwise basenames are matched.  When `glob' ends with a `/',\n\
-            directories are matched, same as --include-dir='glob' and\n\
-            --exclude-dir='glob'.  A leading `./' or just `/' matches the\n\
-            working directory.  Option --iglob=GLOBS performs case-insensitive\n\
-            name matching.  This option may be repeated and may be combined\n\
-            with options -M, -O and -t.  For more details, see `ugrep --help\n\
-            globs' and `man ugrep' section GLOBBING for details.\n\
-    --glob-ignore-case\n\
-            Perform case-insensitive glob matching in general.\n\
-    --group-separator[=SEP]\n\
-            Use SEP as a group separator for context options -A, -B and -C.\n\
-            The default is a double hyphen (`--').\n\
-    --no-group-separator\n\
-            Removes the group separator line from the output for context\n\
-            options -A, -B and -C.\n\
-    -H, --with-filename\n\
-            Always print the filename with output lines.  This is the default\n\
-            when there is more than one file to search.\n\
-    -h, --no-filename\n\
-            Never print filenames with output lines.  This is the default\n\
-            when there is only one file (or only standard input) to search.\n\
-    --heading, -+\n\
-            Group matches per file.  Adds a heading and a line break between\n\
-            results from different files.  This option is enabled by --pretty\n\
-            when the output is sent to the terminal.\n\
-    --help [WHAT], -? [WHAT]\n\
-            Display a help message on options related to WHAT when specified.\n\
-            In addition, `--help regex' displays an overview of regular\n\
-            expressions, `--help globs' displays an overview of glob syntax and\n\
-            conventions, `--help fuzzy' displays details of fuzzy search, and\n\
-            `--help format' displays a list of option --format=FORMAT fields.\n\
-    --hexdump[=[1-8][a][bch][A[NUM]][B[NUM]][C[NUM]]]\n\
-            Output matches in 1 to 8 columns of 8 hexadecimal octets.  The\n\
-            default is 2 columns or 16 octets per line.  Argument `a' outputs a\n\
-            `*' for all hex lines that are identical to the previous hex line,\n\
-            `b' removes all space breaks, `c' removes the character column, `h'\n\
-            removes hex spacing, `A' includes up to NUM hex lines after a\n\
-            match, `B' includes up to NUM hex lines before a match and `C'\n\
-            includes up to NUM hex lines before and after a match.  Arguments\n\
-            `A', `B' and `C' are the same as options -A, -B and -C when used\n\
-            with --hexdump.  See also options -U, -W and -X.\n\
-    --hidden, -.\n\
-            Search "
-#ifdef OS_WIN_OR_MINGW
-            "Windows system and "
-#endif
-            "hidden files and directories\n\
-            (enabled by default in grep compatibility mode).\n\
-    --hyperlink[=[PREFIX][+]]\n\
-            Hyperlinks are enabled for file names when colors are enabled.\n\
-            Same as --colors=hl.  When PREFIX is specified, replaces file://\n\
-            with PREFIX:// in the hyperlink.  A `+' includes the line number in\n\
-            the hyperlink and when option -k is specified, the column number.\n\
-    -I, --ignore-binary\n\
-            Ignore matches in binary files.  This option is equivalent to the\n\
-            --binary-files=without-match option.  Files having NUL (zero) bytes\n\
-            are binary.  Also files with invalid UTF encoding are binary unless\n\
-            option -U or --ascii or --binary is specified.\n\
-    -i, --ignore-case\n\
-            Perform case insensitive matching.  By default, ugrep is case\n\
-            sensitive.\n\
-    --ignore-files[=FILE]\n\
-            Ignore files and directories matching the globs in each FILE that\n\
-            is encountered in recursive searches.  The default FILE is\n\
-            `" DEFAULT_IGNORE_FILE "'.  Matching files and directories located in the\n\
-            directory of the FILE and in subdirectories are ignored.  When FILE is\n\
-            a full pathname, FILE is read ahead of the recursive search and\n\
-            globs are globally applied to ignore files and directories.  When\n\
-            FILE is a `-', standard input is read.  Globbing is the same as for\n\
-            --exclude-from=FILE, except that --ignore-files excludes files and\n\
-            also directories when globs match.  This option may be repeated.\n\
-    --no-ignore-files\n\
-            Do not ignore files, i.e. cancel --ignore-files when specified.\n\
-    --include=GLOB\n\
-            Only search files whose name matches GLOB, same as -g GLOB.  GLOB\n\
-            may use **, *, ?, and [...] as wildcards and \\ to quote a wildcard\n\
-            or backslash character literally.  When GLOB contains a `/', full\n\
-            pathnames are matched and option -r is enabled to recurse into\n\
-            directories if -d, -r or -R is not already specified.  Otherwise\n\
-            basenames are matched.  When GLOB ends with a `/', directories are\n\
-            included as if --include-dir is specified.  Otherwise files are\n\
-            included.  Note that --exclude patterns take priority over\n\
-            --include patterns.  GLOB should be quoted to prevent shell\n\
-            globbing.  This option may be repeated.\n\
-    --include-dir=GLOB\n\
-            Only directories whose name matches GLOB are included in recursive\n\
-            searches, same as -g GLOB/.  GLOB may use **, *, ?, and [...] as\n\
-            wildcards and \\ to quote a wildcard or backslash character\n\
-            literally.  When GLOB contains a `/', full pathnames are matched\n\
-            and option -r is enabled to recurse into directories if -d, -r or\n\
-            -R is not already specified.  Otherwise basenames are matched.\n\
-            Note that --exclude-dir patterns take priority over --include-dir\n\
-            patterns.  GLOB should be quoted to prevent shell globbing.  This\n\
-            option may be repeated.\n\
-    --include-from=FILE\n\
-            Read the globs from FILE and search only files and directories\n\
-            whose name matches one or more globs.  A glob may use **, *, ?, and\n\
-            [...] as wildcards and \\ to quote a wildcard or backslash\n\
-            character literally.  When a glob contains a `/', full pathnames\n\
-            are matched.  Otherwise basenames are matched.  When a glob ends\n\
-            with a `/', directories are included as if --include-dir is\n\
-            specified.  Otherwise files are included.  A glob starting with a\n\
-            `!' overrides previously-specified inclusions by excluding matching\n\
-            files.  Lines starting with a `#' and empty lines in FILE are\n\
-            ignored.  When FILE is a `-', standard input is read.  This option\n\
-            may be repeated.\n\
-    --include-fs=MOUNTS\n\
-            Only file systems specified by MOUNTS are included in recursive\n\
-            searches.  MOUNTS is a comma-separated list of mount points or\n\
-            pathnames to directories.  When MOUNTS is not specified, restricts\n\
-            recursive searches to the file system of the working directory,\n\
-            same as --include-fs=. (dot). Note that --exclude-fs=MOUNTS take\n\
-            priority over --include-fs=MOUNTS.  This option may be repeated.\n"
-#if !defined(HAVE_STATVFS) && !defined(HAVE_STATFS)
-            "\
-            This option is not available in this build configuration of ugrep.\n"
-#endif
-            "\
-    --index\n\
-            Perform fast index-based recursive search.  This option assumes,\n\
-            but does not require, that files are indexed with ugrep-indexer.\n\
-            This option also enables option -r or --recursive.  Skips indexed\n\
-            non-matching files, archives and compressed files.  Significant\n\
-            acceleration may be achieved on cold (not file-cached) and large\n\
-            file systems, or any file system that is slow to search.  Note that\n\
-            the start-up time to search may be increased when complex search\n\
-            patterns are specified that contain large Unicode character classes\n\
-            combined with `*' or `+' repeats, which should be avoided.  Option\n\
-            -U or --ascii or --binary improves performance.  Option --stats\n\
-            displays an index search report.\n\
-    -J NUM, --jobs=NUM\n\
-            Specifies the number of threads spawned to search files.  By\n\
-            default an optimum number of threads is spawned to search files\n\
-            simultaneously.  -J1 disables threading: files are searched in the\n\
-            same order as specified.\n\
-    -j, --smart-case\n\
-            Perform case insensitive matching, unless a pattern is specified\n\
-            with a literal upper case letter.\n\
-    --json\n\
-            Output file matches in JSON.  When -H, -n, -k, or -b is specified,\n\
-            additional values are output.  See also options --format and -u.\n\
-    -K [MIN,][MAX], --range=[MIN,][MAX], --min-line=MIN, --max-line=MAX\n\
-            Start searching at line MIN, stop reading input after line MAX.\n\
-    -k, --column-number\n\
-            The column number of a pattern match is displayed in front of the\n\
-            respective matched line, starting at column 1.  Tabs are expanded\n\
-            in counting columns, see also option --tabs.\n\
-    -L, --files-without-match\n\
-            Only the names of files not containing selected lines are written\n\
-            to standard output.  Pathnames are listed once per file searched.\n\
-            If the standard input is searched, the string ``(standard input)''\n\
-            is written.\n\
-    -l, --files-with-matches\n\
-            Only the names of files containing selected lines are written to\n\
-            standard output.  Pathnames are listed once per file searched.  If\n\
-            the standard input is searched, the string ``(standard input)'' is\n\
-            written.  Stop reading input upon the first match.\n\
-    --label=LABEL\n\
-            Displays the LABEL value when input is read from standard input\n\
-            where a file name would normally be printed in the output.\n\
-            Associates a filename extension with standard input when LABEL has\n\
-            a suffix.  The default value is `(standard input)'.\n\
-    --line-buffered\n\
-            Force output to be line buffered instead of block buffered.\n\
-    --lines\n\
-            Boolean line matching mode for option --bool, the default mode.\n\
-    -M MAGIC, --file-magic=MAGIC\n\
-            Only search files matching the magic signature pattern MAGIC.  The\n\
-            signature \"magic bytes\" at the start of a file are compared to\n\
-            the MAGIC regex pattern.  When matching, the file will be searched.\n\
-            When MAGIC is preceded by a `!' or a `^', skip files with matching\n\
-            MAGIC signatures.  This option may be repeated and may be combined\n\
-            with options -O and -t.  Every file on the search path is read,\n\
-            making recursive searches potentially more expensive.\n\
-    -m [MIN,][MAX], --min-count=MIN, --max-count=MAX\n\
-            Require MIN matches, stop reading input upon MAX matches.  Output\n\
-            MIN to MAX matches.  For example, -m1 outputs the first match and\n\
-            -cm1, (with a comma) counts nonzero matches.  When -u or --ungroup\n\
-            is specified, each individual match counts.  See also option -K.\n\
-    --match\n\
-            Match all lines.  Same as specifying an empty pattern to search.\n\
-    --max-files=NUM\n\
-            Restrict the number of files matched to NUM.  Note that --sort or\n\
-            -J1 may be specified to produce replicable results.  If --sort is\n\
-            specified, then the number of threads spawned is limited to NUM.\n\
-    --max-size=MAX\n\
-            Only search files whose physical size does not exceed MAX bytes.\n\
-            Suffix MAX with kb, mb, gb, tb for kilo, mega, giga, or terabytes.\n\
-    --min-size=MIN\n\
-            Only search files whose physical size equals or exceeds MIN bytes.\n\
-            Suffix MIN with kb, mb, gb, tb for kilo, mega, giga, or terabytes.\n\
-    --mmap[=MAX]\n\
-            Use memory maps to search files.  By default, memory maps are used\n\
-            under certain conditions to improve performance.  When MAX is\n\
-            specified, use up to MAX mmap memory per thread.\n\
-    -N PATTERN, --neg-regexp=PATTERN\n\
-            Specify a negative PATTERN to reject specific -e PATTERN matches\n\
-            with a counter pattern.  Note that longer patterns take precedence\n\
-            over shorter patterns, i.e. a negative pattern must be of the same\n\
-            length or longer to reject matching patterns.  Option -N cannot be\n\
-            specified with -P.  This option may be repeated.\n\
-    -n, --line-number\n\
-            Each output line is preceded by its relative line number in the\n\
-            file, starting at line 1.  The line number counter is reset for\n\
-            each file processed.\n\
-    --not [-e] PATTERN\n\
-            Specifies that PATTERN should not match.  Note that -e A --not -e B\n\
-            matches lines with `A' or lines without a `B'.  To match lines with\n\
-            `A' that have no `B', specify -e A --andnot -e B.  Option --stats\n\
-            displays the search patterns applied.  See also options --and,\n\
-            --andnot, --bool, --files and --lines.\n\
-    --null, -0";
-  out << (flag_grep ? ", -Z" : "") << "\n\
-            Output a zero byte after the file name.  This option can be used\n\
-            with commands such as `find -print0' and `xargs -0' to process\n\
-            arbitrary file names, even those that contain newlines.  See also\n\
-            options -H or --with-filename and --null-data.\n\
-    --null-data, -00";
-  out << (flag_grep ? ", -z" : "") << "\n\
-            Input and output are treated as sequences of lines with each line\n\
-            terminated by a zero byte instead of a newline; effectively swaps\n\
-            NUL with LF in the input and the output.  When combined with option\n\
-            --encoding=ENCODING, output each line terminated by a zero byte\n\
-            without affecting the input specified as per ENCODING.  Instead of\n\
-            option --null-data, option --encoding=null-data treats the input as\n\
-            a sequence of lines terminated by a zero byte without affecting the\n\
-            output.  Option --null-data is not compatible with UTF-16/32 input.\n\
-            Since ugrep matches multiple lines when patterns are specified\n\
-            containing a newline `\\n' or `\\R', this option is not required for\n\
-            multi-line matching.  See also options --encoding and --null.\n\
-    -O EXTENSIONS, --file-extension=EXTENSIONS\n\
-            Only search files whose filename extensions match the specified\n\
-            comma-separated list of EXTENSIONS, same as -g '*.ext' for each\n\
-            `ext' in EXTENSIONS.  When an `ext' is preceded by a `!' or a `^',\n\
-            skip files whose filename extensions matches `ext', same as\n\
-            -g '^*.ext'.  This option may be repeated and may be combined with\n\
-            options -g, -M and -t.\n\
-    -o, --only-matching\n\
-            Only the matching part of a pattern match is output.  When -A, -B\n\
-            or -C is specified, fits the match and its context on a line within\n\
-            the specified number of columns.\n\
-    --only-line-number\n\
-            Only the line number of a matching line is output.  The line number\n\
-            counter is reset for each file processed.\n\
-    -P, --perl-regexp\n\
-            Interpret PATTERN as a Perl regular expression"
-#if defined(HAVE_PCRE2)
-            " using PCRE2.\n"
-#elif defined(HAVE_BOOST_REGEX)
-            " using Boost.Regex.\n"
-#else
-            ".\n\
-            This option is not available in this build configuration of ugrep.\n"
-#endif
-            "\
-            Note that Perl pattern matching differs from the default grep POSIX\n\
-            pattern matching.\n\
-    -p, --no-dereference\n\
-            If -R or -r is specified, do not follow symbolic links, even when\n\
-            symbolic links are specified on the command line.\n\
-    --pager[=COMMAND]\n\
-            When output is sent to the terminal, uses COMMAND to page through\n\
-            the output.  COMMAND defaults to environment variable PAGER when\n\
-            defined or `" DEFAULT_PAGER_COMMAND "'.  Enables --heading and --line-buffered.\n\
-    --pretty[=WHEN]\n\
-            When output is sent to the terminal, enables options --color,\n\
-            --heading, -n, --sort, --tree and -T when not explicitly disabled.\n\
-            WHEN can be `never', `always', or `auto'.  The default is `auto'.\n\
-    -Q[=DELAY], --query[=DELAY]\n\
-            Query mode: start a TUI to perform interactive searches.  This mode\n\
-            requires an ANSI capable terminal.  An optional DELAY argument may\n\
-            be specified to reduce or increase the response time to execute\n\
-            searches after the last key press, in increments of 100ms, where\n\
-            the default is 3 (300ms delay).  No whitespace may be given between\n\
-            -Q and its argument DELAY.  Initial patterns may be specified with\n\
-            -e PATTERN, i.e. a PATTERN argument requires option -e.  Press F1\n\
-            or CTRL-Z to view the help screen.  Press F2 or CTRL-Y to invoke a\n\
-            command to view or edit the file shown at the top of the screen.\n\
-            This command can be specified with option --view and defaults to\n\
-            environment variable PAGER when defined, or VISUAL or EDITOR.\n\
-            Press TAB or SHIFT-TAB to navigate directories and to select a file\n\
-            to search.  Press ENTER to select lines to output.  Press ALT-l for\n\
-            option -l to list files, ALT-n for -n, etc.  Non-option commands\n\
-            include ALT-] to increase context and ALT-} to increase fuzzyness.\n\
-            If ALT or OPTION keys are not available, then press CTRL-O + KEY to\n\
-            switch option `KEY', or press F1 or CTRL-Z for help and press KEY.\n\
-            See also options --no-confirm, --delay, --split and --view.\n\
-    -q, --quiet, --silent\n\
-            Quiet mode: suppress all output.  Only search a file until a match\n\
-            has been found.\n\
-    -R, --dereference-recursive\n\
-            Recursively read all files under each directory, following symbolic\n\
-            links to files and directories, unlike -r.\n\
-    -r, --recursive\n\
-            Recursively read all files under each directory, following symbolic\n\
-            links only if they are on the command line.  Note that when no FILE\n\
-            arguments are specified and input is read from a terminal,\n\
-            recursive searches are performed as if -r is specified.\n\
-    --replace=FORMAT\n\
-            Replace matching patterns in the output by FORMAT with `%' fields.\n\
-            If -P is specified, FORMAT may include `%1' to `%9', `%[NUM]#' and\n\
-            `%[NAME]#' to output group captures.  A `%%' outputs `%' and `%~'\n\
-            outputs a newline.  See also option --format, `ugrep --help format'\n\
-            and `man ugrep' section FORMAT for details.\n\
-    -S, --dereference-files\n\
-            When -r is specified, follow symbolic links to files, but not to\n\
-            directories.  The default is not to follow symbolic links.\n\
-    -s, --no-messages\n\
-            Silent mode: nonexistent and unreadable files are ignored and\n\
-            their error messages and warnings are suppressed.\n\
-    --save-config[=FILE] [OPTIONS]\n\
-            Save configuration FILE to include OPTIONS.  Update FILE when\n\
-            first loaded with --config=FILE.  The default FILE is `.ugrep',\n\
-            which is automatically loaded by the ug command.  When FILE is a\n\
-            `-', writes the configuration to standard output.  Only part of the\n\
-            OPTIONS are saved that do not cause searches to fail when combined\n\
-            with other options.  Additional options may be specified by editing\n\
-            the saved configuration file.  A configuration file may be modified\n\
-            by adding one or more config=FILE to include configuration files,\n\
-            but recursive configuration file inclusion is not permitted.\n\
-    --separator[=SEP], --context-separator=SEP\n\
-            Use SEP as field separator between file name, line number, column\n\
-            number, byte offset and the matched line.  The default separator is\n\
-            a colon (`:') and a bar (`|') for multi-line pattern matches, and a\n\
-            dash (`-') for context lines.  See also option --group-separator.\n\
-    --split\n\
-            Split the -Q query TUI screen on startup.\n\
-    --sort[=KEY]\n\
-            Displays matching files in the order specified by KEY in recursive\n\
-            searches.  Normally the ug command sorts by name whereas the ugrep\n\
-            batch command displays matches in no particular order to improve\n\
-            performance.  The sort KEY can be `name' to sort by pathname\n\
-            (default), `best' to sort by best match with option -Z (sort by\n\
-            best match requires two passes over files, which is expensive),\n\
-            `size' to sort by file size, `used' to sort by last access time,\n\
-            `changed' to sort by last modification time and `created' to sort\n\
-            by creation time.  Sorting is reversed with `rname', `rbest',\n\
-            `rsize', `rused', `rchanged', or `rcreated'.  Archive contents are\n\
-            not sorted.  Subdirectories are sorted and displayed after matching\n\
-            files.  FILE arguments are searched in the same order as specified.\n\
-    --stats\n\
-            Output statistics on the number of files and directories searched\n\
-            and the inclusion and exclusion constraints applied.\n\
-    -T, --initial-tab\n\
-            Add a tab space to separate the file name, line number, column\n\
-            number and byte offset with the matched line.\n\
-    -t TYPES, --file-type=TYPES\n\
-            Search only files associated with TYPES, a comma-separated list of\n\
-            file types.  Each file type corresponds to a set of filename\n\
-            extensions passed to option -O and filenames passed to option -g.\n\
-            For capitalized file types, the search is expanded to include files\n\
-            with matching file signature magic bytes, as if passed to option\n\
-            -M.  When a type is preceded by a `!' or a `^', excludes files of\n\
-            the specified type.  Specifying the initial part of a type name\n\
-            suffices when the choice is unambiguous.  This option may be\n\
-            repeated.  The possible file types can be (-tlist displays a list):";
-  for (int i = 0; type_table[i].type != NULL; ++i)
-    out << (i == 0 ? "" : ",") << (i % 7 ? " " : "\n            ") << "`" << type_table[i].type << "'";
-  out << ".\n\
-    --tabs[=NUM]\n\
-            Set the tab size to NUM to expand tabs for option -k.  The value of\n\
-            NUM may be 1 (no expansion), 2, 4, or 8.  The default size is 8.\n\
-    --tag[=TAG[,END]]\n\
-            Disables colors to mark up matches with TAG.  END marks the end of\n\
-            a match if specified, otherwise TAG.  The default is `___'.\n\
-    --tree, -^\n\
-            Output directories with matching files in a tree-like format for\n\
-            option -c or --count, -l or --files-with-matches, -L or\n\
-            --files-without-match.  This option is enabled by --pretty when the\n\
-            output is sent to the terminal.\n\
-    -U, --ascii, --binary\n\
-            Disables Unicode matching for ASCII and binary matching.  PATTERN\n\
-            matches bytes.  For example, -U '\\xa3' matches byte A3 (hex)\n\
-            instead of the Unicode code point U+00A3 represented by the UTF-8\n\
-            sequence C2 A3.  Input is not flagged as \"binary\" for having\n\
-            invalid UTF, only for having NUL (zero) bytes.\n\
-    -u, --ungroup\n\
-            Do not group multiple pattern matches on the same matched line.\n\
-            Output the matched line again for each additional pattern match.\n\
-    -V, --version\n\
-            Display version with linked libraries and exit.\n\
-    -v, --invert-match\n\
-            Selected lines are those not matching any of the specified\n\
-            patterns.\n\
-    --view[=[+]COMMAND]\n\
-            Use COMMAND to view/edit a file in -Q query TUI by pressing CTRL-Y,\n\
-            +COMMAND waits for a key press after COMMAND terminated.\n\
-    -W, --with-hex\n\
-            Output binary matches in hexadecimal, leaving text matches alone.\n\
-            This option is equivalent to the --binary-files=with-hex option.\n\
-            To omit the matching line from the hex output, use both options -W\n\
-            and --hexdump.  See also options -U.\n\
-    -w, --word-regexp\n\
-            The PATTERN is searched for as a word, such that the matching text\n\
-            is preceded by a non-word character and is followed by a non-word\n\
-            character.  Word-like characters are Unicode letters, digits and\n\
-            connector punctuations such as underscore.\n\
-    --width[=NUM]\n\
-            Truncate the output to NUM visible characters per line.  The width\n\
-            of the terminal window is used if NUM is not specified.  Note that\n\
-            double-width characters in the output may result in wider lines.\n\
-    -X, --hex\n\
-            Output matches and matching lines in hexadecimal.  This option is\n\
-            equivalent to the --binary-files=hex option.  To omit the matching\n\
-            line from the hex output use option --hexdump.  See also option -U.\n\
-    -x, --line-regexp\n\
-            Select only those matches that exactly match the whole line, as if\n\
-            the patterns are surrounded by ^ and $.\n\
-    --xml\n\
-            Output file matches in XML.  When -H, -n, -k, or -b is specified,\n\
-            additional values are output.  See also options --format and -u.\n\
-    -Y, --empty\n\
-            Empty-matching patterns match all lines.  Normally, empty matches\n\
-            are not output, unless a pattern starts with `^' or ends with `$'.\n\
-            With this option, empty-matching patterns, such as x*y?, x*y*z*,\n\
-            and x*(y?|z) match all lines, not only the expected pattern.\n\
-            This option is enabled by default in grep compatibility mode;\n\
-            specify option --no-empty to prevent matching all lines.\n\
-    -y, --any-line, --passthru\n\
-            Any line is output (passthru).  Non-matching lines are output as\n\
-            context with a `-' separator.  See also options -A, -B and -C.\n\
-    ";
-  if (!flag_grep)
-    out << "-Z[best][+-~][MAX], ";
-  out << "--fuzzy[=[best][+-~][MAX]]\n\
-            Fuzzy mode: report approximate pattern matches within MAX errors.\n\
-            The default is -Z1: one deletion, insertion or substitution is\n\
-            allowed.  If `+`, `-' and/or `~' is specified, then `+' allows\n\
-            insertions, `-' allows deletions and `~' allows substitutions.  For\n\
-            example, -Z+~3 allows up to three insertions or substitutions, but\n\
-            no deletions.  If `best' is specified, then only the best matching\n\
-            lines are output with the lowest cost per file.  Option -Zbest\n\
-            requires two passes over a file and cannot be used with standard\n\
-            input or Boolean queries.  Option --sort=best orders matching files\n\
-            by best match.  The first character of an approximate match always\n\
-            matches a character at the beginning of the pattern.  To fuzzy\n\
-            match the first character, replace it with a `.' or `.?'.  Option\n\
-            -U applies fuzzy matching to ASCII and bytes instead of Unicode\n\
-            text.  No whitespace may be given between -Z and its argument.\n\
-    ";
-  if (!flag_grep)
-    out << "-z, ";
-  out << "--decompress\n\
-            Search compressed files and archives.  Archives (.cpio, .pax, .tar)\n\
-            and compressed archives (e.g. .zip, .7z, .taz, .tgz, .tpz, .tbz,\n\
-            .tbz2, .tb2, .tz2, .tlz, .txz, .tzst) are searched and matching\n\
-            pathnames of files in archives are output in braces.  When used\n\
-            with option --zmax=NUM, searches the contents of compressed files\n\
-            and archives stored within archives up to NUM levels.  When -g, -O,\n\
-            -M, or -t is specified, searches archives for files that match the\n\
-            specified globs, filename extensions, file signature magic bytes,\n\
-            or file types, respectively; a side-effect of these options is that\n\
-            the compressed files and archives searched are only those with\n\
-            filename extensions that match known compression and archive types.\n"
-#ifndef HAVE_LIBZ
-            "\
-            This option is not available in this build configuration of ugrep.\n"
-#else
-            "\
-            Supported compression formats: gzip (.gz), compress (.Z), zip"
-#ifndef WITH_NO_7ZIP
-            ", 7z"
-#endif
-#ifdef HAVE_LIBBZ2
-            ",\n\
-            bzip2 (.bz, .bz2, .bzip2, .tbz, .tbz2, .tb2, .tz2)"
-#endif
-#ifdef HAVE_LIBLZMA
-            ",\n\
-            xz (.xz, .txz) and lzma (requires suffix .lzma, .tlz)"
-#endif
-#ifdef HAVE_LIBZSTD
-            ",\n\
-            zstd (.zst, .zstd, .tzst)"
-#endif
-#ifdef HAVE_LIBLZ4
-            ",\n\
-            lz4 (requires suffix .lz4)"
-#endif
-#ifdef HAVE_LIBBROTLI
-            ",\n\
-            brotli (requires suffix .br)"
-#endif
-#ifdef HAVE_LIBBZIP3
-            ",\n\
-            bzip3 (requires suffix .bz3)"
-#endif
-            ".\n"
-#endif
-            "\
-    --zmax=NUM\n\
-            When used with option -z or --decompress, searches the contents of\n\
-            compressed files and archives stored within archives by up to NUM\n\
-            expansion stages.  The default --zmax=1 only permits searching\n\
-            uncompressed files stored in cpio, pax, tar, zip and 7z archives;\n\
-            compressed files and archives are detected as binary files and are\n\
-            effectively ignored.  Specify --zmax=2 to search compressed files\n\
-            and archives stored in cpio, pax, tar, zip and 7z archives.  NUM\n\
-            may range from 1 to 99 for up to 99 decompression and de-archiving\n\
-            steps.  Increasing NUM values gradually degrades performance.\n"
-#ifndef WITH_DECOMPRESSION_THREAD
-            "\
-            This option is not available in this build configuration of ugrep.\n"
-#endif
-            ;
-  if (flag_grep)
-    out << "\nGrep compatibility mode: -Z and -z reassigned to --null and --null-data.\n";
-#ifdef OS_WIN
-  out << "\nWindows mode: short options may start with `-' or with `/'.\n";
-#endif
-  out << "\n\
-    Long options may start with `--no-' to disable, when applicable.\n\
-\n\
-    The ugrep utility exits with one of the following values:\n\
-    0       One or more lines were selected.\n\
-    1       No lines were selected.\n\
-    >1      An error occurred.\n\
-\n\
-    If -q or --quiet or --silent is used and a line is selected, the exit\n\
-    status is 0 even if an error occurred.\n\n";
 }
 
 // print a helpful information for WHAT, if specified, and exit
 void help(const char *what)
 {
-  // strip = from =WHAT
-  if (what != NULL && *what == '=')
-    ++what;
-
-  // strip --no from --no-WHAT
-  if (what != NULL && strncmp(what, "--no", 4) == 0)
-    what += 4;
-
-  // strip one dash from --WHAT
-  if (what != NULL && strncmp(what, "--", 2) == 0)
-    ++what;
-
-  if (what == NULL || *what == '\0')
-  {
-    help(std::cout);
-
-    std::cout << "\n    Specify `ugrep --help WHAT' for help on WHAT.\n\n";
-  }
-  else
-  {
-    std::stringstream text;
-    help(text);
-    const std::string& str = text.str();
-
-    int found = 0;
-
-    for (int pass = 0; pass < 2; ++pass)
-    {
-      size_t pos = 0;
-
-      while (true)
-      {
-        size_t end = str.find("\n    -", pos + 1);
-
-        if (end == std::string::npos)
-          end = str.find("\n\n", pos + 1);
-
-        if (end == std::string::npos)
-          break;
-
-        size_t nl = str.find('\n', pos + 1);
-
-        // roughly find a case-independent match of WHAT
-        for (size_t i = pos + 5; i < (pass == 0 ? nl : end); ++i)
-        {
-          size_t j = 0;
-
-          for (j = 0; what[j] != '\0'; ++j)
-            if (((what[j] ^ str.at(i + j)) & ~0x20) != 0)
-              break;
-
-          if (what[j] == '\0' || what[j] == '=' || isspace(static_cast<unsigned char>(what[j])))
-          {
-            if (pass == 0 ? i < nl: i > nl)
-            {
-              if (found == 0 && pass == 0)
-                std::cout << "\nOptions and arguments:\n";
-              else if (found == 1 && pass == 1)
-                std::cout << "\n\nRelated options:\n";
-              else if (found == 0)
-                std::cout << "\nNo matching option, other relevant options:\n";
-
-              std::cout << str.substr(pos, end - pos);
-              found = pass + 1;
-            }
-            break;
-          }
-        }
-
-        pos = end;
-      }
-    }
-
-    if (found == 0)
-      std::cout << "ugrep --help: nothing appropriate for " << what;
-    else
-      std::cout << "\n\n    Long options may start with `--no-' to disable, when applicable.";
-
-    std::cout << "\n\n";
-
-    if (strcmp(what, "format") == 0)
-    {
-      std::cout <<
-"FORMAT fields for --format and --replace:\n\
-\n\
- field       output                      field       output\n\
- ----------  --------------------------  ----------  --------------------------\n\
- %%          %                           %[...]<     text ... if %m = 1\n\
- %~          newline (LF or CRLF)        %[...]>     text ... if %m > 1\n\
- %a          basename of matching file   %,          , if %m > 1, same as %[,]>\n\
- %A          byte range in hex of match  %:          : if %m > 1, same as %[:]>\n\
- %b          byte offset of a match      %;          ; if %m > 1, same as %[;]>\n\
- %B %[...]B  ... + byte offset, if -b    %|          | if %m > 1, same as %[|]>\n\
- %c          matching pattern as C/C++   %[...]$     assign ... to separator\n\
- %C          matching line as C/C++      %$          reset to default separator\n\
- %d          byte size of a match        %[ms]=...%= color of ms ... color off\n\
- %e          end offset of a match       --------------------------------------\n\
- %f          pathname of matching file   \n\
- %F %[...]F  ... + pathname, if -H       \n\
- %+          %F as heading/break, if -+  Fields that require -P for captures:\n\
- %h          quoted \"pathname\"           \n\
- %H %[...]H  ... + \"pathname\", if -H     field       output\n\
- %i          pathname as XML             ----------  --------------------------\n\
- %I %[...]I  ... + pathname XML, if -H   %1 %2...%9  group capture\n\
- %j          matching pattern as JSON    %[n]#       nth group capture\n\
- %J          matching line as JSON       %[n]b       nth capture byte offset\n\
- %k          column number of a match    %[n]d       nth capture byte size\n\
- %K %[...]K  ... + column number, if -k  %[n]e       nth capture end offset\n\
- %l          last line number of match   %[n]j       nth capture as JSON\n\
- %L          number of lines of a match  %[n]q       nth capture quoted\n\
- %m          number of matches           %[n]v       nth capture as CSV\n\
- %M          number of matching lines    %[n]x       nth capture as XML\n\
- %n          line number of a match      %[n]y       nth capture as hex\n\
- %N %[...]N  ... + line number, if -n    %[name]#    named group capture\n\
- %o          matching pattern, also %0   %[name]b    named capture byte offset\n\
- %O          matching line               %[name]d    named capture byte size\n\
- %p          path to matching file       %[name]e    named capture end offset\n\
- %q          quoted matching pattern     %[name]j    named capture as JSON\n\
- %Q          quoted matching line        %[name]q    named capture quoted\n\
- %R          newline, if --break         %[name]v    named capture as CSV\n\
- %s          separator (: by default)    %[name]x    named capture as XML\n\
- %S %[...]S  ... + separator, if %m > 1  %[name]y    named capture as hex\n\
- %t          tab                         %[n|...]#   capture n,... that matched\n\
- %T %[...]T  ... + tab, if -T            %[n|...]b   capture n,... byte offset\n\
- %u          unique lines, unless -u     %[n|...]d   capture n,... byte size\n\
- %[hhhh]U    U+hhhh Unicode code point   %[n|...]e   capture n,... end offset\n\
- %v          matching pattern as CSV     %[n|...]j   capture n,... as JSON\n\
- %V          matching line as CSV        %[n|...]q   capture n,... quoted\n\
- %w          match width in wide chars   %[n|...]v   capture n,... as CSV\n\
- %x          matching pattern as XML     %[n|...]x   capture n,... as XML\n\
- %X          matching line as XML        %[n|...]y   capture n,... as hex\n\
- %y          matching pattern as hex     %g          capture number or name\n\
- %Y          matching line as hex        %G          all capture numbers/names\n\
- %z          path in archive             %[t|...]g   text t indexed by capture\n\
- %Z          edit distance cost, if -Z   %[t|...]G   all t indexed by captures\n\
- --------------------------------------  --------------------------------------\n\
-\n\
-Options -X and -W change the %o and %O fields to output hex and hex/text.\n\
-\n\
-Option -o changes the %O and %Q fields to output the match only.\n\
-\n\
-Options -c, -l and -o change the output of %C, %J, %V, %X and %Y accordingly.\n\
-\n\
-Numeric fields such as %n are padded with spaces when %{width}n is specified.\n\
-\n\
-Matching line fields such as %O are cut to width when %{width}O is specified or\n\
-when %{-width}O is specified to cut from the end of the line.\n\
-\n\
-Character context on a matching line before or after a match is output when\n\
-%{-width}o or %{+width}o is specified for match fields such as %o, where\n\
-%{width}o without a +/- sign cuts the match to the specified width.\n\
-\n\
-";
-    }
-    else if (strcmp(what, "regex") == 0)
-    {
-      std::cout <<
-"Extended regular expression syntax overview (excludes some advanced patterns):\n\
-\n\
- pattern     matches                     pattern     removes special meaning   \n\
- ----------  --------------------------  ----------  --------------------------\n\
- .           any character except \\n     \\.          escapes . to match .\n\
- a           the character a             \\Q...\\E     the literal string ...\n\
- ab          the string ab               --------------------------------------\n\
- a|b         a or b                      \n\
- a*          zero or more a's            pattern     special characters\n\
- a+          one or more a's             ----------  --------------------------\n\
- a?          zero or one a               \\f          form feed\n\
- a{3}        3 a's                       \\n          newline\n\
- a{3,}       3 or more a's               \\r          carriage return\n\
- a{3,7}      3 to 7 a's                  \\R          any Unicode line break\n\
- a*?         zero or more a's lazily     \\t          tab\n\
- a+?         one or more a's lazily      \\v          vertical tab\n\
- a??         zero or one a lazily        \\X          any character and \\n\n\
- a{3}?       3 a's lazily                \\cZ         control character ^Z\n\
- a{3,}?      3 or more a's lazily        \\0          NUL\n\
- a{3,7}?     3 to 7 a's lazily           \\0ddd       octal character code ddd\n\
- a(b|cd?)    ab or ac or acd             \\xhh        hex character code hh\n\
- --------------------------------------  \\x{hhhh}    Unicode code point U+hhhh\n\
-                                         \\u{hhhh}    Unicode code point U+hhhh\n\
- pattern     character classes           --------------------------------------\n\
- ----------  --------------------------  \n\
- [abc-e]     one character a,b,c,d,e     pattern     anchors and boundaries\n\
- [^abc-e]    one char not a,b,c,d,e,\\n   ----------  --------------------------\n\
- [[:name:]]  one char in POSIX class:    ^           begin of line anchor\n\
-    alnum      a-z,A-Z,0-9               $           end of line anchor\n\
-    alpha      a-z,A-Z                   \\A          begin of file anchor\n\
-    ascii      ASCII char \\x00-\\x7f      \\Z          end of file anchor\n\
-    blank      space or tab              \\b          word boundary\n\
-    cntrl      control characters        \\B          non-word boundary\n\
-    digit      0-9                       \\<          start of word boundary\n\
-    graph      visible characters        \\>          end of word boundary\n\
-    lower      a-z                       (?=...)     lookahead (-P)\n\
-    print      visible chars and space   (?!...)     negative lookahead (-P)\n\
-    punct      punctuation characters    (?<=...)    lookbehind (-P)\n\
-    space      space,\\t,\\v,\\f,\\r         (?<!...)    negative lookbehind (-P)\n\
-    upper      A-Z                       --------------------------------------\n\
-     word      a-z,A-Z,0-9,_             (-P): pattern requires option -P\n\
-   xdigit      0-9,a-f,A-F               \n\
- \\p{class}   one character in class      pattern     grouping\n\
- \\P{class}   one char not in class       ----------  --------------------------\n\
- \\d          a digit                     (...)       non-capturing group\n\
- \\D          a non-digit                 (...)       capturing group (-P)\n\
- \\h          a space or tab              (?:...)     non-capturing group (-P)\n\
- \\H          not a space or tab          (?<X>...)   capturing, named X (-P)\n\
- \\s          a whitespace except \\n      \\1          matches group 1 (-P)\n\
- \\S          a non-whitespace            \\g{10}      matches group 10 (-P)\n\
- \\w          a word character            \\g{X}       matches group name X (-P)\n\
- \\W          a non-word character        (?#...)     comments ... are ignored\n\
- --------------------------------------  --------------------------------------\n\
-                                         (-P): pattern requires option -P\n\
-\n\
-Option -P enables Perl regex matching with Unicode patterns, lookarounds and\n\
-capturing groups.\n\
-\n\
-Option -U disables full Unicode pattern matching: non-POSIX Unicode character\n\
-classes \\p{class} are disabled, ASCII, LATIN1 and binary regex patterns only.\n\
-\n\
-To match multiple lines, specify a pattern that matches line breaks, such as\n\
-\\n or \\R.  Character classes do not match a newline character, except for\n\
-\\P, \\D, \\H, \\W and \\X and when a \\n or a \\R is explicitly specified,\n\
-such as [\\s\\n].\n\
-\n\
-Options -% (--bool --lines) and -%% (--bool --files) augments pattern syntax:\n\
-\n\
- pattern     operation                   pattern     operation\n\
- ----------  --------------------------  ----------  --------------------------\n\
- (...)       grouping                    \"...\"       the literal string ...\n\
- -a          logical not a               NOT a       locical not a\n\
- a|b         logical a or b              a OR b      logical a or b\n\
- a b         logical a and b             a AND b     locical a and b\n\
- --------------------------------------  --------------------------------------\n\
-\n\
-Listed from the highest level of precedence to the lowest, NOT is performed\n\
-before OR and OR is performed before AND.  Thus, `-x|y z' is `((-x)|y) z'.\n\
-Spacing of the logical AND, OR and NOT operators is required.\n\
-\n\
-Nested parentheses that are part of a regex sub-pattern do not group logical\n\
-operators.  For example, `((x y)z)' matches `x yz'.  Note that `((x y){3} z)'\n\
-matches `x y' three times and a `z', since the outer parentheses group the AND\n\
-(a space).\n\
-\n\
-Option -% matches lines satisfying the Boolean query.  The double short option\n\
--%% matches files satisfying the Boolean query.\n\
-\n\
-See also options --and, --andnot, --not to specify sub-patterns as command-line\n\
-arguments with these options as logical operators and option -e as logical OR.\n\
-\n\
-Option --stats displays the options and patterns applied to the matching files.\n\
-\n\
-NOTE: always quote regex patterns to prevent the shell from expanding globs.\n\
-NOTE: a pattern starting with a `-' requires option -e as in -e '-PATTERN'.\n\
-\n\
-";
-    }
-    else if (strcmp(what, "glob") == 0 || strcmp(what, "globs") == 0 || strcmp(what, "globbing") == 0)
-    {
-      std::cout <<
-"Glob syntax and conventions:\n\
-\n\
-Gitignore-style globbing is performed by all glob-related options: -g (--glob),\n\
---iglob, --include, --exclude, --include-dir, --exclude-dir, --include-from,\n\
---exclude-from, and --ignore-files.\n\
-\n\
- pattern     matches\n\
- ----------  -----------------------------------------------------------\n\
- *           anything except /\n\
- ?           any one character except /\n\
- [abc-e]     one character a,b,c,d,e\n\
- [^abc-e]    one character not a,b,c,d,e,/\n\
- [!abc-e]    one character not a,b,c,d,e,/\n\
- /           when used at the start of a glob, matches working directory\n\
-             when used at the end of a glob, matches directories only\n\
- **/         zero or more directories\n\
- /**         when at the end of a glob, matches everything after the /\n\
- \\?          a ? or any other character specified after the backslash\n\
-\n\
-A glob pattern starting with a ! or a ^ inverts the match.  That is, instead of\n\
-matching a file or directory name, the file or directory is ignored.\n\
-\n\
-When a glob pattern contains a /, the full pathname is matched from the working\n\
-directory down.  Otherwise, the basename of a file or directory is matched in\n\
-recursive searches.\n\
-\n\
-When a glob pattern starts with ./ or just a single /, the glob is matched at\n\
-the working directory.\n\
-\n\
-When a glob pattern ends with a /, only directories are matched, not files.\n\
-\n\
-Option -g (--glob) performs glob matching with the specified glob pattern or\n\
-a set of comma-separated globs.  When a glob is preceded with a ! or ^, the\n\
-glob match is inverted by excluding matching files or directories.\n\
-\n\
-Option --iglob performs case-insensitive glob matching with the specified glob\n\
-pattern or a set of comma-separated globs.  When a glob is preceded with a !\n\
-or ^, the glob match is inverted by excluding matching files or directories.\n\
-\n\
-Option --glob-ignore-case performs case-insensitive glob matching in general,\n\
-except with the globs specified in --ignore-files, such as .gitignore.\n\
-\n\
-Option --ignore-files specifies a file with gitignore-style globs, where the\n\
-default file is .gitignore.  When ignore files are encountered in recursive\n\
-searches, the search is narrowed by excluding file and directory names matching\n\
-the globs.  The --ignore-files glob matching of both file and directory names\n\
-differs from all other glob-related options, such as --exclude-from, that\n\
-require globs ending in / to match directory names.\n\
-\n\
-Option -O (--file-extension) matches filename extensions, or ignores extensions\n\
-when preceded with a ! or ^.\n\
-\n\
-Option -t (--file-type) matches file types, or ignores file types when\n\
-preceded with a ! or a ^.  Use -tlist to view the list of supported file types\n\
-with corresponding glob patterns.\n\
-\n\
-Option --stats displays the search path globs applied to the matching files.\n\
-\n\
-NOTE: always quote glob patterns to prevent the shell from expanding globs.\n\
-For example, specify -g \"*foo.*\" or -g\"*foo.*\" or \"-g*foo.*\".\n\
-\n\
-";
-    }
-    else if (strcmp(what, "fuzzy") == 0)
-    {
-      std::cout <<
-"Fuzzy (approximate) search is performed with option -Z:\n\
-\n\
- -Z    fuzzy match\n\
- ----  ---------------------------------------------------------------------\n\
-       allow 1 character insertion, deletion or substitution (-Z default)\n\
- 2     allow 2 character insertions, deletions and/or substitutions\n\
- +1    allow 1 character insertion, e.g. pattern 'foo' also matches 'fomo'\n\
- -1    allow 1 character deletion, e.g. pattern 'food' also matches 'fod'\n\
- ~1    allow 1 character substitution, e.g. pattern 'foo' also matches 'for'\n\
- +-1   allow 1 character insertion or deletion\n\
- +~1   allow 1 character insertion or substitution\n\
- -~1   allow 1 character deletion or substitution\n\
- best  when prefixed to the above, output the best matches only\n\
-\n\
-No whitespace may be given between -Z and its argument.\n\
-\n\
-Insertions, deletions and/or substitutions are applied to Unicode characters,\n\
-except when option -U is specified for ASCII/binary pattern search.\n\
-\n\
-The 'best' prefix outputs the best matching lines with the lowest cost (minimal\n\
-edit distance) per file.  For example, if a file has an exact match anywhere,\n\
-then only exact matches are output, no approximate matches.  This requires two\n\
-passes over an input file to determine the minimal edit distance, which reduces\n\
-performance significantly.  This option cannot be used with standard input or\n\
-with Boolean queries.\n\
-\n\
-Option --sort=best sorts the directory output by best fuzzy match based on edit\n\
-distance, i.e. files with at least one exact match are output first, followed\n\
-by files with at least a match that is one edit distance from exact, and so on.\n\
-This sort option requires two passes over each input file, which reduces\n\
-performance significantly.\n\
-\n\
-NOTE: Fuzzy search anchors each pattern match at the beginning character of the\n\
-specified regex pattern.  This significantly improves search performance and\n\
-prevents overmatching.  For example, the regex pattern `[1-9]buzz' starts with\n\
-a nonzero digit at which all matches are anchored.  Replace the beginning of a\n\
-regex pattern with a wildcard to match any character, for example `.buzz', or\n\
-make the first characters of the regex pattern optional, for example\n\
-`[1-9]?buzz' or `.?buzz'.\n\
-\n\
-";
-    }
-  }
-
-  exit(EXIT_ERROR);
+  CoreDiagEnv env = diag_env();
+  exit(ugrep_core_help(&env, what));
 }
 
 // print the version info
 void version()
 {
-#if defined(HAVE_PCRE2)
-  uint32_t tmp = 0;
-#endif
-  std::cout << "ugrep " UGREP_VERSION;
-  if (flag_grep)
-    std::cout << " (" << (flag_mode == Mode::BRE ? "" : flag_mode == Mode::FIXED ? "f" : "e") << "grep compat)";
-  std::cout << " " PLATFORM <<
-#if defined(HAVE_AVX512BW)
-    (reflex::have_HW_AVX512BW() ? " +avx512" : (reflex::have_HW_AVX2() ? " +avx2" : reflex::have_HW_SSE2() ?  " +sse2" : " (no sse2!)")) <<
-#elif defined(HAVE_AVX2)
-    (reflex::have_HW_AVX2() ? " +avx2" : reflex::have_HW_SSE2() ?  " +sse2" : " (no sse2!)") <<
-#elif defined(HAVE_SSE2)
-    (reflex::have_HW_SSE2() ?  " +sse2" : " (no sse2!)") <<
-#elif defined(HAVE_NEON)
-    " +neon/AArch64" <<
-#endif
-#if defined(HAVE_PCRE2)
-    (pcre2_config(PCRE2_CONFIG_JIT, &tmp) >= 0 && tmp != 0 ? "; -P:pcre2jit" : "; -P:pcre2") <<
-#elif defined(HAVE_BOOST_REGEX)
-    "; -P:boost_regex" <<
-#endif
-#ifdef HAVE_LIBZ
-    "; -z:zlib" <<
-#ifdef HAVE_LIBBZ2
-    ",bzip2" <<
-#endif
-#ifdef HAVE_LIBLZMA
-    ",lzma" <<
-#endif
-#ifdef HAVE_LIBLZ4
-    ",lz4" <<
-#endif
-#ifdef HAVE_LIBZSTD
-    ",zstd" <<
-#endif
-#ifdef HAVE_LIBBROTLI
-    ",brotli" <<
-#endif
-#ifdef HAVE_LIBBZIP3
-    ",bzip3" <<
-#endif
-#ifndef WITH_NO_7ZIP
-    ",7z" <<
-#endif
-    ",tar/pax/cpio/zip" <<
-#endif
-    "\n"
-    "License: BSD-3-Clause; ugrep user manual: <https://ugrep.com>\n"
-    "Written by Robert van Engelen and others: <https://github.com/Genivia/ugrep>\n"
-    "Ugrep utilizes the RE/flex regex library: <https://github.com/Genivia/RE-flex>" << std::endl;
-  exit(EXIT_OK);
+  CoreDiagEnv env = diag_env();
+  exit(ugrep_core_version(&env));
 }
 
 // print to standard error: ... is a directory if -s and -q not specified
 void is_directory(const char *pathname)
 {
-  if (!flag_no_messages)
-    fprintf(Static::errout, "%sugrep: %s%s%s is a directory\n", color_off, color_high, pathname, color_off);
+  CoreDiagEnv env = diag_env();
+  ugrep_core_is_directory(&env, pathname);
 }
 
 #ifdef HAVE_LIBZ
 // print to standard error: cannot decompress message if -s and -q not specified
 void cannot_decompress(const char *pathname, const char *message)
 {
-  if (!flag_no_messages)
-    fprintf(Static::errout, "%sugrep: cannot decompress %s%s%s: %s\n", color_off, color_fn, pathname, color_off, message != NULL ? message : "");
+  CoreDiagEnv env = diag_env();
+  ugrep_core_cannot_decompress(&env, pathname, message);
 }
 #endif
 
 // print to standard error: warning message if -s and -q not specified, display error if errno is set, like perror()
 void warning(const char *message, const char *arg)
 {
-  if (!flag_no_messages)
-  {
-    const char *errmsg = NULL;
-#if defined(__STDC_LIB_EXT1__) || defined(OS_WIN_OR_MINGW)
-    char errbuf[256];
-    if (errno)
-    {
-      // use safe strerror_s() instead of strerror() when available
-      strerror_s(errbuf, sizeof(errbuf), errno);
-      errmsg = errbuf;
-    }
-    fprintf(Static::errout, "%sugrep: %swarning:%s %s%s%s%s%c%s %s%s%s\n", color_off, color_warning, color_off, color_high, message != NULL ? message : "", message != NULL ? " " : "", arg != NULL ? arg : "", errmsg != NULL ? ':' : ' ', color_off, color_message, errmsg != NULL ? errmsg : "", color_off);
-#else
-    if (errno)
-      errmsg = strerror(errno);
-    fprintf(Static::errout, "%sugrep: %swarning:%s %s%s%s%s%c%s %s%s%s\n", color_off, color_warning, color_off, color_high, message != NULL ? message : "", message != NULL ? " " : "", arg != NULL ? arg : "", errmsg != NULL ? ':' : ' ', color_off, color_message, errmsg != NULL ? errmsg : "", color_off);
-#endif
-  }
+  int errnum = errno;
+  CoreDiagEnv env = diag_env();
+  ugrep_core_warning(&env, message, arg, errnum);
   ++Static::warnings;
 }
 
 // print to standard error: error message, assumes errno is set, like perror(), then exit
 void error(const char *message, const char *arg)
 {
-  // use safe strerror_s() instead of strerror() when available
-#if defined(__STDC_LIB_EXT1__) || defined(OS_WIN_OR_MINGW)
-  char errmsg[256];
-  strerror_s(errmsg, sizeof(errmsg), errno);
-#else
-  const char *errmsg = strerror(errno);
-#endif
-  fprintf(Static::errout, "%sugrep: %serror:%s %s%s%s%s:%s %s%s%s\n\n", color_off, color_error, color_off, color_high, message != NULL ? message : "", message != NULL ? " " : "", arg != NULL ? arg : "", color_off, color_message, errmsg, color_off);
-  exit(EXIT_ERROR);
+  int errnum = errno;
+  CoreDiagEnv env = diag_env();
+  exit(ugrep_core_error(&env, message, arg, errnum));
 }
 
 // print to standard error: abort message with exception details, then exit
 void abort(const char *message)
 {
-  fprintf(Static::errout, "%sugrep: %s%s%s\n\n", color_off, color_error, message, color_off);
-  exit(EXIT_ERROR);
+  CoreDiagEnv env = diag_env();
+  exit(ugrep_core_abort(&env, message, NULL));
 }
 
 // print to standard error: abort message with exception details, then exit
 void abort(const char *message, const std::string& what)
 {
-  fprintf(Static::errout, "%sugrep: %s%s%s%s%s%s\n\n", color_off, color_error, message != NULL ? message : "", color_off, color_high, what.c_str(), color_off);
-  exit(EXIT_ERROR);
+  CoreDiagEnv env = diag_env();
+  exit(ugrep_core_abort(&env, message, what.c_str()));
 }
 
 // src_core seam facades (rust/src_core/SEAM.md): init(), terminal(), set_terminal_hyperlink(), set_color() and trim() are Rust

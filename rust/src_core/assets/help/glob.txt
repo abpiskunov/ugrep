@@ -1,0 +1,61 @@
+Glob syntax and conventions:
+
+Gitignore-style globbing is performed by all glob-related options: -g (--glob),
+--iglob, --include, --exclude, --include-dir, --exclude-dir, --include-from,
+--exclude-from, and --ignore-files.
+
+ pattern     matches
+ ----------  -----------------------------------------------------------
+ *           anything except /
+ ?           any one character except /
+ [abc-e]     one character a,b,c,d,e
+ [^abc-e]    one character not a,b,c,d,e,/
+ [!abc-e]    one character not a,b,c,d,e,/
+ /           when used at the start of a glob, matches working directory
+             when used at the end of a glob, matches directories only
+ **/         zero or more directories
+ /**         when at the end of a glob, matches everything after the /
+ \?          a ? or any other character specified after the backslash
+
+A glob pattern starting with a ! or a ^ inverts the match.  That is, instead of
+matching a file or directory name, the file or directory is ignored.
+
+When a glob pattern contains a /, the full pathname is matched from the working
+directory down.  Otherwise, the basename of a file or directory is matched in
+recursive searches.
+
+When a glob pattern starts with ./ or just a single /, the glob is matched at
+the working directory.
+
+When a glob pattern ends with a /, only directories are matched, not files.
+
+Option -g (--glob) performs glob matching with the specified glob pattern or
+a set of comma-separated globs.  When a glob is preceded with a ! or ^, the
+glob match is inverted by excluding matching files or directories.
+
+Option --iglob performs case-insensitive glob matching with the specified glob
+pattern or a set of comma-separated globs.  When a glob is preceded with a !
+or ^, the glob match is inverted by excluding matching files or directories.
+
+Option --glob-ignore-case performs case-insensitive glob matching in general,
+except with the globs specified in --ignore-files, such as .gitignore.
+
+Option --ignore-files specifies a file with gitignore-style globs, where the
+default file is .gitignore.  When ignore files are encountered in recursive
+searches, the search is narrowed by excluding file and directory names matching
+the globs.  The --ignore-files glob matching of both file and directory names
+differs from all other glob-related options, such as --exclude-from, that
+require globs ending in / to match directory names.
+
+Option -O (--file-extension) matches filename extensions, or ignores extensions
+when preceded with a ! or ^.
+
+Option -t (--file-type) matches file types, or ignores file types when
+preceded with a ! or a ^.  Use -tlist to view the list of supported file types
+with corresponding glob patterns.
+
+Option --stats displays the search path globs applied to the matching files.
+
+NOTE: always quote glob patterns to prevent the shell from expanding globs.
+For example, specify -g "*foo.*" or -g"*foo.*" or "-g*foo.*".
+
