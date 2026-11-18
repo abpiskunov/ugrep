@@ -39,7 +39,8 @@ fn out(bytes: &[u8]) {
 
 /// text of `help()`
 fn help_text() -> String {
-    let mut s = String::from(HELP_HEAD);
+    // a checkout with CRLF conversion (core.autocrlf) must not change the text
+    let mut s = HELP_HEAD.replace('\r', "");
     if !have("z") {
         s.push_str("            This option is not available in this build of ugrep-indexer.\n");
     } else {
@@ -67,7 +68,7 @@ fn help_text() -> String {
         }
         s.push_str(".\n");
     }
-    s.push_str(HELP_TAIL);
+    s.push_str(&HELP_TAIL.replace('\r', ""));
     s
 }
 
