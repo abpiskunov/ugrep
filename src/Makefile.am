@@ -51,7 +51,6 @@ ugrep_SOURCES = \
 	mmap.hpp \
 	output.hpp \
 	output_rust.hpp \
-	output.cpp \
 	query.hpp \
 	query.cpp \
 	screen.hpp \

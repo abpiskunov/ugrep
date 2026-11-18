@@ -268,3 +268,5 @@ No tap macro was added: `src/core_tap.hpp` was deleted at Cleanup and the plan h
 bodies are part of `src_core`, whose gates are cleaned). The generic `rust/src_core/cpp2rust_tap.hpp` template exists for the
 Behavior task. Evidence at Prepare: both modes build with MSVC (default and `/p:CPP_RUST_IMPL_OUTPUT=rust /p:CppRustOutSuffix=-rust`),
 `gate-check --gate baseline --target src_core` PASS (2981 surface cases, 0 divergent), `policy-scan` PASS.
+## Output buffer (switch over)
+Rust owns buffer blocks/flush/Tree/Dump::hex (output_buf.rs, ffi/output_buf.rs). C++ appends via cursor cur/end; bridge call only on block-full/flush/reset. output.cpp removed.

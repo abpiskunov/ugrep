@@ -152,3 +152,6 @@ D-terminal-unsafe-review (2026-11-18): parity-verifier reviewed ffi/terminal.rs.
 | Q-output-6 (B-src_core-172, Triage) | 2026-11-18 | behavior | CSV escapes a quote in the file name/label with a backslash but doubles it in match text | bug-preserve | migration/behavior/src_core.yaml (decision Q-output-6) |
 | Q-output-7 (masks, Triage) | 2026-11-18 | masks | Approve no new noise masks; unordered multi-file cases use -J1 or --sort=name, `--max-files` with -J>1 races and is not recorded | approved: no new masks; masks/src_core.json unchanged | migration/masks/src_core.json |
 | Q-output-8 (headers, Triage) | 2026-11-18 | header | No extra header changes beyond the parent plan; output.hpp keeps only the declarations Grep uses, matcher handoff decided in the seam notes | approved | migration/decisions.md |
+
+## Switch over: output
+Output Buffer, Dump::hex and Tree moved to Rust (output_buf.rs); src/output.cpp deleted. Operator direction 2026-11-18. Hot-path 1.1x not met for -o/-n --color/--json; deferred to S4 perf task tsk_01M7R8WD4HJADDDA21H2AHVXJX. retained_args amendment is an operator plan PR.

@@ -5719,8 +5719,7 @@ void ugrep()
   Stats::reset();
 
   // --tree: reset directory tree output
-  Output::Tree::path.clear();
-  Output::Tree::depth = 0;
+  Output::Tree::reset();
 
   // clear internal combined all-include and all-exclude globs
   flag_all_exclude.clear();
@@ -6892,8 +6891,8 @@ void ugrep()
   if (flag_tree && (flag_files_with_matches || flag_count) && flag_format == NULL)
   {
     Output out(Static::output);
-    for (int i = 1; i < Output::Tree::depth; ++i)
-      out.str(Output::Tree::end);
+    for (int i = 1; i < Output::Tree::depth(); ++i)
+      out.str(Output::Tree::end());
     out.nl();
   }
 
@@ -11867,9 +11866,7 @@ int terminal_probe_output(void *)
 
 void terminal_tree_utf8(void *)
 {
-  Output::Tree::bar = "│ ";
-  Output::Tree::ptr = "╰╴";
-  Output::Tree::end = "▔ ";
+  Output::Tree::set_glyphs("│ ", "╰╴", "▔ ");
 }
 
 void terminal_hyperlink_set(void *, const char *host, const char *path, const char *prefix)

@@ -162,9 +162,6 @@
     <ClCompile Include="..\lib\letter_scripts.cpp">
       <Filter>lib</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\output.cpp">
-      <Filter>src</Filter>
-    </ClCompile>
     <ClCompile Include="..\lib\posix.cpp">
       <Filter>lib</Filter>
     </ClCompile>

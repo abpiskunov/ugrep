@@ -39,6 +39,9 @@ pub mod output;
 pub mod output_format;
 #[path = "ffi/output.rs"]
 pub mod output_ffi;
+pub mod output_buf;
+#[path = "ffi/output_buf.rs"]
+pub mod output_buf_ffi;
 pub mod output_sync;
 #[path = "ffi/output_sync.rs"]
 pub mod output_sync_ffi;
@@ -337,6 +340,7 @@ mod ffi {
             tree_depth: i32,
             ctx: &OutputCtx,
         ) -> OutputTreeResult;
+        fn output_header_tree_state(pathname: &[u8], partname: &[u8], link: &[u8], ctx: &OutputCtx) -> Vec<u8>;
         fn output_binary_file_matches(
             pathname: &[u8],
             partname: &[u8],
@@ -597,6 +601,16 @@ fn output_header_tree(
     let mut tree = output::TreeState { path: tree_path.to_vec(), depth: tree_depth };
     let bytes = output::header_tree(&output_ffi::opts(p, h, d), pathname, partname, ctx, &output::TreeGlyphs { bar, ptr, end }, &mut tree);
     ffi::OutputTreeResult { bytes, path: tree.path, depth: tree.depth }
+}
+
+fn output_header_tree_state(pathname: &[u8], partname: &[u8], link: &[u8], ctx: &ffi::OutputCtx) -> Vec<u8> {
+    let (p, h, d) = link_parts(link);
+    output_buf_ffi::with_tree(|t| {
+        let mut state = output::TreeState { path: std::mem::take(&mut t.state.path), depth: t.state.depth };
+        let bytes = output::header_tree(&output_ffi::opts(p, h, d), pathname, partname, ctx, &t.glyphs(), &mut state);
+        t.state = state;
+        bytes
+    })
 }
 
 fn output_binary_file_matches(
