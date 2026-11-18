@@ -1,5 +1,5 @@
 //! Types and signatures of the seam of `src_core` (src/ugrep.cpp, cnf, output, stats, mmap), fixed by the
-//! Prepare seam task. Every body is `todo!()` until a Port task; the Port never edits a signature (the
+//! Prepare seam task. Every body is `panic!` until a Port task; the Port never edits a signature (the
 //! signature change protocol of the plan applies). The replay harness includes this file alone, so it names
 //! no `cxx` type: `lib.rs` converts between the bridge structs and the types here.
 //!
@@ -258,25 +258,25 @@ pub mod ui {
 
     /// `terminal()`: TTY check, `flag_tty_term`, color defaults and `GREP_COLORS`, pager and query decisions.
     pub fn terminal() {
-        todo!("Port: terminal")
+        panic!("not ported yet: terminal")
     }
 
     /// `set_terminal_hyperlink()`: `--hyperlink` prefix, host and working directory (host/path are opaque C++ strings).
     pub fn set_terminal_hyperlink() {
-        todo!("Port: set_terminal_hyperlink")
+        panic!("not ported yet: set_terminal_hyperlink")
     }
 
     /// `set_color(colors, parameter, color)`: `colors` and `parameter` are C strings without NUL, `color` is the
     /// `char[COLORLEN]` buffer the C++ owns; the result is NUL-terminated inside `color`.
     pub fn set_color(colors: &[u8], parameter: &[u8], color: &mut [u8]) {
         let _ = (colors, parameter, color);
-        todo!("Port: set_color")
+        panic!("not ported yet: set_color")
     }
 
     /// `trim(line)`: the range of `line` left after removing white space from both ends.
     pub fn trim(line: &[u8]) -> TrimRange {
         let _ = line;
-        todo!("Port: trim")
+        panic!("not ported yet: trim")
     }
 
     /// `init(argc, argv)`: parses options into `ugrep_settings` and the opaque C++ containers.
@@ -285,7 +285,7 @@ pub mod ui {
     /// process: the settings keep pointers into them, and `trim_pathname_arg` modifies them in place).
     pub fn init(argv: &mut [*const c_char]) {
         let _ = argv;
-        todo!("Port: init")
+        panic!("not ported yet: init")
     }
 }
 

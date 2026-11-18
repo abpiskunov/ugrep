@@ -1,5 +1,5 @@
 //! Rust side of the `src_core` component (src/cnf.cpp, src/stats.cpp; later src/ugrep.cpp and src/output.cpp).
-//! One bridge module (`ffi`); all boundary code is here. The bodies are `todo!()` stubs until the Port tasks.
+//! One bridge module (`ffi`); all boundary code is here. The bodies are `panic!` stubs until the Port tasks.
 //!
 //! Only `extern "Rust"` functions: the C++ facade calls Rust, Rust never calls the component's legacy C++.
 //! State stays in C++ (see SEAM.md): everything crosses by value, as a snapshot in and a result out.
