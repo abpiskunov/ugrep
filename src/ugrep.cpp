@@ -301,7 +301,6 @@ std::list<std::string> arg_strings;
 // helper function protos
 void options(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, int argc, const char **argv);
 void init(int argc, const char **argv);
-void init_cpp(int argc, const char **argv);
 void set_color(const char *colors, const char *parameter, char color[COLORLEN]);
 void trim(std::string& line);
 void trim_pathname_arg(const char *arg);
@@ -5109,457 +5108,264 @@ static void save_config()
   ugrep_core_save_config(&cenv);
 }
 
-// parse the command-line options and initialize
-void init_cpp(int argc, const char **argv)
+// the callback table of the Rust init (ffi/init.rs), the field order mirrors Rust's InitEnv, the list numbers mirror Rust's List
+struct InitEnv
 {
-  // get home directory path to expand ~ in options with path arguments, using fopen_smart()
+  void *ctx;
+  void (*set_home_dir)(void *, const char *);
+  void (*cerr)(void *, const char *, size_t);
+  void (*exit)(void *, int);
+  void (*usage)(void *, const char *);
+  void (*warning)(void *, const char *, const char *);
+  void (*error)(void *, const char *, const char *);
+  void (*abort)(void *, const char *);
+  void (*abort_what)(void *, const char *, const char *);
+  void (*load_config)(void *);
+  void (*save_config)(void *);
+  void (*warnings_reset)(void *);
+  size_t (*warnings)(void *);
+  void (*options)(void *);
+  void (*terminal)(void *);
+  size_t (*patterns_len)(void *);
+  void (*pattern_get)(void *, size_t, int *, const char **);
+  void (*bcnf_new_pattern)(void *, int, const char *);
+  void (*bcnf_new_pattern_regexp)(void *);
+  void (*bcnf_new_term)(void *);
+  void (*regexp_append)(void *, const char *);
+  size_t (*list_len)(void *, int);
+  const char *(*list_get)(void *, int, size_t);
+  void (*list_push)(void *, int, const char *);
+  void (*list_truncate)(void *, int, size_t, size_t);
+  void (*ignore_file_erase)(void *, const char *);
+  const char *(*arg_pattern)(void *);
+  void (*set_arg_pattern)(void *, const char *);
+  size_t (*arg_files_len)(void *);
+  const char *(*arg_file)(void *, size_t);
+  void (*arg_files_erase)(void *, size_t);
+  void (*arg_files_insert_front)(void *, const char *);
+  void (*expand_arg_files)(void *);
+  int (*check_arg_file)(void *, const char *, int);
+  void (*trim_pathname_arg)(void *, const char *);
+  int (*file_open)(void *, const char *);
+  int (*file_getline)(void *, size_t *);
+  void (*arg_files_push_line)(void *);
+  void (*file_close)(void *);
+  void (*import_globs)(void *, int, int);
+  int (*fs_probe)(void *, const char *, uint64_t *);
+  void (*fs_insert)(void *, int, uint64_t);
+  int (*type_entry)(void *, size_t, const char **, const char **, const char **, const char **);
+  int (*encoding_entry)(void *, size_t, const char **, uint16_t *);
+  const char *(*magic_pattern_assign)(void *, const char *);
+  const char *(*filter_magic_assign)(void *, const char *);
+  int (*filter_empty)(void *);
+  int (*isatty_stdin)(void *);
+  void (*set_binary_stdout)(void *);
+  const char *home_var;
+  const char *auto_;
+  int pathsep;
+  int os_win;
+  int os_win_or_mingw;
+  int have_libz;
+  int have_regex_perl;
+  int have_stat_fs;
+  int cygwin;
+  size_t max_hex_columns;
+  uint16_t encoding_null_data;
+};
 
-#ifdef OS_WIN
-  Static::home_dir = getenv("USERPROFILE");
-#else
-  Static::home_dir = getenv("HOME");
-#endif
+extern "C" void ugrep_core_init(const InitEnv *env, int argc, const char **argv);
 
-  // --config=FILE or ---FILE or --no-config: load configuration file first before parsing any other options
-  bool no_config = false;
+namespace
+{
 
-  for (int i = 1; i < argc; ++i)
-  {
-    if (strcmp(argv[i], "--") == 0)
-      break;
+// the state behind the init callbacks
+struct InitCtx
+{
+  int argc;
+  const char **argv;
+  PatternArgs pattern_args; // collected -e, -N, --and, --andnot, --not and those of the config files
+  FILE *file;               // the file opened by init_file_open()
+  std::unique_ptr<reflex::BufferedInput> input;
+  std::string line;
+  std::string what;         // the text of a regex_error that is handed to Rust
+};
 
-    if (strcmp(argv[1], "-e") == 0 ||
-        strcmp(argv[1], "-g") == 0 ||
-        strcmp(argv[1], "-N") == 0 ||
-        strcmp(argv[1], "--regexp") == 0)
-    {
-      ++i;
-    }
-    else if (strncmp(argv[i], "--config", 8) == 0)
-    {
-      if (flag_config != NULL)
-        std::cerr << "ugrep: warning: multiple configurations specified, ignoring extra " << argv[i] << '\n';
-      else if (argv[i][8] == '\0')
-        flag_config = "";
-      else if (argv[i][8] == '=')
-        flag_config = argv[i] + 9;
-    }
-    else if (strncmp(argv[i], "---", 3) == 0)
-    {
-      if (flag_config != NULL)
-        std::cerr << "ugrep: warning: multiple configurations specified, ignoring extra " << argv[i] << '\n';
-      else
-        flag_config = argv[i] + 3;
-    }
-    else if (strcmp(argv[i], "--no-config") == 0)
-    {
-      no_config = true;
-    }
-  }
+InitCtx *init_ctx(void *ctx)
+{
+  return static_cast<InitCtx*>(ctx);
+}
 
-  // collect regex pattern arguments -e PATTERN, -N PATTERN, --and PATTERN, --andnot PATTERN
-  std::list<std::pair<CNF::PATTERN,const char*>> pattern_args;
+void init_set_home_dir(void *, const char *home)
+{
+  Static::home_dir = home;
+}
 
-  if (flag_config != NULL)
-    load_config(pattern_args);
+void init_cerr(void *, const char *text, size_t len)
+{
+  std::cerr.write(text, len);
+}
 
-  // reset warnings
+void init_exit(void *, int code)
+{
+  exit(code);
+}
+
+void init_usage(void *, const char *message)
+{
+  usage(message);
+}
+
+void init_warning(void *, const char *message, const char *arg)
+{
+  warning(message, arg);
+}
+
+void init_error(void *, const char *message, const char *arg)
+{
+  error(message, arg);
+}
+
+void init_abort(void *, const char *message)
+{
+  abort(message);
+}
+
+void init_abort_what(void *, const char *message, const char *what)
+{
+  abort(message, std::string(what));
+}
+
+void init_load_config(void *ctx)
+{
+  load_config(init_ctx(ctx)->pattern_args);
+}
+
+void init_save_config(void *)
+{
+  save_config();
+}
+
+void init_warnings_reset(void *)
+{
   Static::warnings = 0;
+}
 
-  // apply the appropriate options when the program is named grep, egrep, fgrep, zgrep, zegrep, zfgrep
+size_t init_warnings(void *)
+{
+  return Static::warnings;
+}
 
-  const char *program = strrchr(argv[0], PATHSEPCHR);
+void init_options(void *ctx)
+{
+  options(init_ctx(ctx)->pattern_args, init_ctx(ctx)->argc, init_ctx(ctx)->argv);
+}
 
-  if (program == NULL)
-    program = argv[0];
-  else
-    ++program;
-
-  size_t len = strlen(program);
-
-#ifdef OS_WIN_OR_MINGW
-  // Windows: compare executable name up to a dot when present, e.g. "ug.exe" compares as "ug"
-  const char *dot = strchr(program, '.');
-  if (dot != NULL)
-    len = dot - program;
-#endif
-
-  if (strncmp(program, "ug", len) == 0)
-  {
-    // the 'ug' command is equivalent to 'ugrep --config --pretty --sort' to load custom configuration files, when no --config=FILE is specified
-    flag_pretty = Static::AUTO;
-    flag_sort = "name";
-    if (!no_config && flag_config == NULL)
-      load_config(pattern_args);
-  }
-  else if (strncmp(program, "grep", len) == 0)
-  {
-    // the 'grep' command is equivalent to 'ugrep --grep -G -. --sort'
-    flag_mode = Mode::BRE;
-    flag_grep = true;
-    flag_empty = true;
-    flag_hidden = true;
-    flag_sort = "name";
-  }
-  else if (strncmp(program, "egrep", len) == 0)
-  {
-    // the 'egrep' command is equivalent to 'ugrep --grep -E -. --sort'
-    flag_grep = true;
-    flag_empty = true;
-    flag_hidden = true;
-    flag_sort = "name";
-  }
-  else if (strncmp(program, "fgrep", len) == 0)
-  {
-    // the 'fgrep' command is equivalent to 'ugrep --grep -F -. --sort'
-    flag_mode = Mode::FIXED;
-    flag_grep = true;
-    flag_empty = true;
-    flag_hidden = true;
-    flag_sort = "name";
-  }
-  else if (strncmp(program, "zgrep", len) == 0)
-  {
-    // the 'zgrep' command is equivalent to 'ugrep --decompress --grep -G -. --sort'
-    flag_decompress = true;
-    flag_mode = Mode::BRE;
-    flag_grep = true;
-    flag_empty = true;
-    flag_hidden = true;
-    flag_sort = "name";
-  }
-  else if (strncmp(program, "zegrep", len) == 0)
-  {
-    // the 'zegrep' command is equivalent to 'ugrep --decompress --grep -E -. --sort'
-    flag_decompress = true;
-    flag_grep = true;
-    flag_empty = true;
-    flag_hidden = true;
-    flag_sort = "name";
-  }
-  else if (strncmp(program, "zfgrep", len) == 0)
-  {
-    // the 'zfgrep' command is equivalent to 'ugrep --decompress --grep -F -. --sort'
-    flag_decompress = true;
-    flag_mode = Mode::FIXED;
-    flag_grep = true;
-    flag_empty = true;
-    flag_hidden = true;
-    flag_sort = "name";
-  }
-
-  // parse ugrep command-line options and arguments
-
-  options(pattern_args, argc, argv);
-
-  if (Static::warnings > 0)
-  {
-    std::cerr << "Usage: ugrep [OPTIONS] [PATTERN] [-f FILE] [-e PATTERN] [FILE ...]\n";
-    std::cerr << "Try `ugrep --help' or `ugrep --help WHAT' for more information\n";
-    exit(EXIT_ERROR);
-  }
-
-  // -t list: list table of types and exit
-  if (flag_file_type.size() == 1 && flag_file_type[0] == "list")
-  {
-    std::cerr << std::setw(12) << "FILE TYPE" << "   -O EXTENSIONS, -g FILENAMES AND FILE SIGNATURE -M 'MAGIC BYTES'\n";
-
-    for (int i = 0; type_table[i].type != NULL; ++i)
-    {
-      std::cerr << std::setw(12) << type_table[i].type << " = -O " << type_table[i].extensions << '\n';
-      if (type_table[i].filenames)
-        std::cerr << std::setw(18) << "-g " << type_table[i].filenames << "\n";
-      if (type_table[i].magic)
-        std::cerr << std::setw(19) << "-M '" << type_table[i].magic << "'\n";
-    }
-
-    exit(EXIT_ERROR);
-  }
-
-#ifndef HAVE_LIBZ
-  // -z: but we don't have libz
-  if (flag_decompress)
-    usage("option -z is not available in this build configuration of ugrep");
-#endif
-
-  // --zmax: NUM argument exceeds limit?
-  if (flag_zmax > 99)
-    usage("option --zmax argument exceeds upper limit");
-
-  // -P is incompatible with option -Z and with -N patterns
-  if (flag_mode == Mode::PERL)
-  {
-#if defined(HAVE_PCRE2) || defined(HAVE_BOOST_REGEX)
-    if (flag_fuzzy > 0)
-      usage("options -P and -Z are not compatible");
-    for (const auto& arg : pattern_args)
-      if ((arg.first & CNF::PATTERN::NEG) != 0)
-        usage("options -P and -N are not compatible");
-#else
-    usage("option -P is not available in this build configuration of ugrep");
-#endif
-  }
-
-  // -o (or -u) disables -Y to emulate grep behavior when ugrep is aliased to grep/egrep/fgrep
-  if (flag_only_matching || flag_ungroup)
-    flag_empty = false;
-
-  // -e, -N, --and, --andnot, --not
-  if (!pattern_args.empty())
-  {
-    if (flag_bool || flag_query)
-    {
-      // -Q: if --and, --andnot or --not specified then switch to bool mode, -F can't work with -N
-      for (const auto& arg : pattern_args)
-      {
-        if (arg.first == CNF::PATTERN::AND || arg.first == CNF::PATTERN::NOT)
-          flag_bool = true;
-        else if (arg.first == CNF::PATTERN::NEG && flag_mode == Mode::FIXED)
-          usage("option -F with -% or -Q does not support -N PATTERN");
-      }
-
-      // -%: collect -e, --and, --andnot, --not patterns
-      const char *lparen = flag_bool ? "(" : "";
-      const char *rparen = flag_bool ? ")" : "";
-      bool sep = false;
-
-      for (const auto& arg : pattern_args)
-      {
-        if (sep)
-          flag_regexp.append(arg.first == CNF::PATTERN::AND ? " " : "\n");
-        sep = true;
-        if (arg.first == CNF::PATTERN::ALT)
-          flag_regexp.append(lparen).append(arg.second).append(rparen);
-        else if (arg.first == CNF::PATTERN::NEG && *arg.second != '\0')
-          flag_regexp.append("(?^").append(arg.second).append(")");
-        else if (arg.first == CNF::PATTERN::NOT && *arg.second != '\0')
-          flag_regexp.append("-(").append(arg.second).append(")");
-        else
-          sep = false;
-      }
-
-      if (!flag_query)
-        Static::bcnf.new_pattern(CNF::PATTERN::ALT, flag_regexp.c_str());
-    }
-    else
-    {
-      // populate the CNF with the collected pattern args, each arg points to a persistent command line argv[]
-      for (const auto& arg : pattern_args)
-      {
-        if (arg.first == CNF::PATTERN::AND)
-          Static::bcnf.new_term();
-        else
-          Static::bcnf.new_pattern(arg.first, arg.second);
-      }
-    }
-  }
-
-  // --query: override --pager
-  if (flag_query)
-    flag_pager = NULL;
-
-  // --tree: require sort to produce directory tree
-  if (flag_tree && flag_sort == NULL)
-    flag_sort = "name";
-
-  // check TTY info and set colors (warnings and errors may occur from here on)
+void init_terminal(void *)
+{
   terminal();
+}
 
-  // --save-config and --save-config=FILE
-  if (flag_save_config != NULL)
+size_t init_patterns_len(void *ctx)
+{
+  return init_ctx(ctx)->pattern_args.size();
+}
+
+void init_pattern_get(void *ctx, size_t i, int *mask, const char **arg)
+{
+  auto it = init_ctx(ctx)->pattern_args.begin();
+  std::advance(it, i);
+  *mask = static_cast<int>(it->first);
+  *arg = it->second;
+}
+
+void init_bcnf_new_pattern(void *, int mask, const char *arg)
+{
+  Static::bcnf.new_pattern(static_cast<CNF::PATTERN>(mask), arg);
+}
+
+void init_bcnf_new_pattern_regexp(void *)
+{
+  Static::bcnf.new_pattern(CNF::PATTERN::ALT, flag_regexp.c_str());
+}
+
+void init_bcnf_new_term(void *)
+{
+  Static::bcnf.new_term();
+}
+
+void init_regexp_append(void *, const char *text)
+{
+  flag_regexp.append(text);
+}
+
+size_t init_list_len(void *, int list)
+{
+  if (list == 16)
+    return flag_ignore_files.size();
+  return options_list(list)->size();
+}
+
+const char *init_list_get(void *, int list, size_t i)
+{
+  if (list == 16)
   {
-    save_config();
-
-    exit(EXIT_OK);
+    auto it = flag_ignore_files.begin();
+    std::advance(it, i);
+    return it->c_str();
   }
+  return (*options_list(list))[i].c_str();
+}
 
-  // --separator: override : and | otherwise use default separators : and |
-  if (flag_separator == NULL || *flag_separator == '\0')
-    flag_separator = ":";
+void init_list_push(void *, int list, const char *value)
+{
+  if (list == 16)
+    flag_ignore_files.insert(value);
   else
-    flag_separator_bar = flag_separator;
+    options_list(list)->emplace_back(value);
+}
 
-#ifdef OS_WIN
-  // save_config() and help() assume text mode, so switch to
-  // binary after we're no longer going to call them.
-  (void)_setmode(fileno(stdout), _O_BINARY);
-#endif
+void init_list_truncate(void *, int list, size_t i, size_t len)
+{
+  (*options_list(list))[i].resize(len);
+}
 
-  // --encoding: parse ENCODING value
-  if (flag_encoding != NULL)
-  {
-    int i, j;
+void init_ignore_file_erase(void *, const char *name)
+{
+  flag_ignore_files.erase(name);
+}
 
-    if (strcmp(flag_encoding, "list") == 0)
-    {
-      // list the encoding_table[]
-      for (i = 0; encoding_table[i].format != NULL; ++i)
-        std::cerr << encoding_table[i].format << '\n';
+const char *init_arg_pattern(void *)
+{
+  return Static::arg_pattern;
+}
 
-      exit(EXIT_ERROR);
-    }
+void init_set_arg_pattern(void *, const char *arg)
+{
+  Static::arg_pattern = arg;
+}
 
-    // scan the encoding_table[] for a matching encoding, case insensitive
-    for (i = 0; encoding_table[i].format != NULL; ++i)
-    {
-      for (j = 0; flag_encoding[j] != '\0' && encoding_table[i].format[j] != '\0'; ++j)
-        if (toupper(flag_encoding[j]) != toupper(encoding_table[i].format[j]))
-          break;
+size_t init_arg_files_len(void *)
+{
+  return Static::arg_files.size();
+}
 
-      if (flag_encoding[j] == '\0' && encoding_table[i].format[j] == '\0')
-        break;
-    }
+const char *init_arg_file(void *, size_t i)
+{
+  return Static::arg_files[i];
+}
 
-    if (encoding_table[i].format == NULL)
-    {
-      std::string msg("invalid argument --encoding=ENCODING, valid arguments are");
+void init_arg_files_erase(void *, size_t i)
+{
+  Static::arg_files.erase(Static::arg_files.begin() + i);
+}
 
-      for (j = 0; encoding_table[j].format != NULL; ++j)
-        msg.append(" '").append(encoding_table[j].format).append("',");
-      msg.pop_back();
+void init_arg_files_insert_front(void *, const char *arg)
+{
+  Static::arg_files.insert(Static::arg_files.begin(), arg);
+}
 
-      usage(msg.c_str());
-    }
-
-    // encoding is the file encoding used by all input files, if no BOM is present
-    flag_encoding_type = encoding_table[i].encoding;
-  }
-  else if (flag_null_data)
-  {
-    flag_encoding_type = reflex::Input::file_encoding::null_data;
-  }
-
-  // --binary-files: normalize by assigning flags
-  if (strcmp(flag_binary_files, "without-match") == 0)
-    flag_binary_without_match = true;
-  else if (strcmp(flag_binary_files, "text") == 0)
-    flag_text = true;
-  else if (strcmp(flag_binary_files, "hex") == 0)
-    flag_hex = true;
-  else if (strcmp(flag_binary_files, "with-hex") == 0)
-    flag_with_hex = true;
-  else if (strcmp(flag_binary_files, "binary") != 0)
-    usage("invalid argument --binary-files=TYPE, valid arguments are 'binary', 'without-match', 'text', 'hex' and 'with-hex'");
-
-  // --hexdump: normalize by assigning flags
-  if (flag_hexdump != NULL)
-  {
-    int context = 0;
-
-    flag_hex_after = flag_after_context + 1;
-    flag_hex_before = flag_before_context + 1;
-
-    for (const char *s = flag_hexdump; *s != '\0'; ++s)
-    {
-      switch (*s)
-      {
-        case 'a':
-          flag_hex_star = true;
-          context = 0;
-          break;
-
-        case 'b':
-          flag_hex_hbr = flag_hex_cbr = false;
-          context = 0;
-          break;
-
-        case 'c':
-          flag_hex_chr = false;
-          context = 0;
-          break;
-
-        case 'h':
-          flag_hex_hbr = false;
-          context = 0;
-          break;
-
-        case 'A':
-          flag_hex_after = 2;
-          context = 1;
-          break;
-
-        case 'B':
-          flag_hex_before = 2;
-          context = 2;
-          break;
-
-        case 'C':
-          flag_hex_after = flag_hex_before = 2;
-          context = 3;
-          break;
-
-        default:
-          char *r = NULL;
-          size_t num = static_cast<size_t>(strtoull(s, &r, 10));
-          if (r == NULL)
-            usage("invalid argument --hexdump=[1-8][a][bch][A[NUM]][B[NUM]][C[NUM]]");
-          s = r - 1;
-          switch (context)
-          {
-            case 0:
-              flag_hex_columns = 8 * num;
-              if (flag_hex_columns == 0 || flag_hex_columns > MAX_HEX_COLUMNS)
-                usage("invalid argument --hexdump=[1-8][a][bch][A[NUM]][B[NUM]][C[NUM]]");
-              break;
-
-            case 1:
-              flag_hex_after = num + 1;
-              break;
-
-            case 2:
-              flag_hex_before = num + 1;
-              break;
-
-            case 3:
-              flag_hex_after = flag_hex_before = num + 1;
-              break;
-          }
-      }
-    }
-
-    // enable option -X if -W is not enabled
-    if (!flag_with_hex)
-      flag_hex = true;
-
-    // disable -ABC line context to use hex binary context
-    flag_after_context = flag_before_context = 0;
-  }
-
-  // --hex takes priority over --with-hex takes priority over -I takes priority over -a
-  if (flag_hex)
-    flag_with_hex = (flag_binary_without_match = flag_text = false);
-  else if (flag_with_hex)
-    flag_binary_without_match = (flag_text = false);
-  else if (flag_binary_without_match)
-    flag_text = false;
-
-  // --tabs: value should be 1, 2, 4, or 8
-  if (flag_tabs && flag_tabs != 1 && flag_tabs != 2 && flag_tabs != 4 && flag_tabs != 8)
-    usage("invalid argument --tabs=NUM, valid arguments are 1, 2, 4, or 8");
-
-  // --match: same as specifying an empty "" pattern argument
-  if (flag_match)
-    Static::arg_pattern = "";
-
-  // if no regex pattern is specified and no -e PATTERN and no -f FILE and not -Q, then exit with usage message
-  if (Static::arg_pattern == NULL && pattern_args.empty() && flag_file.empty() && !flag_query)
-    usage("no search PATTERN specified\n\n"
-        "Examples:\n"
-        "  ugrep \"PATTERN\"       # match PATTERN\n"
-        "  ugrep -e \"-PATTERN\"   # match -PATTERN (including the leading dash)\n"
-#ifdef OS_WIN
-        "  ugrep -e \"/PATTERN\"   # match /PATTERN (including the leading slash)\n"
-#endif
-        "  ugrep \"\"              # match all lines\n"
-        "  ugrep --match         # match all lines\n");
-
-  // regex PATTERN should be a FILE argument when -Q or -e PATTERN is specified
-  if (!flag_match && Static::arg_pattern != NULL && (flag_query || !pattern_args.empty()))
-  {
-    Static::arg_files.insert(Static::arg_files.begin(), Static::arg_pattern);
-    Static::arg_pattern = NULL;
-  }
-
+void init_expand_arg_files(void *)
+{
 #ifdef OS_WIN
 
   // Windows shell does not expand wildcards in arguments, do that now (basename part only)
@@ -5631,652 +5437,319 @@ void init_cpp(int argc, const char **argv)
   }
 
 #endif
+}
 
-  if (flag_devices != NULL)
-  {
-    // -D: check ACTION value
-    if (strcmp(flag_devices, "skip") == 0)
-      flag_devices_action = Action::SKIP;
-    else if (strcmp(flag_devices, "read") == 0)
-      flag_devices_action = Action::READ;
-    else
-      usage("invalid argument -D ACTION, valid arguments are 'skip' and 'read'");
-  }
-
-  if (flag_directories != NULL)
-  {
-    // normalize -R (--dereference-recurse) option
-    if (strcmp(flag_directories, "dereference-recurse") == 0)
-    {
-      flag_directories = "recurse";
-      flag_dereference = true;
-    }
-
-    // -d: check ACTION value and set flags
-    if (strcmp(flag_directories, "skip") == 0)
-      flag_directories_action = Action::SKIP;
-    else if (strcmp(flag_directories, "read") == 0)
-      flag_directories_action = Action::READ;
-    else if (strcmp(flag_directories, "recurse") == 0)
-      flag_directories_action = Action::RECURSE;
-    else
-      usage("invalid argument -d ACTION, valid arguments are 'skip', 'read', 'recurse' and 'dereference-recurse'");
-  }
-
-  if (flag_index != NULL)
-    if (strcmp(flag_index, "safe") != 0 && strcmp(flag_index, "fast") != 0 && strcmp(flag_index, "log") != 0)
-      usage("invalid argument --index=MODE, valid arguments are 'safe', 'fast' and 'log'");
-
-  // --from=FILE: add file pathnames to search from FILE as if specified on the command line
-  for (const auto& from : flag_from)
-  {
-    if (!from.empty())
-    {
-      FILE *file = NULL;
-
-      if (fopen_smart(&file, from.c_str(), "r") != 0)
-        error("option --from: cannot read", from.c_str());
-
-      // read globs from the specified file or files
-      reflex::BufferedInput input(file);
-      std::string line;
-
-      while (true)
-      {
-        // read the next line
-        if (getline(input, line))
-          break;
-
-        if (!line.empty())
-        {
-          // push file pathnames imported from the file to the back of the arg files vector, saving std::string first in a list
-          arg_strings.emplace_back();
-          arg_strings.back().swap(line);
-          Static::arg_files.push_back(arg_strings.back().c_str());
-        }
-      }
-
-      if (file != stdin)
-        fclose(file);
-    }
-  }
-
-  // check all FILE arguments, warn about non-existing and non-readable files and directories
-  auto arg_file = Static::arg_files.begin();
-  while (arg_file != Static::arg_files.end())
-  {
+// check a FILE argument: 0 does not exist (errno is set), 1 skip the symbolic link, 2 not readable (errno is set), 3 directory, 4 other
+int init_check_arg_file(void *, const char *arg_file, int no_dereference)
+{
 #ifdef OS_WIN_OR_MINGW
 
-    DWORD attr = GetFileAttributesW(utf8_decode(*arg_file).c_str());
+  (void)no_dereference;
 
-    if (attr == INVALID_FILE_ATTRIBUTES)
-    {
-      // argument FILE does not exist
-      errno = ENOENT;
-      warning(NULL, *arg_file);
+  DWORD attr = GetFileAttributesW(utf8_decode(arg_file).c_str());
 
-      arg_file = Static::arg_files.erase(arg_file);
-      if (Static::arg_files.empty())
-        exit(EXIT_ERROR);
-    }
-    else
-    {
-      // use threads to descent into a directory
-      if ((attr & FILE_ATTRIBUTE_DIRECTORY) != 0)
-      {
-        if (flag_directories_action == Action::UNSP)
-          flag_all_threads = true;
+  if (attr == INVALID_FILE_ATTRIBUTES)
+  {
+    // argument FILE does not exist
+    errno = ENOENT;
+    return 0;
+  }
 
-        // remove trailing path separators, if any (*arg_file points to argv[])
-        trim_pathname_arg(*arg_file);
-      }
-
-      ++arg_file;
-    }
+  return (attr & FILE_ATTRIBUTE_DIRECTORY) != 0 ? 3 : 4;
 
 #else
 
-    struct stat buf;
-    int ret;
+  struct stat buf;
+  int ret;
 
-    if (flag_no_dereference)
-      ret = lstat(*arg_file, &buf);
-    else
-      ret = stat(*arg_file, &buf);
+  if (no_dereference)
+    ret = lstat(arg_file, &buf);
+  else
+    ret = stat(arg_file, &buf);
 
-    if (ret != 0)
-    {
-      // the specified argument FILE does not exist
-      warning(NULL, *arg_file);
+  if (ret != 0)
+    return 0;
 
-      arg_file = Static::arg_files.erase(arg_file);
-      if (Static::arg_files.empty())
-        exit(EXIT_ERROR);
-    }
-    else
-    {
-      if (flag_no_dereference && S_ISLNK(buf.st_mode))
-      {
-        // -p: skip symlinks
-        arg_file = Static::arg_files.erase(arg_file);
-        if (Static::arg_files.empty())
-          exit(EXIT_ERROR);
-      }
+  if (no_dereference && S_ISLNK(buf.st_mode))
+    return 1;
+
 #ifdef WITH_WARN_UNREADABLE_FILE_ARG
-      else if ((buf.st_mode & S_IRUSR) == 0)
-      {
-        // the specified argument FILE or directory is not readable, even when executing as su
-        errno = EACCES;
-        warning("cannot read", *arg_file);
-
-        arg_file = Static::arg_files.erase(arg_file);
-        if (Static::arg_files.empty())
-          exit(EXIT_ERROR);
-      }
+  if ((buf.st_mode & S_IRUSR) == 0)
+  {
+    // the specified argument FILE or directory is not readable, even when executing as su
+    errno = EACCES;
+    return 2;
+  }
 #endif
-      else
-      {
-        // use threads to descent into a directory
-        if (S_ISDIR(buf.st_mode))
-        {
-          if (flag_directories_action == Action::UNSP)
-            flag_all_threads = true;
 
-          // remove trailing path separators, if any (*arg_file points to argv[])
-          trim_pathname_arg(*arg_file);
-        }
-
-        ++arg_file;
-      }
-    }
+  return S_ISDIR(buf.st_mode) ? 3 : 4;
 
 #endif
-  }
+}
 
-  if (!flag_stdin && Static::arg_files.empty())
-  {
-    if (!flag_from.empty())
-    {
-      // all --from=FILE are empty, warn (don't search recursively)
-      for (const auto& from : flag_from)
-        warning("--from: empty", from.c_str());
-    }
-    else if (isatty(STDIN_FILENO) && (flag_directories_action == Action::UNSP || flag_directories_action == Action::RECURSE))
-    {
-      // if no FILE specified when reading standard input from a TTY then enable -r if not already -r or -R
-      flag_directories_action = Action::RECURSE;
+void init_trim_pathname_arg(void *, const char *arg)
+{
+  trim_pathname_arg(arg);
+}
 
-      // recursive search with worker threads
-      flag_all_threads = true;
-    }
-    else
-    {
-      // if no FILE specified then read standard input
-      flag_stdin = true;
-    }
-  }
+// open the file with fopen_smart(), leaves errno from a failure for the error message
+int init_file_open(void *ctx, const char *name)
+{
+  FILE *file = NULL;
 
-  // normalize --cpp, --csv, --json, --xml to their corresponding --format
-  if (flag_cpp)
-  {
-    flag_format_begin = "const struct grep {\n  const char *file;\n  size_t line;\n  size_t column;\n  size_t offset;\n  const char *match;\n} matches[] = {\n";
-    flag_format_open  = "  // %f\n";
-    flag_format       = "  { %h, %n, %k, %b, %C },\n%u";
-    flag_format_close = "  \n";
-    flag_format_end   = "  { NULL, 0, 0, 0, NULL }\n};\n";
-  }
-  else if (flag_csv)
-  {
-    flag_format_open  = "%+";
-    flag_format       = "%[,]$%H%N%K%B%V\n%u";
-  }
-  else if (flag_json)
-  {
-    flag_format_begin = "[";
-    flag_format_open  = "%,\n  {\n    %[,\n    ]$%[\"file\": ]H\"matches\": [";
-    flag_format       = "%,\n      { %[, ]$%[\"line\": ]N%[\"column\": ]K%[\"offset\": ]B\"match\": %J }%u";
-    flag_format_close = "\n    ]\n  }";
-    flag_format_end   = "\n]\n";
-  }
-  else if (flag_xml)
-  {
-    flag_format_begin = "<grep>\n";
-    flag_format_open  = "  <file%[\"]$%[ name=\"]I>\n";
-    flag_format       = "    <match%[\"]$%[ line=\"]N%[ column=\"]K%[ offset=\"]B>%X</match>\n%u";
-    flag_format_close = "  </file>\n";
-    flag_format_end   = "</grep>\n";
-  }
-  else if (flag_only_line_number)
-  {
-    flag_format_open  = "%[fn]=%+%=";
-    flag_format       = "%[fn]=%F%=%[ln]=%n%=%[se]=%s%=%[cn]=%K%=%[bn]=%B%=\n%u";
-    flag_format_close = "%R";
-  }
+  if (fopen_smart(&file, name, "r") != 0)
+    return 0;
 
-  // --replace clashes with --format
-  if (flag_replace != NULL && flag_format != NULL)
-    abort("--format is not permitted with --replace");
+  init_ctx(ctx)->file = file;
+  return 1;
+}
 
-  // -v with --files is not permitted
-  if (flag_invert_match && flag_files)
-    abort("--invert-match is not permitted with --files, invert the Boolean query instead");
+int init_file_getline(void *ctx, size_t *len)
+{
+  // the input is created on demand: import_globs() reads the same FILE with its own BufferedInput
+  if (!init_ctx(ctx)->input)
+    init_ctx(ctx)->input.reset(new reflex::BufferedInput(init_ctx(ctx)->file));
+  bool eof = getline(*init_ctx(ctx)->input, init_ctx(ctx)->line);
+  *len = init_ctx(ctx)->line.size();
+  return eof;
+}
 
-  // --min-count is not permitted with --files
-  if (flag_min_count > 0 && flag_files)
-    abort("--min-count is not permitted with --files");
+void init_arg_files_push_line(void *ctx)
+{
+  // push file pathnames imported from the file to the back of the arg files vector, saving std::string first in a list
+  arg_strings.emplace_back();
+  arg_strings.back().swap(init_ctx(ctx)->line);
+  Static::arg_files.push_back(arg_strings.back().c_str());
+}
 
-  // --min-count is not permitted with -v when not combined with -q, -l, -L or -c
-  if (flag_min_count > 0 && flag_invert_match && !flag_quiet && !flag_files_with_matches && !flag_files_without_match && !flag_count)
-    abort("--min-count is not permitted with --invert-match");
+void init_file_close(void *ctx)
+{
+  init_ctx(ctx)->input.reset();
 
+  if (init_ctx(ctx)->file != stdin)
+    fclose(init_ctx(ctx)->file);
+
+  init_ctx(ctx)->file = NULL;
+}
+
+void init_import_globs(void *ctx, int include, int gitignore)
+{
+  // push globs imported from the file to the back of the vectors
+  if (include)
+    import_globs(init_ctx(ctx)->file, flag_include, flag_include_dir);
+  else
+    import_globs(init_ctx(ctx)->file, flag_exclude, flag_exclude_dir, gitignore != 0);
+}
+
+int init_fs_probe(void *, const char *path, uint64_t *id)
+{
 #if defined(HAVE_STATVFS) || defined(HAVE_STATFS)
+  stat_fs_t buf;
 
-  // --exclude-fs: add file system ids to exclude
-  for (const auto& mounts : flag_exclude_fs)
+  if (stat_fs(path, &buf) == 0)
   {
-    stat_fs_t buf;
-
-    if (mounts.empty())
-    {
-      if (Static::arg_files.empty())
-      {
-        // --exclude-fs without MOUNT points and no targets for recursive search: only include the working dir FS
-        if (stat_fs(".", &buf) == 0)
-          include_fs_ids.insert(fsid_to_uint64(buf.f_fsid));
-      }
-      else
-      {
-        // --exclude-fs without MOUNT points: only include FS associated with the specified file and directory targets
-        for (const auto& target : Static::arg_files)
-          if (stat_fs(target, &buf) == 0)
-            include_fs_ids.insert(fsid_to_uint64(buf.f_fsid));
-      }
-    }
-    else
-    {
-      size_t from = 0;
-
-      while (true)
-      {
-        size_t to = mounts.find(',', from);
-        size_t size = (to == std::string::npos ? mounts.size() : to) - from;
-
-        if (size > 0)
-        {
-          std::string mount(mounts, from, size);
-
-          if (stat_fs(mount.c_str(), &buf) == 0)
-            exclude_fs_ids.insert(fsid_to_uint64(buf.f_fsid));
-          else
-            warning("--exclude-fs", mount.c_str());
-        }
-
-        if (to == std::string::npos)
-          break;
-
-        from = to + 1;
-      }
-    }
+    *id = fsid_to_uint64(buf.f_fsid);
+    return 1;
   }
-
-  // --include-fs: add file system ids to include
-  for (const auto& mounts : flag_include_fs)
-  {
-    stat_fs_t buf;
-
-    if (mounts.empty())
-    {
-      // --include-fs without MOUNT points includes the working directory
-      if (stat_fs(".", &buf) == 0)
-        include_fs_ids.insert(fsid_to_uint64(buf.f_fsid));
-    }
-    else
-    {
-      size_t from = 0;
-
-      while (true)
-      {
-        size_t to = mounts.find(',', from);
-        size_t size = (to == std::string::npos ? mounts.size() : to) - from;
-
-        if (size > 0)
-        {
-          std::string mount(mounts, from, size);
-
-          if (stat_fs(mount.c_str(), &buf) == 0)
-            include_fs_ids.insert(fsid_to_uint64(buf.f_fsid));
-          else
-            warning("--include-fs", mount.c_str());
-        }
-
-        if (to == std::string::npos)
-          break;
-
-        from = to + 1;
-      }
-    }
-  }
-
+#else
+  (void)path;
+  (void)id;
 #endif
+  return 0;
+}
 
-  // --ignore-file=FILE when FILE are pathnames: add globs to the exclude and exclude-dir lists with gitignore rules
-  auto ignore_file = flag_ignore_files.begin();
-  while (ignore_file != flag_ignore_files.end())
-  {
-    if (ignore_file->compare("-") == 0 || ignore_file->find(PATHSEPCHR) != std::string::npos)
-    {
-      FILE *file = NULL;
+void init_fs_insert(void *, int include, uint64_t id)
+{
+#if defined(HAVE_STATVFS) || defined(HAVE_STATFS)
+  if (include)
+    include_fs_ids.insert(id);
+  else
+    exclude_fs_ids.insert(id);
+#else
+  (void)include;
+  (void)id;
+#endif
+}
 
-      if (fopen_smart(&file, ignore_file->c_str(), "r") != 0)
-        error("option --ignore-files: cannot read", ignore_file->c_str());
+int init_type_entry(void *, size_t i, const char **type, const char **extensions, const char **filenames, const char **magic)
+{
+  if (i >= sizeof(type_table) / sizeof(type_table[0]) || type_table[i].type == NULL)
+    return 0;
 
-      // push globs imported from the file to the back of the vectors with gitignore flag = true
-      import_globs(file, flag_exclude, flag_exclude_dir, true);
+  *type = type_table[i].type;
+  *extensions = type_table[i].extensions;
+  *filenames = type_table[i].filenames;
+  *magic = type_table[i].magic;
+  return 1;
+}
 
-      if (file != stdin)
-        fclose(file);
+int init_encoding_entry(void *, size_t i, const char **format, uint16_t *encoding)
+{
+  if (i >= sizeof(encoding_table) / sizeof(encoding_table[0]) || encoding_table[i].format == NULL)
+    return 0;
 
-      flag_ignore_files.erase(ignore_file++);
-    }
-    else
-    {
-      ++ignore_file;
-    }
-  }
+  *format = encoding_table[i].format;
+  *encoding = static_cast<uint16_t>(encoding_table[i].encoding);
+  return 1;
+}
 
-  // --exclude-from=FILE: add globs to the exclude and exclude-dir lists
-  for (const auto& from : flag_exclude_from)
-  {
-    if (!from.empty())
-    {
-      FILE *file = NULL;
-
-      if (fopen_smart(&file, from.c_str(), "r") != 0)
-        error("option --exclude-from: cannot read", from.c_str());
-
-      // push globs imported from the file to the back of the vectors
-      import_globs(file, flag_exclude, flag_exclude_dir);
-
-      if (file != stdin)
-        fclose(file);
-    }
-  }
-
-  // --include-from=FILE: add globs to the include and include-dir lists
-  for (const auto& from : flag_include_from)
-  {
-    if (!from.empty())
-    {
-      FILE *file = NULL;
-
-      if (fopen_smart(&file, from.c_str(), "r") != 0)
-        error("option --include-from: cannot read", from.c_str());
-
-      // push globs imported from the file to the back of the vectors
-      import_globs(file, flag_include, flag_include_dir);
-
-      if (file != stdin)
-        fclose(file);
-    }
-  }
-
-  // -t: parse TYPES and access type table to add -O (--file-extension), -g (--glob) and -M (--file-magic) values
-  for (const auto& types : flag_file_type)
-  {
-    size_t from = 0;
-
-    while (true)
-    {
-      size_t to = types.find(',', from);
-      size_t size = (to == std::string::npos ? types.size() : to) - from;
-
-      if (size > 0)
-      {
-        bool negate = size > 1 && (types[from] == '!' || types[from] == '^');
-
-        if (negate)
-        {
-          ++from;
-          --size;
-        }
-
-        std::string type(types, from, size);
-
-        size_t i = 0;
-        bool found = false;
-        bool valid = true;
-
-        // scan the type_table[] for the specified type, allowing type to be a prefix when unambiguous
-        for (size_t j = 0; type_table[j].type != NULL; ++j)
-        {
-          size_t typelen = strlen(type_table[j].type);
-
-          if (size <= typelen && type.compare(0, size, type_table[j].type, size) == 0)
-          {
-            // an ambiguous prefix is not a valid type
-            if (found)
-              valid = false;
-
-            found = true;
-            i = j;
-
-            // if full type match then we found a valid type match
-            if (size == typelen)
-            {
-              valid = true;
-              break;
-            }
-          }
-        }
-
-        // if not found a valid type, then find an unambiguous type with the specified filename suffix
-        if (!found && valid)
-        {
-          for (size_t j = 0; type_table[j].type != NULL; ++j)
-          {
-            if (islower(static_cast<unsigned char>(type_table[j].type[0])))
-            {
-              const char *s = strstr(type_table[j].extensions, type.c_str());
-              if (s != NULL && (s == type_table[j].extensions || *--s == ','))
-              {
-                if (found)
-                {
-                  valid = false;
-                  break;
-                }
-                found = true;
-                i = j;
-              }
-            }
-          }
-        }
-
-        if (!found || !valid)
-        {
-          std::string msg("invalid argument -t TYPES, valid arguments are");
-
-          for (i = 0; type_table[i].type != NULL; ++i)
-            msg.append(" '").append(type_table[i].type).append("',");
-          msg.append(" and 'list' to show a detailed list of file types");
-
-          usage(msg.c_str());
-        }
-
-        std::string temp(type_table[i].extensions);
-
-        if (negate)
-        {
-          temp.insert(0, "!");
-          size_t j = 0;
-          while ((j = temp.find(',', j)) != std::string::npos)
-            temp.insert(++j, "!");
-        }
-
-        flag_file_extension.emplace_back(temp);
-
-        if (type_table[i].filenames != NULL)
-        {
-          temp.assign(type_table[i].filenames);
-
-          if (negate)
-          {
-            temp.insert(0, "!");
-            size_t j = 0;
-            while ((j = temp.find(',', j)) != std::string::npos)
-              temp.insert(++j, "!");
-          }
-
-          flag_glob.emplace_back(temp);
-        }
-
-        if (type_table[i].magic != NULL)
-        {
-          flag_file_magic.emplace_back(type_table[i].magic);
-
-          if (negate)
-            flag_file_magic.back().insert(0, "!");
-        }
-      }
-
-      if (to == std::string::npos)
-        break;
-
-      from = to + 1;
-    }
-  }
-
-  // -O: add filename extensions as globs
-  for (const auto& extensions : flag_file_extension)
-  {
-    size_t from = 0;
-    std::string glob;
-
-    while (true)
-    {
-      size_t to;
-
-      for (to = from; to < extensions.size() && extensions[to] != ','; ++to)
-      {
-        if (extensions[to] == '[')
-          while (++to < extensions.size() && extensions[to] != ']')
-            to += extensions[to] == '\\';
-        else if (extensions[to] == '\\')
-          ++to;
-      }
-
-      size_t size = to - from;
-
-      if (size > 0)
-      {
-        bool negate = size > 1 && (extensions[from] == '!' || extensions[from] == '^');
-
-        if (negate)
-        {
-          ++from;
-          --size;
-        }
-
-        flag_glob.emplace_back(glob.assign(negate ? "^*." : "*.").append(extensions, from, size));
-      }
-
-      if (to >= extensions.size())
-        break;
-
-      from = to + 1;
-    }
-  }
-
-  // -M: file "magic bytes" regex string
-  std::string magic_regex;
-
-  // -M !MAGIC: combine to create a regex string
-  for (const auto& magic : flag_file_magic)
-  {
-    if (magic.size() > 1 && (magic.front() == '!' || magic.front() == '^'))
-    {
-      if (!magic_regex.empty())
-        magic_regex.push_back('|');
-      magic_regex.append(magic.substr(1));
-
-      // tally negative MAGIC patterns
-      ++flag_min_magic;
-    }
-  }
-
-  // -M MAGIC: append to regex string
-  for (const auto& magic : flag_file_magic)
-  {
-    if (magic.size() <= 1 || (magic.front() != '!' && magic.front() != '^'))
-    {
-      if (!magic_regex.empty())
-        magic_regex.push_back('|');
-      magic_regex.append(magic);
-
-      // we have positive MAGIC patterns, so scan() is a match when flag_min_magic or greater
-      flag_not_magic = flag_min_magic;
-    }
-  }
-
-  // -M: create a magic matcher for the MAGIC regex to match file with magic.scan()
+// -M: create a magic matcher for the MAGIC regex to match file with magic.scan(), returns NULL or the error text
+const char *init_magic_pattern_assign(void *ctx, const char *regex)
+{
   try
   {
     // construct magic_pattern DFA for -M !MAGIC and -M MAGIC
-    if (!magic_regex.empty())
-      Static::magic_pattern.assign(magic_regex, "r");
+    if (regex != NULL)
+      Static::magic_pattern.assign(regex, "r");
     Static::magic_matcher.pattern(Static::magic_pattern);
   }
 
   catch (reflex::regex_error& error)
   {
-    abort("option -M: ", error.what());
+    init_ctx(ctx)->what = error.what();
+    return init_ctx(ctx)->what.c_str();
   }
 
-  // --filter-magic-label: construct Static::filter_magic_pattern and map "magic bytes" to labels
-  magic_regex = "(";
+  return NULL;
+}
 
-  // --filter-magic-label: append pattern to magic_labels, parenthesized to ensure capture indexing
-  for (auto& label : flag_filter_magic_label)
-  {
-    if (!label.empty())
-    {
-      size_t sep = label.find(':');
-
-      if (sep != std::string::npos && sep > 0 && sep + 1 < label.size())
-      {
-        if (!label.empty() && magic_regex.size() > 1)
-          magic_regex.append(")|(");
-        magic_regex.append(label.substr(sep + 1));
-
-        // truncate so we end up with a list of labels without patterns
-        label.resize(sep);
-      }
-      else
-      {
-        abort("option --filter-magic-label: invalid LABEL:MAGIC argument ", label);
-      }
-    }
-  }
-
-  magic_regex.push_back(')');
-
-  // --filter-magic-label: create a Static::filter_magic_pattern
+// --filter-magic-label: construct Static::filter_magic_pattern DFA, returns NULL or the error text
+const char *init_filter_magic_assign(void *ctx, const char *regex)
+{
   try
   {
-    // construct Static::filter_magic_pattern DFA
-    if (magic_regex.size() > 2)
-      Static::filter_magic_pattern.assign(magic_regex, "r");
+    Static::filter_magic_pattern.assign(regex, "r");
   }
 
   catch (reflex::regex_error& error)
   {
-    abort("option --filter-magic-label: ", error.what());
+    init_ctx(ctx)->what = error.what();
+    return init_ctx(ctx)->what.c_str();
   }
 
-#if defined(__CYGWIN__)
-  // --filter: Cygwin forked process may hang when searching with multiple threads, force one worker thread
-  if (!flag_filter.empty())
-    flag_jobs = 1;
+  return NULL;
+}
+
+int init_filter_empty(void *)
+{
+  return flag_filter.empty();
+}
+
+int init_isatty_stdin(void *)
+{
+  return isatty(STDIN_FILENO);
+}
+
+void init_set_binary_stdout(void *)
+{
+#ifdef OS_WIN
+  // save_config() and help() assume text mode, so switch to
+  // binary after we're no longer going to call them.
+  (void)_setmode(fileno(stdout), _O_BINARY);
 #endif
+}
+
+} // namespace
+
+// parse the command-line options and initialize, implemented in Rust on the settings struct
+void init(int argc, const char **argv)
+{
+  InitCtx ctx;
+  ctx.argc = argc;
+  ctx.argv = argv;
+  ctx.file = NULL;
+
+  InitEnv env;
+  env.ctx = &ctx;
+  env.set_home_dir = init_set_home_dir;
+  env.cerr = init_cerr;
+  env.exit = init_exit;
+  env.usage = init_usage;
+  env.warning = init_warning;
+  env.error = init_error;
+  env.abort = init_abort;
+  env.abort_what = init_abort_what;
+  env.load_config = init_load_config;
+  env.save_config = init_save_config;
+  env.warnings_reset = init_warnings_reset;
+  env.warnings = init_warnings;
+  env.options = init_options;
+  env.terminal = init_terminal;
+  env.patterns_len = init_patterns_len;
+  env.pattern_get = init_pattern_get;
+  env.bcnf_new_pattern = init_bcnf_new_pattern;
+  env.bcnf_new_pattern_regexp = init_bcnf_new_pattern_regexp;
+  env.bcnf_new_term = init_bcnf_new_term;
+  env.regexp_append = init_regexp_append;
+  env.list_len = init_list_len;
+  env.list_get = init_list_get;
+  env.list_push = init_list_push;
+  env.list_truncate = init_list_truncate;
+  env.ignore_file_erase = init_ignore_file_erase;
+  env.arg_pattern = init_arg_pattern;
+  env.set_arg_pattern = init_set_arg_pattern;
+  env.arg_files_len = init_arg_files_len;
+  env.arg_file = init_arg_file;
+  env.arg_files_erase = init_arg_files_erase;
+  env.arg_files_insert_front = init_arg_files_insert_front;
+  env.expand_arg_files = init_expand_arg_files;
+  env.check_arg_file = init_check_arg_file;
+  env.trim_pathname_arg = init_trim_pathname_arg;
+  env.file_open = init_file_open;
+  env.file_getline = init_file_getline;
+  env.arg_files_push_line = init_arg_files_push_line;
+  env.file_close = init_file_close;
+  env.import_globs = init_import_globs;
+  env.fs_probe = init_fs_probe;
+  env.fs_insert = init_fs_insert;
+  env.type_entry = init_type_entry;
+  env.encoding_entry = init_encoding_entry;
+  env.magic_pattern_assign = init_magic_pattern_assign;
+  env.filter_magic_assign = init_filter_magic_assign;
+  env.filter_empty = init_filter_empty;
+  env.isatty_stdin = init_isatty_stdin;
+  env.set_binary_stdout = init_set_binary_stdout;
+#ifdef OS_WIN
+  env.home_var = "USERPROFILE";
+#else
+  env.home_var = "HOME";
+#endif
+  env.auto_ = Static::AUTO;
+  env.pathsep = PATHSEPCHR;
+#ifdef OS_WIN
+  env.os_win = 1;
+#else
+  env.os_win = 0;
+#endif
+#ifdef OS_WIN_OR_MINGW
+  env.os_win_or_mingw = 1;
+#else
+  env.os_win_or_mingw = 0;
+#endif
+#ifdef HAVE_LIBZ
+  env.have_libz = 1;
+#else
+  env.have_libz = 0;
+#endif
+#if defined(HAVE_PCRE2) || defined(HAVE_BOOST_REGEX)
+  env.have_regex_perl = 1;
+#else
+  env.have_regex_perl = 0;
+#endif
+#if defined(HAVE_STATVFS) || defined(HAVE_STATFS)
+  env.have_stat_fs = 1;
+#else
+  env.have_stat_fs = 0;
+#endif
+#if defined(__CYGWIN__)
+  env.cygwin = 1;
+#else
+  env.cygwin = 0;
+#endif
+  env.max_hex_columns = MAX_HEX_COLUMNS;
+  env.encoding_null_data = static_cast<uint16_t>(reflex::Input::file_encoding::null_data);
+
+  ugrep_core_init(&env, argc, argv);
 }
 
 // search the specified files, directories, and/or standard input for pattern matches, may throw an exception
@@ -13393,21 +12866,7 @@ void abort(const char *message, const std::string& what)
   exit(EXIT_ERROR);
 }
 
-// src_core seam facades (rust/src_core/SEAM.md): init() is C++ by default and Rust when the build defines
-// CPP_RUST_IMPL_SRC_CORE_INIT_RUST; terminal(), set_terminal_hyperlink(), set_color() and trim() are Rust
-
-#ifdef CPP_RUST_IMPL_SRC_CORE_INIT_RUST
-extern "C" void ugrep_core_init(int argc, const char **argv);
-#endif
-
-void init(int argc, const char **argv)
-{
-#ifdef CPP_RUST_IMPL_SRC_CORE_INIT_RUST
-  ugrep_core_init(argc, argv);
-#else
-  init_cpp(argc, argv);
-#endif
-}
+// src_core seam facades (rust/src_core/SEAM.md): init(), terminal(), set_terminal_hyperlink(), set_color() and trim() are Rust
 
 // the callback table of the Rust terminal code (rust/src_core/src/ffi/terminal.rs)
 struct TerminalEnv

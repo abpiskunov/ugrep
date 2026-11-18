@@ -19,7 +19,8 @@ pub mod options_ffi;
 pub mod config;
 #[path = "ffi/config.rs"]
 pub mod config_ffi;
-// the C-ABI entry of `init` (argv pointers cannot cross the cxx bridge)
+// `init()`: logic in Rust on the settings, C-ABI entry with the callbacks into the retained C++
+pub mod init;
 #[path = "ffi/init.rs"]
 pub mod init_ffi;
 // `set_color` and `trim`
