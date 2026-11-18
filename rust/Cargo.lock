@@ -272,10 +272,6 @@ dependencies = [
 [[package]]
 name = "src_indexer"
 version = "7.8.5"
-dependencies = [
- "cxx",
- "cxx-build",
-]
 
 [[package]]
 name = "src_indexer-harness"
