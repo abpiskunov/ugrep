@@ -81,10 +81,8 @@ After this, you may want to test ugrep and install it (optional):
 #include "tui_entry.hpp"
 #include "stats.hpp"
 
-// the terminal group and init() may be implemented in Rust (rust/src_core), see rust/src_core/SEAM.md
-#if defined(CPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST) || defined(CPP_RUST_IMPL_SRC_CORE_INIT_RUST)
-# include "core_rust.hpp"
-#endif
+// set_color() and trim() are implemented in Rust (rust/src_core), see rust/src_core/SEAM.md
+#include "core_rust.hpp"
 #include <reflex/matcher.h>
 #include <reflex/linematcher.h>
 #include <reflex/fuzzymatcher.h>
@@ -305,9 +303,7 @@ void options(std::list<std::pair<CNF::PATTERN,const char*>>& pattern_args, int a
 void init(int argc, const char **argv);
 void init_cpp(int argc, const char **argv);
 void set_color(const char *colors, const char *parameter, char color[COLORLEN]);
-void set_color_cpp(const char *colors, const char *parameter, char color[COLORLEN]);
 void trim(std::string& line);
-void trim_cpp(std::string& line);
 void trim_pathname_arg(const char *arg);
 bool is_output(ino_t inode);
 void import_globs(FILE *file, std::vector<std::string>& files, std::vector<std::string>& dirs, bool gitignore = false, const char *pathname = NULL);
@@ -6412,425 +6408,6 @@ void init_cpp(int argc, const char **argv)
 #endif
 }
 
-// check TTY info and set colors
-void terminal_cpp()
-{
-  // check if standard output is a TTY
-  flag_tty_term = isatty(STDOUT_FILENO) != 0;
-
-  if (flag_query)
-  {
-    // -Q: disable --quiet
-    flag_quiet = false;
-  }
-  else if (!flag_quiet)
-  {
-#ifndef OS_WIN_OR_MINGW
-
-    // if not to a TTY, is output sent to a pager or to /dev/null?
-    if (!flag_tty_term)
-    {
-      Static::output_stat_result = fstat(STDOUT_FILENO, &Static::output_stat) == 0;
-      Static::output_stat_regular = Static::output_stat_result && S_ISREG(Static::output_stat.st_mode);
-
-      // if output is sent to /dev/null, then enable -q (i.e. "cheat" like GNU grep!)
-      struct stat dev_null_stat;
-      if (Static::output_stat_result &&
-          S_ISCHR(Static::output_stat.st_mode) &&
-          stat("/dev/null", &dev_null_stat) == 0 &&
-          Static::output_stat.st_dev == dev_null_stat.st_dev &&
-          Static::output_stat.st_ino == dev_null_stat.st_ino)
-      {
-        flag_quiet = true;
-      }
-    }
-
-#endif
-  }
-
-  // if not to a TTY or --quiet then disable --pager
-  if (!flag_tty_term || flag_quiet)
-    flag_pager = NULL;
-
-  // --color=WHEN: normalize WHEN argument
-  if (flag_color != NULL)
-  {
-    if (strcmp(flag_color, "never") == 0 || strcmp(flag_color, "no") == 0 || strcmp(flag_color, "none") == 0)
-      flag_color = Static::NEVER;
-    else if (strcmp(flag_color, "always") == 0 || strcmp(flag_color, "yes") == 0 || strcmp(flag_color, "force") == 0)
-      flag_color = Static::ALWAYS;
-    else if (strcmp(flag_color, "auto") == 0 || strcmp(flag_color, "tty") == 0 || strcmp(flag_color, "if-tty") == 0)
-      flag_color = Static::AUTO;
-    else
-      usage("invalid argument --color=WHEN, valid arguments are 'never', 'always' and 'auto'");
-  }
-
-  // --pretty=WHEN: normalize WHEN argument
-  if (flag_pretty != NULL)
-  {
-    if (strcmp(flag_pretty, "never") == 0 || strcmp(flag_pretty, "no") == 0 || strcmp(flag_pretty, "none") == 0)
-      flag_pretty = NULL;
-    else if (strcmp(flag_pretty, "always") == 0 || strcmp(flag_pretty, "yes") == 0 || strcmp(flag_pretty, "force") == 0)
-      flag_pretty = Static::ALWAYS;
-    else if (strcmp(flag_pretty, "auto") == 0 || strcmp(flag_pretty, "tty") == 0 || strcmp(flag_pretty, "if-tty") == 0)
-      flag_pretty = Static::AUTO;
-    else
-      usage("invalid argument --pretty=WHEN, valid arguments are 'never', 'always' and 'auto'");
-  }
-
-  // whether to apply colors based on --tag, --query and --pretty
-  if (flag_tag != NULL)
-    flag_color = NULL;
-
-  if (!flag_quiet)
-  {
-    if (flag_tty_term || flag_query || flag_pretty == Static::ALWAYS)
-    {
-      if (flag_pretty != NULL)
-      {
-        // --pretty: if output is sent to a TTY then enable --color, --heading, -T, -n, --sort and --tree
-
-        // enable --color if not set yet and not --tag
-        if (flag_color == NULL && flag_tag == NULL)
-          flag_color = Static::ALWAYS;
-
-        // enable --heading if not explicitly disabled (enables --break later)
-        if (flag_heading.is_undefined())
-          flag_heading = true;
-
-        // enable -T if not explicitly disabled (initial tab)
-        if (flag_initial_tab.is_undefined())
-          flag_initial_tab = true;
-
-        // enable -n if not explicitly disabled
-        if (flag_line_number.is_undefined())
-          flag_line_number = true;
-
-        // enable --sort=name if no --sort specified
-        if (flag_sort == NULL)
-          flag_sort = "name";
-
-        // enable --tree
-        if (flag_tree.is_undefined())
-          flag_tree = true;
-      }
-
-      if (flag_query)
-      {
-        // --query: run the interactive query UI
-
-        // enable --heading if not explicitly disabled (enables --break later)
-        if (flag_heading.is_undefined())
-          flag_heading = true;
-
-        // enable --line-buffered to flush output immediately
-        flag_line_buffered = true;
-      }
-    }
-
-    // --tree: check UTF-8 terminal support, this is a guess on LANG or LC_CTYPE or LC_ALL
-    if (flag_tree && (flag_query || flag_files_with_matches || flag_files_without_match || flag_count))
-    {
-      const char *lang = getenv("LANG");
-
-      if (lang == NULL || strstr(lang, "UTF-8") == NULL)
-      {
-        lang = getenv("LC_CTYPE");
-
-        if (lang == NULL || strstr(lang, "UTF-8") == NULL)
-        {
-          lang = getenv("LC_ALL");
-
-          if (lang == NULL || strstr(lang, "UTF-8") == NULL)
-            lang = NULL;
-        }
-      }
-
-      if (lang != NULL)
-      {
-        Output::Tree::bar = "│ ";
-        Output::Tree::ptr = "╰╴";
-        Output::Tree::end = "▔ ";
-      }
-    }
-
-    // --color: (re)set flag_color depending on color term and TTY output
-    if (flag_color != NULL)
-    {
-      if (flag_color == Static::NEVER)
-      {
-        flag_color = NULL;
-      }
-      else
-      {
-#ifdef OS_WIN_OR_MINGW
-
-        if (flag_tty_term)
-        {
-#ifdef ENABLE_VIRTUAL_TERMINAL_PROCESSING
-          // assume we have a color terminal on Windows if isatty() is true
-          HANDLE hConOut = GetStdHandle(STD_OUTPUT_HANDLE);
-          if (hConOut != INVALID_HANDLE_VALUE)
-          {
-#ifdef CP_UTF8
-            // enable UTF-8 output
-            SetConsoleOutputCP(CP_UTF8);
-#endif
-            // try virtual terminal processing for ANSI SGR codes, enable colors when successful
-            DWORD outMode;
-            GetConsoleMode(hConOut, &outMode);
-            outMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-            flag_color_term = SetConsoleMode(hConOut, outMode) != 0;
-          }
-#endif
-          const char *val;
-
-          // no color when NO_COLOR is set or when ConEmuANSI is OFF
-          if (((val = getenv("NO_COLOR")) != NULL && *val != '\0') ||
-              ((val = getenv("ConEmuANSI")) != NULL && strcmp(val, "OFF") == 0))
-          {
-            flag_color_term = false;
-          }
-          else if (!flag_color_term)
-          {
-            // try ANSICON or COLORTERM or ConEmuANSI is ON
-            if (getenv("ANSICON") != NULL ||
-                getenv("COLORTERM") != NULL ||
-                ((val = getenv("ConEmuANSI")) != NULL && strcmp(val, "ON") == 0))
-            {
-              flag_color_term = true;
-            }
-          }
-        }
-#else
-
-        // check whether we have a color terminal
-        if (flag_tty_term)
-        {
-          const char *val;
-
-          // if NO_COLOR is unset
-          if ((val = getenv("NO_COLOR")) == NULL || *val == '\0')
-          {
-            // check COLORTERM or if TERM supports color
-            if (getenv("COLORTERM") != NULL)
-              flag_color_term = true;
-            else if ((val = getenv("TERM")) != NULL &&
-                (strstr(val, "ansi") != NULL ||
-                 strstr(val, "xterm") != NULL ||
-                 strstr(val, "screen") != NULL ||
-                 strstr(val, "color") != NULL))
-              flag_color_term = true;
-          }
-        }
-
-#endif
-
-        if (flag_query)
-        {
-          // --query: assume that a color terminal is used, save color to use with TUI output
-          if (flag_color_term || flag_color == Static::ALWAYS)
-            flag_color_query = flag_color;
-          flag_color = Static::ALWAYS;
-        }
-        else if (flag_color == Static::AUTO)
-        {
-          if (flag_pretty == Static::ALWAYS)
-            flag_color = Static::ALWAYS;
-          else if (!flag_color_term && flag_save_config == NULL)
-            flag_color = NULL;
-        }
-
-        if (flag_color != NULL)
-        {
-          // get GREP_COLOR and GREP_COLORS, when defined
-          char *env_grep_color = NULL;
-          dupenv_s(&env_grep_color, "GREP_COLOR");
-          char *env_grep_colors = NULL;
-          dupenv_s(&env_grep_colors, "GREP_COLORS");
-          const char *grep_colors = env_grep_colors;
-          std::string deprecated_grep_colors;
-
-          // if GREP_COLOR is defined but not GREP_COLORS, use it
-          if (env_grep_colors == NULL && env_grep_color != NULL)
-            grep_colors = env_grep_color;
-          else if (grep_colors == NULL)
-            grep_colors = DEFAULT_GREP_COLORS;
-
-          // parse deprecated GREP_COLOR format with ANSI SGR codes for matched text only
-          if (grep_colors != NULL && strchr(grep_colors, '=') == NULL)
-          {
-            // use default colors then override matched text color with the specified color
-            deprecated_grep_colors.assign(grep_colors);
-            grep_colors = DEFAULT_GREP_COLORS;
-          }
-
-          // parse GREP_COLORS
-          if (grep_colors != NULL)
-          {
-            set_color(grep_colors, "sl=", color_sl); // selected line
-            set_color(grep_colors, "cx=", color_cx); // context line
-            set_color(grep_colors, "mt=", color_mt); // matched text in any line
-            set_color(grep_colors, "ms=", color_ms); // matched text in selected line
-            set_color(grep_colors, "mc=", color_mc); // matched text in a context line
-            set_color(grep_colors, "fn=", color_fn); // file name
-            set_color(grep_colors, "ln=", color_ln); // line number
-            set_color(grep_colors, "cn=", color_cn); // column number
-            set_color(grep_colors, "bn=", color_bn); // byte offset
-            set_color(grep_colors, "se=", color_se); // separator
-            set_color(grep_colors, "qp=", color_qp); // TUI prompt
-            set_color(grep_colors, "qe=", color_qe); // TUI errors
-            set_color(grep_colors, "qr=", color_qr); // TUI regex highlight
-            set_color(grep_colors, "qm=", color_qm); // TUI regex meta characters highlight
-            set_color(grep_colors, "ql=", color_ql); // TUI regex lists and literals highlight
-            set_color(grep_colors, "qb=", color_qb); // TUI regex braces highlight
-          }
-
-          // deprecated GREP_COLOR format with ANSI SGR codes for matched text only
-          if (!deprecated_grep_colors.empty())
-            set_color(deprecated_grep_colors.c_str(), "", color_ms);
-
-          // parse --colors to override GREP_COLORS
-          if (flag_colors != NULL && strchr(flag_colors, '=') == NULL)
-          {
-            // deprecated format with ANSI SGR codes only
-            set_color(flag_colors, "", color_mt); // matched text in any line
-          }
-          else if (flag_colors != NULL)
-          {
-            set_color(flag_colors, "sl=", color_sl); // selected line
-            set_color(flag_colors, "cx=", color_cx); // context line
-            set_color(flag_colors, "mt=", color_mt); // matched text in any line
-            set_color(flag_colors, "ms=", color_ms); // matched text in selected line
-            set_color(flag_colors, "mc=", color_mc); // matched text in a context line
-            set_color(flag_colors, "fn=", color_fn); // file name
-            set_color(flag_colors, "ln=", color_ln); // line number
-            set_color(flag_colors, "cn=", color_cn); // column number
-            set_color(flag_colors, "bn=", color_bn); // byte offset
-            set_color(flag_colors, "se=", color_se); // separator
-            set_color(flag_colors, "qp=", color_qp); // TUI prompt
-            set_color(flag_colors, "qe=", color_qe); // TUI errors
-            set_color(flag_colors, "qr=", color_qr); // TUI regex highlight
-            set_color(flag_colors, "qm=", color_qm); // TUI regex meta characters highlight
-            set_color(flag_colors, "ql=", color_ql); // TUI regex lists and literals highlight
-            set_color(flag_colors, "qb=", color_qb); // TUI regex braces highlight
-          }
-
-          // -v: if rv in GREP_COLORS then swap the sl and cx colors (note that rv does not match color letters)
-          if (flag_invert_match &&
-              ((grep_colors != NULL && strstr(grep_colors, "rv") != NULL) ||
-               (flag_colors != NULL && strstr(flag_colors, "rv") != NULL)))
-          {
-            char color_tmp[COLORLEN];
-            copy_color(color_tmp, color_sl);
-            copy_color(color_sl, color_cx);
-            copy_color(color_cx, color_tmp);
-          }
-
-          // if ms= is not specified, use the mt= value
-          if (*color_ms == '\0')
-            copy_color(color_ms, color_mt);
-
-          // if mc= is not specified, use the mt= value
-          if (*color_mc == '\0')
-            copy_color(color_mc, color_mt);
-
-          // if not --hyperlink and hl or hl= is specified, then set --hyperlink
-          if (flag_hyperlink == NULL)
-          {
-            if (grep_colors != NULL && strstr(grep_colors, "hl=") != NULL)
-              flag_hyperlink = grep_colors + 3;
-            else if (flag_colors != NULL && strstr(flag_colors, "hl=") != NULL)
-              flag_hyperlink = flag_colors + 3;
-            else if (grep_colors != NULL && strstr(grep_colors, "hl") != NULL)
-              flag_hyperlink = "";
-            else if (flag_colors != NULL && strstr(flag_colors, "hl") != NULL)
-              flag_hyperlink = "";
-          }
-
-          // --hyperlink
-          set_terminal_hyperlink();
-
-          // if CSI erase line is OK (note that ne does not match color letters so strstr can be used)
-          if ((grep_colors == NULL || strstr(grep_colors, "ne") == NULL) && (flag_colors == NULL || strstr(flag_colors, "ne") == NULL))
-            color_del = "\033[K";
-
-          color_off = "\033[m";
-
-          copy_color(match_off, color_off);
-
-          if (isatty(STDERR_FILENO))
-          {
-            color_high    = "\033[1m";
-            color_error   = "\033[1;31m";
-            color_warning = "\033[1;35m";
-            color_message = "\033[1;36m";
-          }
-
-          if (env_grep_color != NULL)
-            free(env_grep_color);
-          if (env_grep_colors != NULL)
-            free(env_grep_colors);
-        }
-      }
-    }
-  }
-}
-
-// --hyperlink parsing
-void set_terminal_hyperlink_cpp()
-{
-  // set prefix, host, current working directory path to output hyperlinks with --hyperlink
-  if (flag_hyperlink != NULL)
-  {
-    // get current working directory path in hyperlink
-    char *cwd = getcwd0();
-
-    if (cwd != NULL)
-    {
-      char *path = cwd;
-
-      if (*path == PATHSEPCHR)
-        ++path;
-
-      // get host in hyperlink
-      char host[80] = "localhost";
-
-#ifdef OS_WIN_OR_MINGW
-      WSADATA w;
-      if (WSAStartup(MAKEWORD(1, 1), &w) == 0)
-      {
-        gethostname(host, sizeof(host));
-        WSACleanup();
-      }
-#else
-      gethostname(host, sizeof(host));
-#endif
-
-      flag_hyperlink_host.assign(host);
-      flag_hyperlink_path.append(path);
-
-      free(cwd);
-
-      // get custom prefix in hyperlink or default file://
-      const char *s = flag_hyperlink;
-
-      while (*s != '\0' && isalnum(static_cast<unsigned char>(*s)))
-        ++s;
-
-      if (s == flag_hyperlink)
-        flag_hyperlink_prefix.assign("file");
-      else
-        flag_hyperlink_prefix.assign(flag_hyperlink, s - flag_hyperlink);
-
-      flag_hyperlink_line = *s == '+';
-
-      color_hl = "\033]8;;";
-      color_st = "\033\\";
-    }
-  }
-}
-
 // search the specified files, directories, and/or standard input for pattern matches, may throw an exception
 void ugrep()
 {
@@ -8051,7 +7628,7 @@ void ugrep()
 }
 
 // perform a limited ugrep search on a single file with optional archive part and store up to num results in a vector, may throw an exception, used by the TUI
-void ugrep_find_text_preview_cpp(const char *filename, const char *partname, size_t from_lineno, size_t max, size_t& lineno, size_t& num, std::vector<std::string>& text)
+void ugrep_find_text_preview(const char *filename, const char *partname, size_t from_lineno, size_t max, size_t& lineno, size_t& num, std::vector<std::string>& text)
 {
   // we can only return a text preview when the main search engine ugrep() already started and executes, or after it ends
   if (!Static::matcher)
@@ -12559,27 +12136,6 @@ void import_globs(FILE *file, std::vector<std::string>& files, std::vector<std::
   }
 }
 
-// trim white space from either end of the line
-void trim_cpp(std::string& line)
-{
-  size_t len = line.length();
-  size_t pos;
-
-  for (pos = 0; pos < len && isspace(static_cast<unsigned char>(line.at(pos))); ++pos)
-    continue;
-
-  if (pos > 0)
-    line.erase(0, pos);
-
-  len -= pos;
-
-  for (pos = len; pos > 0 && isspace(static_cast<unsigned char>(line.at(pos - 1))); --pos)
-    continue;
-
-  if (len > pos)
-    line.erase(pos, len - pos);
-}
-
 // trim path separators from an argv[] argument - important: modifies the argv[] string passed as arg
 void trim_pathname_arg(const char *arg)
 {
@@ -12595,164 +12151,6 @@ void trim_pathname_arg(const char *arg)
 
   while (len > 1 && path[--len] == PATHSEPCHR)
     const_cast<char*>(path)[len] = '\0';
-}
-
-// convert GREP_COLORS and set the color substring to the ANSI SGR codes
-void set_color_cpp(const char *colors, const char *parameter, char color[COLORLEN])
-{
-  const char *s = strstr(colors, parameter);
-
-  // check if substring parameter is present in colors
-  if (s != NULL)
-  {
-    s += strlen(parameter);
-    char *t = color + 2;
-
-#ifdef WITH_EASY_GREP_COLORS
-
-    // foreground colors: k=black, r=red, g=green, y=yellow b=blue, m=magenta, c=cyan, w=white
-    // background colors: K=black, R=red, G=green, Y=yellow B=blue, M=magenta, C=cyan, W=white
-    // bright colors: +k, +r, +g, +y, +b, +m, +c, +w, +K, +R, +G, +Y, +B, +M, +C, +W
-    // modifiers: h=highlight, u=underline, i=invert, f=faint, n=normal, H=highlight off, U=underline off, I=invert off
-    // semicolons are not required and abbreviations can be mixed with numeric ANSI SGR codes
-
-    uint8_t offset = 30;
-    bool sep = false;
-
-    while (*s != '\0' && *s != ':' && t - color < COLORLEN - 6)
-    {
-      if (isdigit(static_cast<unsigned char>(*s)))
-      {
-        if (sep)
-          *t++ = ';';
-        if (offset == 90)
-        {
-          *t++ = '1';
-          *t++ = ';';
-          offset = 30;
-        }
-        *t++ = *s++;
-        while (isdigit(static_cast<unsigned char>(*s)) && t - color < COLORLEN - 2)
-          *t++ = *s++;
-        sep = true;
-        continue;
-      }
-
-      if (*s == '+')
-      {
-        offset = 90;
-      }
-      else if (*s == 'n')
-      {
-        if (sep)
-          *t++ = ';';
-        *t++ = '0';
-        sep = true;
-      }
-      else if (*s == 'h')
-      {
-        if (sep)
-          *t++ = ';';
-        *t++ = '1';
-        sep = true;
-      }
-      else if (*s == 'H')
-      {
-        if (sep)
-          *t++ = ';';
-        *t++ = '2';
-        *t++ = '1';
-        offset = 30;
-        sep = true;
-      }
-      else if (*s == 'f')
-      {
-        if (sep)
-          *t++ = ';';
-        *t++ = '2';
-        sep = true;
-      }
-      else if (*s == 'u')
-      {
-        if (sep)
-          *t++ = ';';
-        *t++ = '4';
-        sep = true;
-      }
-      else if (*s == 'U')
-      {
-        if (sep)
-          *t++ = ';';
-        *t++ = '2';
-        *t++ = '4';
-        sep = true;
-      }
-      else if (*s == 'i')
-      {
-        if (sep)
-          *t++ = ';';
-        *t++ = '7';
-        sep = true;
-      }
-      else if (*s == 'I')
-      {
-        if (sep)
-          *t++ = ';';
-        *t++ = '2';
-        *t++ = '7';
-        sep = true;
-      }
-      else if (*s == ',' || *s == ';' || isspace(static_cast<unsigned char>(*s)))
-      {
-        if (sep)
-          *t++ = ';';
-        sep = false;
-      }
-      else
-      {
-        const char *c = "krgybmcw  KRGYBMCW";
-        const char *k = strchr(c, *s);
-
-        if (k != NULL)
-        {
-          if (sep)
-            *t++ = ';';
-          uint8_t n = offset + static_cast<uint8_t>(k - c);
-          if (n >= 100)
-          {
-            *t++ = '1';
-            n -= 100;
-          }
-          *t++ = '0' + n / 10;
-          *t++ = '0' + n % 10;
-          offset = 30;
-          sep = true;
-        }
-      }
-
-      ++s;
-    }
-
-#else
-
-    // traditional grep SGR parameters
-    while ((*s == ';' || isdigit(static_cast<unsigned char>(*s))) && t - color < COLORLEN - 2)
-      *t++ = *s++;
-
-#endif
-
-    if (t > color + 2)
-    {
-      color[0] = '\033';
-      color[1] = '[';
-      *t++ = 'm';
-      *t++ = '\0';
-    }
-    else
-    {
-      color[0] = '\0';
-    }
-  }
 }
 
 // print a diagnostic message
@@ -14124,8 +13522,8 @@ void abort(const char *message, const std::string& what)
   exit(EXIT_ERROR);
 }
 
-// src_core seam facades (rust/src_core/SEAM.md): cpp by default, Rust when the build defines
-// CPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST (terminal group) or CPP_RUST_IMPL_SRC_CORE_INIT_RUST (init)
+// src_core seam facades (rust/src_core/SEAM.md): init() is C++ by default and Rust when the build defines
+// CPP_RUST_IMPL_SRC_CORE_INIT_RUST; terminal(), set_terminal_hyperlink(), set_color() and trim() are Rust
 
 #ifdef CPP_RUST_IMPL_SRC_CORE_INIT_RUST
 extern "C" void ugrep_core_init(int argc, const char **argv);
@@ -14140,68 +13538,116 @@ void init(int argc, const char **argv)
 #endif
 }
 
+// the callback table of the Rust terminal code (rust/src_core/src/ffi/terminal.rs)
+struct TerminalEnv
+{
+  void *ctx;
+  void (*usage)(void *, const char *);
+  int (*probe_output)(void *);
+  void (*tree_utf8)(void *);
+  void (*hyperlink_set)(void *, const char *, const char *, const char *);
+  const char *never;
+  const char *always;
+  const char *auto_;
+  const char *default_grep_colors;
+  int os_win;
+  int pathsep;
+};
+
+extern "C" void ugrep_core_terminal(const TerminalEnv *env);
+extern "C" void ugrep_core_set_terminal_hyperlink(const TerminalEnv *env);
+
+namespace
+{
+
+void terminal_usage(void *, const char *message)
+{
+  usage(message, NULL, NULL);
+}
+
+// fstat() standard output into Static::output_stat*, return non-zero when it is /dev/null
+int terminal_probe_output(void *)
+{
+#ifndef OS_WIN_OR_MINGW
+
+  Static::output_stat_result = fstat(STDOUT_FILENO, &Static::output_stat) == 0;
+  Static::output_stat_regular = Static::output_stat_result && S_ISREG(Static::output_stat.st_mode);
+
+  struct stat dev_null_stat;
+  return Static::output_stat_result &&
+    S_ISCHR(Static::output_stat.st_mode) &&
+    stat("/dev/null", &dev_null_stat) == 0 &&
+    Static::output_stat.st_dev == dev_null_stat.st_dev &&
+    Static::output_stat.st_ino == dev_null_stat.st_ino;
+
+#else
+
+  return 0;
+
+#endif
+}
+
+void terminal_tree_utf8(void *)
+{
+  Output::Tree::bar = "│ ";
+  Output::Tree::ptr = "╰╴";
+  Output::Tree::end = "▔ ";
+}
+
+void terminal_hyperlink_set(void *, const char *host, const char *path, const char *prefix)
+{
+  flag_hyperlink_host.assign(host);
+  flag_hyperlink_path.append(path);
+  flag_hyperlink_prefix.assign(prefix);
+}
+
+void terminal_env(TerminalEnv& env)
+{
+  env.ctx = NULL;
+  env.usage = terminal_usage;
+  env.probe_output = terminal_probe_output;
+  env.tree_utf8 = terminal_tree_utf8;
+  env.hyperlink_set = terminal_hyperlink_set;
+  env.never = Static::NEVER;
+  env.always = Static::ALWAYS;
+  env.auto_ = Static::AUTO;
+  env.default_grep_colors = DEFAULT_GREP_COLORS;
+#ifdef OS_WIN_OR_MINGW
+  env.os_win = 1;
+#else
+  env.os_win = 0;
+#endif
+  env.pathsep = PATHSEPCHR;
+}
+
+} // namespace
+
+// check TTY info and set colors
 void terminal()
 {
-#ifdef CPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST
-  ugrep_rust::core_terminal();
-#else
-  terminal_cpp();
-#endif
+  TerminalEnv env;
+  terminal_env(env);
+  ugrep_core_terminal(&env);
 }
 
+// --hyperlink parsing
 void set_terminal_hyperlink()
 {
-#ifdef CPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST
-  ugrep_rust::core_set_terminal_hyperlink();
-#else
-  set_terminal_hyperlink_cpp();
-#endif
+  TerminalEnv env;
+  terminal_env(env);
+  ugrep_core_set_terminal_hyperlink(&env);
 }
 
+// convert GREP_COLORS and set the color substring to the ANSI SGR codes
 void set_color(const char *colors, const char *parameter, char color[COLORLEN])
 {
-#ifdef CPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST
   ugrep_rust::core_set_color(core_rust::to_slice(colors), core_rust::to_slice(parameter), rust::Slice<uint8_t>(reinterpret_cast<uint8_t*>(color), COLORLEN));
-#else
-  set_color_cpp(colors, parameter, color);
-#endif
 }
 
+// trim white space from either end of the line
 void trim(std::string& line)
 {
-#ifdef CPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST
   ugrep_rust::TrimRange r = ugrep_rust::core_trim(core_rust::to_slice(line));
   line.erase(r.end);
   line.erase(0, r.begin);
-#else
-  trim_cpp(line);
-#endif
-}
-
-void ugrep_find_text_preview(const char *filename, const char *partname, size_t from_lineno, size_t max, size_t& lineno, size_t& num, std::vector<std::string>& text)
-{
-#ifdef CPP_RUST_IMPL_SRC_CORE_TERMINAL_RUST
-  // outputs stay untouched before the search engine runs, as in the C++ body
-  if (!Static::matcher)
-    return;
-
-  // a Rust error becomes a rust::Error exception, caught by the caller like the C++ throw
-  ugrep_rust::TextPreview r = ugrep_rust::core_find_text_preview(core_rust::to_slice(filename), core_rust::to_slice(partname), from_lineno, max);
-  lineno = r.lineno;
-  num = r.num;
-
-  // overwrite existing slots and leave the tail untouched, as the C++ body does
-  size_t i = 0;
-  for (const auto& line : r.text)
-  {
-    const char *data = reinterpret_cast<const char*>(line.data.data());
-    if (i < text.size())
-      text[i].assign(data, line.data.size());
-    else
-      text.emplace_back(data, line.data.size());
-    ++i;
-  }
-#else
-  ugrep_find_text_preview_cpp(filename, partname, from_lineno, max, lineno, num, text);
-#endif
 }

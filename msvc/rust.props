@@ -17,7 +17,6 @@
     <CPP_RUST_IMPL_SRC_TUI Condition="'$(CPP_RUST_IMPL_SRC_TUI)'==''">cpp</CPP_RUST_IMPL_SRC_TUI>
     <CPP_RUST_IMPL_SRC_INDEXER Condition="'$(CPP_RUST_IMPL_SRC_INDEXER)'==''">rust</CPP_RUST_IMPL_SRC_INDEXER>
     <!-- sub-switches of src_core for the functions still in src/ugrep.cpp (the main switch above is inert since Cleanup) -->
-    <CPP_RUST_IMPL_SRC_CORE_TERMINAL Condition="'$(CPP_RUST_IMPL_SRC_CORE_TERMINAL)'==''">cpp</CPP_RUST_IMPL_SRC_CORE_TERMINAL>
     <CPP_RUST_IMPL_SRC_CORE_INIT Condition="'$(CPP_RUST_IMPL_SRC_CORE_INIT)'==''">cpp</CPP_RUST_IMPL_SRC_CORE_INIT>
     <RustRoot>$(MSBuildThisFileDirectory)..\rust\</RustRoot>
     <RustTargetDir>$(MSBuildThisFileDirectory)..\build\cargo\$(MSBuildProjectName)</RustTargetDir>
