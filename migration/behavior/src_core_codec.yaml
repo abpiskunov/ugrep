@@ -86,7 +86,7 @@ behaviors:
     evidence: ["case:zt-gz-multi-files", "case:zt-gz-recursive", "case:zt-multi-archives", "case:zt-recursive-archives", "case:zt-gz-count-multiple", "case:zt-gz-glob-name", "case:zt-7z-multi-archives", "case:zt-lz4-multi-files"]
     origin: capture
   - id: B-src_core_codec-013
-    statement: "--zmax=1 (default) decompresses one level: a gzip of a gzip, an lz4 frame containing a gzip, or a gzip inside a zip, tar or 7z, is not decompressed further (exit 1 with no output for the nested streams; the inner member of an archive is not matched)"
+    statement: "--zmax=1 (default) decompresses one level: a gzip of a gzip, an lz4 frame containing a gzip, or a gzip inside a zip, tar or 7z, is not decompressed further: a nested compressed stream gives no match (exit 1, no output), and an uncompressed inner archive is searched as one binary file (zt-zmax1-tar-of-tar: 'Binary file a.tar{in.tar} matches')"
     kind: normal
     status: observed
     evidence: ["case:zt-zmax1-gz-gz", "case:zt-zmax1-zip-of-gz", "case:zt-zmax1-tar-of-tar", "case:zt-zmax1-7z-of-gz", "case:zt-zmax1-lz4-of-gz"]
@@ -229,7 +229,7 @@ behaviors:
     kind: error
     status: hypothesis
     suspicious: true
-    why: "silent truncation and no checksum verification"
+    why: "silent truncation and no checksum verification; the tar parts are already decided in src_leaves (truncation: Q-zstream-049; bad header checksum tolerated: B-src_leaves-047), only the cpio parts are new"
     evidence: ["case:zt-corrupt-tar-truncated", "case:zt-corrupt-tar-bad-checksum", "case:zt-cpio-truncated", "case:zt-cpio-handmade"]
     origin: capture
   - id: B-src_core_codec-035
@@ -241,12 +241,13 @@ behaviors:
     evidence: ["case:zt-zip-heading", "case:zt-zip-single-no-heading", "case:zt-zip-heading-with-filename"]
     origin: capture
   - id: B-src_core_codec-036
-    statement: "Under --zmax=2 a corrupt gzip member inside a zip or tar is output with half-decoded text ('alpha foo') and no warning"
+    statement: "Under --zmax=2 a truncated gzip nested in a gzip, zip or tar outputs the lines decoded so far ('alpha foo') and exits 0, with no warning"
     kind: error
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-zstream-049
     suspicious: true
-    why: "a corrupt inner stream of an archive member is never reported (Zthread chain: the inner thread's error is not forwarded)"
-    evidence: ["case:zt-corrupt-zmax2-zip-inner-gz", "case:zt-corrupt-zmax2-tar-inner-gz"]
+    why: "B-030 one level down (truncated stream, same decision as B-src_leaves-049); the inner streams of these cases are truncated, not corrupt. A corrupt inner gzip is reported ('cannot decompress in.gz'), so the Zthread chain does forward inner errors"
+    evidence: ["case:zt-corrupt-zmax2-inner-gz", "case:zt-corrupt-zmax2-zip-inner-gz", "case:zt-corrupt-zmax2-tar-inner-gz"]
     origin: capture
   - id: B-src_core_codec-037
     statement: "A truncated, garbage or bad-header-CRC 7z is reported with 'cannot decompress a.7z: 7zip archive: encrypted data or 7z input is not seekable' (exit 1, sometimes followed by a second line); a 7z with a damaged data byte yields no output, no warning and exit 1"
