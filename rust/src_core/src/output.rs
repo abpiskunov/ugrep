@@ -1,13 +1,13 @@
-//! Types-and-signatures module for the `output` seam (src/output.cpp, src/output.hpp). See rust/src_core/SEAM.md,
+//! Types-and-signatures module for the `output` seam (src/output.hpp, src/output_rust.hpp). See rust/src_core/SEAM.md,
 //! section Seam: output.
 //!
 //! The shared structs are declared in the cxx bridge (`lib.rs`, module `ffi`) and are the types of these signatures.
-//! The C++ facade (src/output.cpp) calls them; Rust is the only implementation.
+//! The C++ facade (src/output_rust.hpp) calls them; Rust is the only implementation.
 //!
-//! Shape of the seam: every function is a pure function of its inputs (except `--tree` headers, which stay in C++
-//! because they take the Sync lock and update the process-wide `Output::Tree` state). C++ keeps the `Output` object (buffer,
-//! `Sync`, hex-dump state, `FILE*`), builds a plain-data snapshot per call, and appends the returned bytes to its
-//! buffer with `Output::str`. The Rust side reads the option state it already owns (`settings`, `color`).
+//! Shape of the seam: every function is a pure function of its inputs. The `Output` object itself (buffer, `Sync`
+//! reference, hex-dump state, `--tree` state, `FILE*` writes) is Rust as well (`ffi/output_buf*.rs`, PR #94); the inline
+//! C++ wrappers in src/output_rust.hpp append to the Rust-owned buffer and build a plain-data snapshot per call. The
+//! Rust side reads the option state it already owns (`settings`, `color`).
 
 use super::ffi::{
     OutputArgs, OutputBinaryResult, OutputCtx, OutputDumpLine, OutputHeaderResult, OutputMatch,

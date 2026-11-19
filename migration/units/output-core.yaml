@@ -1,7 +1,7 @@
 schema: cpp-rust-unit/1
 unit: output-core
 component: src_core
-functions: [src_core.output_color, src_core.output_dump_line, src_core.output_header_line, src_core.output_header_file, src_core.output_header_tree, src_core.output_binary_file_matches, src_core.output_flush_truncated_lines, src_core.output_sync]
+functions: [src_core.output_color, src_core.output_header_line, src_core.output_header_file, src_core.output_header_tree, src_core.output_binary_file_matches, src_core.output_sync]
 cpp_files: [src/output.cpp, src/output.hpp]
 rust_files: rust/src_core/src/output.rs rust/src_core/src/output_sync.rs rust/src_core/src/ffi/output.rs rust/src_core/src/ffi/output_sync.rs
 rust_crate_name: src_core
@@ -11,4 +11,5 @@ status: ported
 notes:
   - 'Scope: Output::color, Dump::line, header x2 (the --tree header included), binary_file_matches, flush_truncated_lines and Sync (ordered/unordered, Mutex+Condvar). Out of scope (next unit): format, format_invert, capture and the quote/cpp/csv/hex/json/xml emitters, whose Rust bodies stay the seam stubs.'
   - 'Buffer (SIZE 32768, FLUSH/HOLD/BINARY, chr/str/num/nl/hyperlink/try_flush) and Dump::hex stay C++ inline: they are the per-token hot path of Grep::search and a bridge crossing per token is forbidden by the task. The Rust functions return bytes and the facade appends them in one call (SEAM.md, Decision: bytes out).'
+  - 'Superseded by unit output-buffer (PR #94): Buffer, chr/str/num/nl, Dump::hex, Dump::line, Tree and flush/truncation are now Rust (ffi/output_buf*.rs); the note above describes the output-core state only.'
   - 'Gate: component src_core is cleaned, so `gate-check --gate unit` runs unit-cleaned on the default product. The CPP_RUST_IMPL_OUTPUT switch is removed: the default build runs the Rust bodies, the `*_cpp` bodies of the ported members and the C++ Sync are deleted, and the surface corpus was replayed against that build.'

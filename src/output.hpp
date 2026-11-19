@@ -47,18 +47,35 @@
 #include <condition_variable>
 #include <cstdint>
 
-// the ordered/unordered output synchronization of rust/src_core/src/output_sync.rs (C ABI, ffi/output_sync.rs)
+// the output buffer, hex dump state and --tree state of rust/src_core/src/output_buf.rs (C ABI, ffi/output_buf.rs)
+// and the ordered/unordered output synchronization of rust/src_core/src/output_sync.rs (ffi/output_sync.rs)
 extern "C" {
   void *ugrep_output_sync_new(bool ordered, size_t stop);
   void  ugrep_output_sync_free(void *sync);
-  bool  ugrep_output_sync_acquire(const void *sync, bool owned, size_t slot);
-  bool  ugrep_output_sync_try_acquire(const void *sync, bool owned);
-  bool  ugrep_output_sync_release(const void *sync, bool owned);
-  bool  ugrep_output_sync_finish(const void *sync, bool owned, size_t slot);
-  void  ugrep_output_sync_cancel(const void *sync);
   bool  ugrep_output_sync_cancelled(const void *sync);
-  void  ugrep_output_sync_drop_owner(const void *sync, bool owned);
-  void *ugrep_output_sync_retain(const void *sync);
+
+  void *ugrep_output_new(void *regs, FILE *file, void *eof);
+  void  ugrep_output_free(void *out);
+  void  ugrep_output_sync_on(void *out, const void *sync);
+  void  ugrep_output_begin(void *out, size_t slot);
+  void  ugrep_output_acquire(void *out);
+  void  ugrep_output_release(void *out);
+  void  ugrep_output_end(void *out);
+  void  ugrep_output_cancel(void *out);
+  bool  ugrep_output_cancelled(void *out);
+  void  ugrep_output_discard(void *out);
+  void  ugrep_output_flush(void *out);
+  void  ugrep_output_next(void *out);
+  void  ugrep_output_try_flush(void *out);
+  void  ugrep_output_dump_hex(void *out, short mode, size_t byte_offset, const char *data, size_t size);
+  void  ugrep_output_dump_next(void *out, size_t byte_offset);
+  bool  ugrep_output_dump_incomplete(void *out);
+  void  ugrep_output_dump_complete(void *out, size_t off);
+  void  ugrep_output_dump_done(void *out);
+  void  ugrep_output_tree_reset();
+  int   ugrep_output_tree_depth();
+  const char *ugrep_output_tree_end();
+  void  ugrep_output_tree_glyphs(const char *bar, const char *ptr, const char *end);
 }
 
 // max hexadecimal columns of bytes per line = 8*8
@@ -71,17 +88,10 @@ class Output {
 
  protected:
 
-  static constexpr size_t SIZE = 32768;          // size of each output buffer in the buffers container
   static constexpr size_t STOP = UNDEFINED_SIZE; // if last == STOP, cancel output
-  static constexpr int FLUSH   = 1;              // mode bit: flush each line of output
-  static constexpr int HOLD    = 2;              // mode bit: hold output
-  static constexpr int BINARY  = 4;              // mode bit: binary file found
-
-  struct Buffer { char data[SIZE]; }; // data buffer in the buffers container
-
-  enum class ANSI { NA, ESC, CSI, OSC, OSC_ESC };
-
-  typedef std::list<Buffer> Buffers; // buffers container
+  static constexpr size_t FLUSH   = 1;           // mode bit: flush each line of output
+  static constexpr size_t HOLD    = 2;           // mode bit: hold output
+  static constexpr size_t BINARY  = 4;           // mode bit: binary file found
 
  public:
 
@@ -89,22 +99,6 @@ class Output {
   struct Sync {
 
     enum class Mode { UNORDERED, ORDERED };
-
-    // ownership of the output, what std::unique_lock::owns_lock() was; the lock holds its own reference to the Rust
-    // sync object, so it never touches the Sync, which may be destroyed before the lock
-    struct Lock {
-      Lock(Sync *sync) : handle(ugrep_output_sync_retain(sync->handle)), owned(false) { }
-      ~Lock()
-      {
-        if (owned)
-          ugrep_output_sync_drop_owner(handle, true);
-        ugrep_output_sync_free(handle);
-      }
-      Lock(const Lock&) = delete;
-      Lock& operator=(const Lock&) = delete;
-      void *handle;
-      bool  owned;
-    };
 
     Sync(Mode mode)
       :
@@ -119,43 +113,6 @@ class Output {
 
     Sync(const Sync&) = delete;
     Sync& operator=(const Sync&) = delete;
-
-    static Lock *make_lock(Sync *sync)
-    {
-      return new Lock(sync);
-    }
-
-    // these use the lock's own retained handle, never this->handle: an ~Output flush may run after the Sync is destroyed
-    void acquire(Lock *lock, size_t slot)
-    {
-      lock->owned = ugrep_output_sync_acquire(lock->handle, lock->owned, slot);
-    }
-
-    bool try_acquire(Lock *lock)
-    {
-      lock->owned = ugrep_output_sync_try_acquire(lock->handle, lock->owned);
-      return lock->owned;
-    }
-
-    void release(Lock *lock)
-    {
-      lock->owned = ugrep_output_sync_release(lock->handle, lock->owned);
-    }
-
-    void finish(Lock *lock, size_t slot)
-    {
-      lock->owned = ugrep_output_sync_finish(lock->handle, lock->owned, slot);
-    }
-
-    void cancel(Lock *lock)
-    {
-      ugrep_output_sync_cancel(lock->handle);
-    }
-
-    bool cancelled(Lock *lock)
-    {
-      return ugrep_output_sync_cancelled(lock->handle);
-    }
 
     size_t next; // ORDERED: next slot assigned to thread
     void  *handle;
@@ -173,74 +130,69 @@ class Output {
     static constexpr short HEX_CONTEXT_LINE  = 3;
     static constexpr short HEX_MAX           = 4;
 
-    // hex color highlights for HEX_MATCH, HEX_LINE, HEX_CONTEXT_MATCH, HEX_CONTEXT_LINE
-    static const char *color_hex[HEX_MAX];
-
     // constructor
-    Dump(Output& out)
-      :
-        out(out),
-        offset(0)
-    {
-      done();
-    }
+    Dump(Output& out) : out(out) { }
 
     // dump matching data in hex, mode is
-    void hex(short mode, size_t byte_offset, const char *data, size_t size);
+    void hex(short mode, size_t byte_offset, const char *data, size_t size)
+    {
+      ugrep_output_dump_hex(out.state_, mode, byte_offset, data, size);
+    }
 
     // jump to the next hex dump location (option -o)
     inline void next(size_t byte_offset)
     {
-      if (offset - offset % flag_hex_columns != byte_offset - byte_offset % flag_hex_columns)
-        done();
+      ugrep_output_dump_next(out.state_, byte_offset);
     }
 
     // hex line is incomplete: to complete invoke done()
     bool incomplete()
     {
-      return offset % flag_hex_columns != 0;
+      return ugrep_output_dump_incomplete(out.state_);
     }
 
     // if hex line is incomplete: complete it with done()
     inline void complete(size_t off)
     {
-      if (offset > 0 && offset < off)
-        done();
+      ugrep_output_dump_complete(out.state_, off);
     }
 
     // done dumping hex
     inline void done()
     {
-      if (incomplete())
-      {
-        line();
-        offset += flag_hex_columns - 1;
-        offset -= offset % flag_hex_columns;
-      }
-      for (int i = 0; i < MAX_HEX_COLUMNS; ++i)
-        prevb[i] = bytes[i] = -1;
+      ugrep_output_dump_done(out.state_);
     }
 
-    // dump one line of hex
-    void line();
-
-    Output& out;                    // reference to the output state of this hex dump state
-    size_t  offset;                 // current byte offset in the hex dump
-    short   bytes[MAX_HEX_COLUMNS]; // one line of hex dump bytes with their mode bits for color highlighting
-    short   prevb[MAX_HEX_COLUMNS]; // previously displayed bytes[], to produce line with *
-    bool    pstar;                  // previously output a *
+    Output& out; // reference to the output state of this hex dump state; the dump state itself is Rust's
 
   };
 
-  // global directory tree state for output, protected by acquire()
+  // global directory tree state for output, protected by acquire(): the path, the depth and the drawing strings are Rust's
   struct Tree {
 
-    static const char  *bar;    // fixed string to display a vertical line
-    static const char  *ptr;    // fixed string to display a vertical line and connector
-    static const char  *end;    // fixed string to display a vertical line ending
+    // forget the directory path, depth 0
+    static void reset()
+    {
+      ugrep_output_tree_reset();
+    }
 
-    static std::string  path;   // tree directory path buffer
-    static int          depth;  // tree directory depth
+    // the directory depth
+    static int depth()
+    {
+      return ugrep_output_tree_depth();
+    }
+
+    // the string to display a vertical line ending
+    static const char *end()
+    {
+      return ugrep_output_tree_end();
+    }
+
+    // set the strings to display a vertical line, a vertical line and connector, and a vertical line ending
+    static void glyphs(const char *bar, const char *ptr, const char *end)
+    {
+      ugrep_output_tree_glyphs(bar, ptr, end);
+    }
 
   };
 
@@ -251,31 +203,25 @@ class Output {
       eof(false),
       sync(NULL),
       dump(*this),
-      lock_(NULL),
-      slot_(0),
       lineno_(0),
-      mode_(flag_line_buffered ? FLUSH : 0),
-      cols_(0),
-      ansi_(ANSI::NA),
-      skip_(false)
+      regs_{NULL, NULL, static_cast<size_t>(flag_line_buffered ? FLUSH : 0)},
+      state_(NULL)
   {
-    grow();
+    state_ = ugrep_output_new(&regs_, file, &eof);
   }
 
-  // destructor
+  // destructor: flushes the output
   ~Output()
   {
-    flush();
-    if (lock_ != NULL)
-      delete lock_;
+    ugrep_output_free(state_);
   }
 
   // output an 8-bit character c
   inline void chr(int c)
   {
-    if (cur_ >= buf_->data + SIZE)
+    if (regs_.cur >= regs_.end)
       next();
-    *cur_++ = c;
+    *regs_.cur++ = c;
   }
 
   // output a wide character c
@@ -307,17 +253,17 @@ class Output {
   // output a string s of byte length n
   inline void str(const char *s, size_t n)
   {
-    while (cur_ + n >= buf_->data + SIZE)
+    while (regs_.cur + n >= regs_.end)
     {
-      size_t k = static_cast<size_t>(buf_->data + SIZE - cur_);
-      memcpy(cur_, s, k);
+      size_t k = static_cast<size_t>(regs_.end - regs_.cur);
+      memcpy(regs_.cur, s, k);
       s += k;
       n -= k;
-      cur_ += k;
+      regs_.cur += k;
       next();
     }
-    memcpy(cur_, s, n);
-    cur_ += n;
+    memcpy(regs_.cur, s, n);
+    regs_.cur += n;
   }
 
   // get pointer to position k (not beyond s+n) in a UTF-8 multibyte string s of byte length n
@@ -485,35 +431,34 @@ class Output {
   // enable line buffered mode to flush each line to output
   void set_flush()
   {
-    mode_ |= FLUSH;
+    regs_.mode |= FLUSH;
   }
 
   // try to flush if we do not have to wait to acquire the output lock
   inline void try_flush()
   {
-    if (sync == NULL || sync->try_acquire(lock_))
-      flush();
+    ugrep_output_try_flush(state_);
   }
 
   // flush if output is line buffered, unless we have to wait to acquire the output lock
   inline void check_flush()
   {
-    if (mode_ == FLUSH)
+    if (regs_.mode == FLUSH)
       try_flush();
   }
 
   // hold the output and do not flush, buffer all output until further notice
   void hold()
   {
-    mode_ |= HOLD;
+    regs_.mode |= HOLD;
   }
 
   // launch output when held back
   void launch()
   {
-    if ((mode_ & HOLD) != 0)
+    if ((regs_.mode & HOLD) != 0)
     {
-      mode_ &= ~HOLD;
+      regs_.mode &= ~HOLD;
       check_flush();
     }
   }
@@ -521,72 +466,58 @@ class Output {
   // return true when holding the output
   bool holding()
   {
-    return mode_ & HOLD;
+    return regs_.mode & HOLD;
   }
 
   // synchronize output by threads on the given sync object
   void sync_on(Sync *s)
   {
     sync = s;
-    if (lock_ != NULL)
-      delete lock_;
-    lock_ = Sync::make_lock(sync);
+    ugrep_output_sync_on(state_, s->handle);
   }
 
   // start synchronizing output for this slot in ORDERED mode (--sort)
   void begin(size_t slot)
   {
-    slot_ = slot;
+    ugrep_output_begin(state_, slot);
   }
 
   // acquire output synchronization lock
   void acquire()
   {
     if (sync != NULL)
-      sync->acquire(lock_, slot_);
+      ugrep_output_acquire(state_);
   }
 
   // discard buffered output
   void discard()
   {
-    buf_ = buffers_.begin();
-    cur_ = buf_->data;
+    ugrep_output_discard(state_);
   }
 
   // flush output and release sync slot, if one was assigned with sync_on()
   void release()
   {
-    if ((mode_ & HOLD) == 0)
-      flush();
-    else
-      discard();
-
-    mode_ = flag_line_buffered ? FLUSH : 0;
-
-    if (sync != NULL)
-      sync->release(lock_);
+    ugrep_output_release(state_);
   }
 
   // end output in ORDERED mode (--sort)
   void end()
   {
     if (sync != NULL)
-      sync->finish(lock_, slot_);
+      ugrep_output_end(state_);
   }
 
   // cancel output
   void cancel()
   {
-    eof = true;
-
-    if (sync != NULL)
-      sync->cancel(lock_);
+    ugrep_output_cancel(state_);
   }
 
   // true if output was cancelled()
   bool cancelled()
   {
-    return sync != NULL && sync->cancelled(lock_);
+    return sync != NULL && ugrep_output_cancelled(state_);
   }
 
   // output color when set
@@ -630,124 +561,16 @@ class Output {
 
  protected:
 
-  // acquire lock and flush the buffers, if not held back
+  // the Rust side flushes the buffers, if not held back: acquire the lock, write the blocks to the file
   void flush()
   {
-    if (buf_ != buffers_.begin() || cur_ > buf_->data)
-    {
-      if (!eof)
-      {
-        // if multi-threaded and lock is not already owned, then lock on master's mutex
-        acquire();
-
-        // --null-data: swap NUL with LF in the output by converting these characters in the output buffers
-        if (flag_null_data)
-        {
-          for (Buffers::iterator i = buffers_.begin(); i != buf_; ++i)
-          {
-            char *data = i->data;
-
-            for (size_t k = 0; k < SIZE; ++k)
-            {
-              if (data[k] == '\0')
-                data[k] = '\n';
-              else if (data[k] == '\n')
-                data[k] = '\0';
-            }
-          }
-
-          size_t num = cur_ - buf_->data;
-
-          if (num > 0)
-          {
-            char *data = buf_->data;
-
-            for (size_t k = 0; k < num; ++k)
-            {
-              if (data[k] == '\0')
-                data[k] = '\n';
-              else if (data[k] == '\n')
-                data[k] = '\0';
-            }
-          }
-        }
-
-        // flush the buffers container to the designated output file, pipe, or stream
-        for (Buffers::iterator i = buffers_.begin(); i != buf_; ++i)
-        {
-          if (flag_width == 0)
-          {
-            size_t nwritten = fwrite(i->data, 1, SIZE, file);
-            if (nwritten < SIZE)
-            {
-              cancel();
-              break;
-            }
-          }
-          else
-          {
-            if (flush_truncated_lines(i->data, SIZE))
-            {
-              cancel();
-              break;
-            }
-          }
-        }
-
-        if (!eof)
-        {
-          size_t num = cur_ - buf_->data;
-
-          if (num > 0)
-          {
-            if (flag_width == 0)
-            {
-              size_t nwritten = fwrite(buf_->data, 1, num, file);
-              if (nwritten < num)
-                cancel();
-            }
-            else
-            {
-              if (flush_truncated_lines(buf_->data, num))
-                cancel();
-            }
-          }
-
-          if (!eof && fflush(file) != 0)
-            cancel();
-        }
-      }
-
-      buf_ = buffers_.begin();
-      cur_ = buf_->data;
-    }
+    ugrep_output_flush(state_);
   }
 
-  // flush a block of data as truncated lines limited to --width columns
-  bool flush_truncated_lines(const char *data, size_t size);
-
-  // next buffer, allocate one if needed (when multi-threaded and lock is owned by another thread)
+  // next buffer when the current block is full: flush, or allocate one if needed (when multi-threaded and lock is owned by another thread)
   void next()
   {
-    if ((mode_ & HOLD) == 0 && (sync == NULL || sync->try_acquire(lock_)))
-    {
-      flush();
-    }
-    else
-    {
-      // allocate a new buffer if no next buffer was allocated before
-      if (++buf_ == buffers_.end())
-        grow();
-      else
-        cur_ = buf_->data;
-    }
-  }
-
-  // allocate a new buffer to grow the buffers container
-  void grow()
-  {
-    buf_ = buffers_.emplace(buffers_.end());
-    cur_ = buf_->data;
+    ugrep_output_next(state_);
   }
 
  public:
@@ -759,16 +582,17 @@ class Output {
 
  protected:
 
-  Sync::Lock      *lock_;    // synchronization lock
-  size_t                        slot_;    // current slot to take turns
-  size_t                        lineno_;  // last line number matched, when --format field %u (unique) is used
-  Buffers                       buffers_; // buffers container
-  Buffers::iterator             buf_;     // current buffer in the container
-  char                         *cur_;     // current position in the current buffer
-  int                           mode_;    // bitmask 1 if line buffered 2 if hold
-  size_t                        cols_;    // number of columns output so far, if --width
-  ANSI                          ansi_;    // ANSI escape sequence state machine state
-  bool                          skip_;    // skip until next newline in buffers, if --width
+  // registers shared with Rust (rust/src_core/src/output_buf.rs, Regs, same layout): the write position and the end of the
+  // current block, and the bitmask 1 if line buffered 2 if hold 4 if binary file found; the block memory is Rust's
+  struct Regs {
+    char   *cur;
+    char   *end;
+    size_t  mode;
+  };
+
+  size_t  lineno_; // last line number matched, when --format field %u (unique) is used
+  Regs    regs_;   // write position in the current Rust-owned block, mode bits
+  void   *state_;  // the Rust output state: blocks, sync lock, hex dump state, --width state
 
 };
 
