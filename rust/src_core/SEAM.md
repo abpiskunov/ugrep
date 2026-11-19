@@ -297,7 +297,7 @@ search ended, as with the legacy destructor; `Zthread` is `Send + Sync` because 
 
 `ZthreadCpp` stays the product code until the Port; `select_matching` is called through a never-started `ZthreadCpp`
 member of the rust facade (`selector`, `findpart` NULL) until the Port splits the findpart logic from the flags part.
-`src/zthread.hpp` (an older, ugrep-indexer copy of the same struct) is **kept**: no source includes it any more
+At Prepare seam, `src/zthread.hpp` (an older, ugrep-indexer copy of the same struct) was **kept** (the Port deleted it, Q-zthread-header): no source includes it any more
 (`src/ugrep-indexer.cpp` is the Rust entry stub), so it is not compiled, but `msvc/ugrep-indexer.vcxproj:101` lists it as
 a `ClInclude` and `src/Makefile.am:67,95` distribute it. Removing it changes the project and the distribution lists,
 which is not a seam-preparation move; it goes with the Cleanup that deletes `ZthreadCpp`.
@@ -317,7 +317,7 @@ every `ClCompile`, so the facade calls `ugrep_core_zthread_*` of the always-link
 ### Text for the migration records (to be appended by a task that may write `migration/`)
 
 `decisions.md`: `D-zthread-seam` | scope | the Zthread port is back in scope (D-S1-supersede); Prepare seam done; Rust Zthread lives
-in `rust/src_core` with a dependency on `rust/src_leaves` (acyclic); `src/zthread.hpp` kept, listed only (reason above) |
+in `rust/src_core` with a dependency on `rust/src_leaves` (acyclic); `src/zthread.hpp` kept, listed only (reason above; deleted by the Port, Q-zthread-header) |
 `rust/src_core/SEAM.md`. `units/zthread.yaml`: `unit: zthread`, `component: src_core`, `functions: [src_core.zthread_start,
 src_core.zthread_open_next, src_core.zthread_cancel, src_core.zthread_close]`, `cpp_files: [src/ugrep.cpp, src/zthread.hpp]`,
 `rust_files: rust/src_core/src/zthread.rs rust/src_core/src/ffi/zthread.rs`, `depends_on: [zstream_core]`, `status: planned`.

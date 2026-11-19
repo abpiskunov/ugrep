@@ -322,7 +322,7 @@ impl Stage {
         }
     }
 
-    /// The pathname of the "cannot create pipe" warning: a chained stage reports none.
+    /// The "cannot create pipe" warning of `open_next`: a chained stage reports no pathname, as `ZthreadCpp::open_next`.
     fn pipe_warning(&self, pathname: &[u8]) {
         self.host.warning(b"cannot create pipe to decompress", (!self.is_chained).then_some(pathname));
     }
@@ -352,14 +352,15 @@ impl Stage {
             findpart = Some(part);
         }
 
+        // `ZthreadCpp::start` names the file even in a chained stage; only `open_next` drops it there
         let Some((pipe_r, pipe_w)) = zthread_sys::pipe() else {
-            self.pipe_warning(pathname);
+            self.host.warning(b"cannot create pipe to decompress", Some(pathname));
             return None;
         };
         let Some(pipe_file) = (self.fdopen)(pipe_r) else {
             zthread_sys::close(pipe_r);
             zthread_sys::close(pipe_w);
-            self.pipe_warning(pathname);
+            self.host.warning(b"cannot create pipe to decompress", Some(pathname));
             return None;
         };
         {
@@ -1253,6 +1254,15 @@ mod tests {
         tar
     }
 
+    fn tar_three_members() -> Vec<u8> {
+        let mut tar = Vec::new();
+        tar_member(&mut tar, "a.txt", b"hello\n");
+        tar_member(&mut tar, "b.txt", b"world\n");
+        tar_member(&mut tar, "c.txt", b"again\n");
+        tar.resize(tar.len() + 1024, 0);
+        tar
+    }
+
     #[test]
     fn plain_file_passes_through() {
         let host = Arc::new(TestHost::default());
@@ -1331,13 +1341,18 @@ mod tests {
         let pipe = pipe_file(z.start(1, b"ok.txt", file.as_ptr(), None));
         assert_eq!(read_all(pipe), b"second\n");
         assert_eq!(z.open_next(b"ok.txt"), Outcome::None);
+        // only the second file reached the thread: the failed start handed it no job (and no `file_in` to read after
+        // the caller closed it)
+        assert_eq!(*lock(&host.parts), vec![Vec::<u8>::new()]);
     }
 
     #[test]
     fn fdopen_failure_in_open_next_reports_and_the_next_file_runs() {
         let host = Arc::new(TestHost::default());
         let z = Zthread::with_fdopen(host.clone(), failing_fdopen(&[2]));
-        let file = input(&tar_two_members());
+        // a member after the failed one: a thread still extracting would block on it, waiting for a pipe nobody
+        // will open, and the next start would never be served
+        let file = input(&tar_three_members());
         let pipe = pipe_file(z.start(1, b"in.tar", file.as_ptr(), None));
         assert_eq!(read_all(pipe), b"hello\n");
         assert_eq!(z.open_next(b"in.tar"), Outcome::None);
