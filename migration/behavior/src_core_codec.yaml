@@ -227,7 +227,8 @@ behaviors:
   - id: B-src_core_codec-034
     statement: "A truncated tar, a tar with a bad header checksum and a truncated cpio output the members read so far and exit 0, with no warning; a hand-made cpio with a wrong layout is read up to its first entry, whose content is reported as binary"
     kind: error
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-zthread-034
     suspicious: true
     why: "silent truncation and no checksum verification; the tar parts are already decided in src_leaves (truncation: Q-zstream-049; bad header checksum tolerated: B-src_leaves-047), only the cpio parts are new"
     evidence: ["case:zt-corrupt-tar-truncated", "case:zt-corrupt-tar-bad-checksum", "case:zt-cpio-truncated", "case:zt-cpio-handmade"]
@@ -235,7 +236,8 @@ behaviors:
   - id: B-src_core_codec-035
     statement: "A single archive shown without file names (no --with-filename, one file) prints the member lines as '{MEMBER}:LINE:text' without the archive name and without a heading line; with --with-filename --heading the C++ prints an 'a.zip' heading line before each member's lines (members keep '{MEMBER}:LINE:text'), then a blank line"
     kind: edge-case
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-zthread-035
     suspicious: true
     why: "the archive name is dropped from the line prefix, so lines of different archives cannot be told apart without a heading; other options print ARCHIVE{MEMBER}"
     evidence: ["case:zt-zip-heading", "case:zt-zip-single-no-heading", "case:zt-zip-heading-with-filename"]
