@@ -60,7 +60,7 @@ components:
     rust_archive: "rust_umbrella:src_core"   # D-src_core-linked: the src_core crate itself, not any umbrella member
     linked_args: '--forbid "_cpp@(CNF|Stats)@@"'   # D-src_core-linked: the replaced C++ bodies; the rest of these files is retained C++
     cleanup_map: msvc/bin/Base-Release-x64/ugrep.map
-    retained_args: '--require "ugrep[.]obj" --require "output[.]obj" --require "query[.]obj" --require "screen[.]obj" --require "vkey[.]obj" --require "settings[.]obj"'   # Q-cleanup-1, amended by D-S1-supersede: the target end state is RE-flex/third-party only; each ugrep-owned object is removed here by the task that stops linking it. settings.obj holds only the std::string/container options until S2
+    retained_args: '--require "ugrep[.]obj" --require "query[.]obj" --require "screen[.]obj" --require "vkey[.]obj" --require "settings[.]obj"'   # Q-cleanup-1, amended by D-S1-supersede: the target end state is RE-flex/third-party only; each ugrep-owned object is removed here by the task that stops linking it. settings.obj holds only the std::string/container options until S2; output.obj removed by D-output-linked (Output is Rust; the only output.obj left in the map is the CRT's libucrt:output.obj)
     coverage_functions: 90   # D-src_core-coverage: 15 reasoned uncovered functions
     coverage_lines: 85
   src_tui:
