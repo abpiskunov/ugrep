@@ -405,6 +405,8 @@ ugrep_SOURCES = \
 	zstream.hpp \
 	zstream_seam.h \
 	zthread.hpp \
+	zthread_seam.h \
+	zthread_tap.hpp \
 	zopen.h \
 	zopen_facade.cpp \
 	zopen_seam.h

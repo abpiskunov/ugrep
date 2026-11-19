@@ -84,7 +84,10 @@ After this, you may want to test ugrep and install it (optional):
 
 // set_color() and trim() are implemented in Rust (rust/src_core), see rust/src_core/SEAM.md
 #include "core_rust.hpp"
-#include <reflex/matcher.h>
+#include "zthread_tap.hpp"
+#ifdef CPP_RUST_IMPL_ZTHREAD_RUST
+# include "zthread_seam.h"
+#endif#include <reflex/matcher.h>
 #include <reflex/linematcher.h>
 #include <reflex/fuzzymatcher.h>
 #include <reflex/unicode.h>
@@ -584,9 +587,10 @@ inline void copy_color(char to[COLORLEN], const char from[COLORLEN])
 #ifdef WITH_DECOMPRESSION_THREAD
 
 // decompression thread state with shared objects (similar code to zthread.hpp, but with ugrep-related mods)
-struct Zthread {
+// this is the legacy C++ body of the Zthread seam (see rust/src_core/SEAM.md), the struct Zthread facade below selects it
+struct ZthreadCpp {
 
-  Zthread(bool is_chained, std::string& partname) :
+  ZthreadCpp(bool is_chained, std::string& partname) :
       ztchain(NULL),
       zstream(NULL),
       zpipe_in(NULL),
@@ -603,7 +607,7 @@ struct Zthread {
     pipe_fd[1] = -1;
   }
 
-  ~Zthread()
+  ~ZthreadCpp()
   {
     // recursively join all stages of the decompression thread chain (--zmax>1), delete zstream
     join();
@@ -654,7 +658,7 @@ struct Zthread {
       {
         // create a new decompression chain if not already created
         if (ztchain == NULL)
-          ztchain = new Zthread(true, partname);
+          ztchain = new ZthreadCpp(true, partname);
 
         // close the input pipe from the next decompression stage in the chain, if still open
         if (zpipe_in != NULL)
@@ -705,7 +709,7 @@ struct Zthread {
           is_extracting = false;
           is_waiting = false;
 
-          thread = std::thread(&Zthread::decompress, this);
+          thread = std::thread(&ZthreadCpp::decompress, this);
         }
 
         catch (std::system_error&)
@@ -1710,7 +1714,7 @@ struct Zthread {
     return is_selected;
   }
 
-  Zthread                *ztchain;       // chain of decompression threads to decompress multi-compressed/archived files
+  ZthreadCpp             *ztchain;       // chain of decompression threads to decompress multi-compressed/archived files
   zstreambuf             *zstream;       // the decompressed stream buffer from compressed input
   FILE                   *zpipe_in;      // input pipe from the next ztchain stage, if any
   std::thread             thread;        // decompression thread handle
@@ -1729,6 +1733,141 @@ struct Zthread {
   std::string             partname;      // name of the archive part extracted by the next decompressor in the ztchain
   std::string&            partnameref;   // reference to the partname of Grep or of the previous decompressor
   const char             *findpart;      // when non-NULL, select a specific part in an archive to search
+
+};
+
+// the Zthread seam: Grep uses only this facade, CPP_RUST_IMPL_ZTHREAD selects the legacy ZthreadCpp (default) or the
+// Rust decompression thread of rust/src_core (CPP_RUST_IMPL_ZTHREAD_RUST), see rust/src_core/SEAM.md
+struct Zthread {
+
+  Zthread(bool is_chained, std::string& partname)
+#ifdef CPP_RUST_IMPL_ZTHREAD_RUST
+    :
+      partnameref(partname),
+      selector(false, partname),
+      handle(NULL)
+  {
+    ugrep_core_zthread_env env;
+    env.ctx = this;
+    env.set_partname = &Zthread::set_partname;
+    env.warning = &Zthread::warn;
+    env.select_by_flags = &Zthread::select_by_flags;
+    handle = ugrep_core_zthread_new(&env, is_chained ? 1 : 0);
+  }
+#else
+    :
+      impl(is_chained, partname)
+  { }
+#endif
+
+  Zthread(const Zthread&) = delete;
+  Zthread& operator=(const Zthread&) = delete;
+
+  ~Zthread()
+  {
+    close();
+  }
+
+  // start decompression thread if not running, open new pipe, returns pipe or NULL on failure
+  FILE *start(size_t ztstage, const char *pathname, FILE *file_in, const char *find = NULL)
+  {
+    TAP_CALL("src_core.zthread_start", ztstage, pathname, zthread_tap::file(file_in), find);
+#ifdef CPP_RUST_IMPL_ZTHREAD_RUST
+    int fd = -1;
+    FILE *pipe_in = pipe_stream(ugrep_core_zthread_start(handle, ztstage, pathname, file_in, find, &fd), fd, pathname);
+#else
+    FILE *pipe_in = impl.start(ztstage, pathname, file_in, find);
+#endif
+    TAP_RET(zthread_tap::file(pipe_in));
+    return pipe_in;
+  }
+
+  // open pipe to the next file or part in the archive or return NULL
+  FILE *open_next(const char *pathname)
+  {
+    TAP_CALL("src_core.zthread_open_next", pathname);
+#ifdef CPP_RUST_IMPL_ZTHREAD_RUST
+    int fd = -1;
+    FILE *pipe_in = pipe_stream(ugrep_core_zthread_open_next(handle, pathname, &fd), fd, pathname);
+#else
+    FILE *pipe_in = impl.open_next(pathname);
+#endif
+    TAP_RET(zthread_tap::file(pipe_in));
+    return pipe_in;
+  }
+
+  // cancel decompression gracefully
+  void cancel()
+  {
+    TAP_CALL("src_core.zthread_cancel");
+#ifdef CPP_RUST_IMPL_ZTHREAD_RUST
+    ugrep_core_zthread_cancel(handle);
+#else
+    impl.cancel();
+#endif
+    TAP_RET(true);
+  }
+
+  // join the decompression threads and release their resources, safe to call again (the destructor calls it)
+  void close()
+  {
+    TAP_CALL("src_core.zthread_close");
+#ifdef CPP_RUST_IMPL_ZTHREAD_RUST
+    ugrep_core_zthread_close(handle);
+    handle = NULL;
+#else
+    impl.join();
+#endif
+    TAP_RET(true);
+  }
+
+private:
+
+#ifdef CPP_RUST_IMPL_ZTHREAD_RUST
+
+  // the pipe read end from Rust as a FILE*, closed by Grep::close_file() with fclose(), NULL if there is none
+  static FILE *pipe_stream(int status, int fd, const char *pathname)
+  {
+    if (status == ZTHREAD_OK && fd >= 0)
+    {
+      FILE *pipe_in = fdopen(fd, "rb");
+      if (pipe_in != NULL)
+        return pipe_in;
+      ::close(fd);
+      warning("cannot create pipe to decompress", pathname);
+    }
+    else if (status == ZTHREAD_NOT_PORTED)
+    {
+      warning("decompression thread is not ported", pathname);
+    }
+    return NULL;
+  }
+
+  static void set_partname(void *ctx, const char *name, size_t len)
+  {
+    static_cast<Zthread*>(ctx)->partnameref.assign(name, len);
+  }
+
+  static void warn(void *, const char *message, const char *arg)
+  {
+    warning(message, arg);
+  }
+
+  // until select_matching() is split in the Port, the legacy member does this with no findpart set
+  static int select_by_flags(void *ctx, const char *path, const unsigned char *buf, size_t len)
+  {
+    return static_cast<Zthread*>(ctx)->selector.select_matching(NULL, path, buf, len, true) ? 1 : 0;
+  }
+
+  std::string&  partnameref;   // Grep::partname, assigned by Rust through set_partname()
+  ZthreadCpp    selector;      // never started, only select_matching() is called
+  void         *handle;        // the Rust decompression thread
+
+#else
+
+  ZthreadCpp impl;
+
+#endif
 
 };
 

@@ -15,6 +15,9 @@ tap = []
 
 [dependencies]
 cxx = "1"
+# The Rust Zthread (src/ugrep.cpp decompression thread) drives the zstream core of src_leaves
+# (ffi/zstream.rs, zstream_core.rs). One direction only: src_leaves depends on no other workspace crate.
+src_leaves = { path = "../src_leaves", default-features = false }
 
 [build-dependencies]
 cxx-build = "1"

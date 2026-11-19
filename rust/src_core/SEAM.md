@@ -174,9 +174,137 @@ Known C++ quirk for Triage (preserve until classified): init tests `argv[1]`, no
 
 The ugrep.cpp ~228-757 and ~4456-4670 range (flag globals, Static members, tables, pager, signal handlers, CPU affinity, fopen_smart) stays C++: the flag/Static ownership decision keeps the globals in C++, and no seam signature, tap or recorded case exists for the pager, signal, affinity and fopen_smart functions. Porting it later needs its own Prepare seam + Behavior follow-up.
 
-## ugrep.cpp Zthread retained (D-src_core-zthread-retained)
+## ugrep.cpp Zthread seam (Prepare seam: Zthread)
 
-The ugrep.cpp ~757-1909 range (struct Zthread: decompression thread, pipes, FILE*) stays C++. zstream and zopen are already Rust from src_leaves; only the threading and pipe plumbing stays C++. No seam signature, tap or recorded case exists. Porting it later needs its own Prepare seam + Behavior follow-up.
+D-src_core-zthread-retained was superseded by D-S1-supersede. Prepared here; the body is still C++ (`ZthreadCpp`), the Rust
+side is a stub. Behavior is unchanged: `CPP_RUST_IMPL_ZTHREAD` defaults to `cpp`; the facade then calls `ZthreadCpp`
+(the old `struct Zthread`, body unchanged apart from the rename of the type and its `new`/`&Zthread::decompress`
+uses). The text of `migration/decisions.md` / `migration/units/zthread.yaml` for this seam is at the end of this section
+(the Prepare task does not write under `migration/`; a task allowed to do so appends it).
+
+### What crosses the boundary
+
+| # | Crossing | Direction | Switchable now |
+|---|----------|-----------|----------------|
+| 1 | `Zthread::start(ztstage, pathname, file_in, find)` -> `FILE*` | `Grep::open_file` -> component | yes (facade) |
+| 2 | `Zthread::open_next(pathname)` -> `FILE*` | `Grep::close_file` -> component | yes (facade) |
+| 3 | `Zthread::cancel()` | `Grep::cancel`, `Grep::close_file`, `Grep::search` -> component | yes (facade) |
+| 4 | `Zthread::close()` (join, the destructor of `Grep::zthread`) | `~Grep` -> component | yes (facade) |
+| 5 | `Grep::partname` (`std::string&`) written by the decompression thread | component -> C++ | callback `set_partname` |
+| 6 | `warning(message, arg)` | component -> C++ (`ugrep_core_warning` through the existing diagnostics bridge) | callback `warning` |
+| 7 | `select_matching` flags part: hidden, `--exclude`/`--include`, `-M` magic (`Static::magic_pattern`, RE-flex) | component -> retained C++ | callback `select_by_flags` |
+| 8 | `zstreambuf` (open, `zipinfo`, `decompress`, `get_buffer`) | component -> `src_leaves` | Rust-to-Rust in the Port (see decision) |
+
+Callers are `Grep` only (`open_file` ~3333, `close_file` ~3719/3722, `cancel` ~3104, `search` ~8308, member ~3950, all
+in `src/ugrep.cpp`); no header is involved: `struct Zthread` was never visible outside `ugrep.cpp`.
+
+Cannot be switched: `ZthreadCpp` internals (`ztchain`, mutex and condition variables, `filter_tar`, `filter_cpio`
+are one thread state machine; there is no seam inside it), `Grep::partname` (read by the Grep thread, no accessor),
+`select_matching` while the options `flag_all_include/exclude`, `flag_file_magic` stay C++ containers (S2).
+
+### Moves made (one kind per step)
+
+1. Rename `struct Zthread` to `struct ZthreadCpp` (type, constructor, destructor, `new ZthreadCpp`, thread entry,
+   `ztchain` member); no other change.
+2. Add the facade `struct Zthread` after it (same name, constructor signature and public functions, so `Grep` and the
+   five call sites are untouched). `close()` is new: `~Zthread()` calls it; the legacy path runs `join()` there and
+   then the member destructor runs `join()` again, a no-op (`thread` not joinable, `zstream` NULL).
+3. C ABI `src/zthread_seam.h` and Rust `src/ffi/zthread.rs`; types-and-signatures `src/zthread.rs`
+   (declared from `signatures.rs`, so the replay harness sees it); `msvc/rust.props` and `rust.targets`
+   (`CPP_RUST_IMPL_ZTHREAD`, `/p:CppRustTap=true`).
+4. Tap: `src/zthread_tap.hpp` (`TAP_CALL`/`TAP_RET` on the four facade functions, `src_core.zthread_*`, the `FILE*`
+   encoder).
+
+### Where the Rust Zthread lives
+
+**`rust/src_core`**, which now depends on `rust/src_leaves` (`default-features = false`; the umbrella unifies the
+`codecs` feature). `src_leaves` depends on no workspace crate, so there is no cycle (`cargo tree -p src_core` shows
+`src_leaves`). Reasons: Zthread's callers, `Grep` and the settings it writes (`flag_no_header`), are `src_core`; the zstream
+core it drives (`ffi/zstream.rs`, `zstream_core.rs`) is in `src_leaves` and is reached by a plain crate call, with
+no second bridge. Putting it in `src_leaves` would invert the port order (level 2 into level 0/1) and give `src_leaves`
+the pipe and `warning` callbacks. The Port may call `src_leaves` through `signatures::zstream_core`, not through the C ABI.
+
+### Encoding
+
+Strings are bytes (`&[u8]`, no NUL, no encoding assumed: file names are OS bytes, `partname` is built from names
+inside archives). On the C ABI they are NUL-terminated (`const char*`), `find` and `arg` may be NULL. Sizes are `size_t`.
+The pipe read end is a C `int` file descriptor (binary mode, `_O_BINARY` on Windows); the facade turns it into `FILE*`
+with `fdopen(fd, "rb")`. `FILE*` of the source file crosses as an opaque pointer, never dereferenced by the stub.
+
+### Re-entrancy
+
+Rust calls back into C++ only through the callbacks of `ugrep_core_zthread_env`. `set_partname` and `warning` take no
+lock of this side; `select_by_flags` calls retained C++ that takes none either (it builds a local `reflex::Matcher`, the
+legacy code did the same on the decompression thread). No callback calls a facade function. The legacy
+`ZthreadCpp::start`/`open_next` recurse through the chain (`ztchain->start`, `ztchain->open_next` from the next-stage thread):
+that stays inside one side, the facade is not re-entered.
+
+### Thread affinity
+
+`start`, `open_next`, `cancel` and `close` are called by the thread that owns the `Grep` (a `GrepWorker` thread, or the main
+thread for stdin). The decompression thread (one per stage) is created by `start` and joined by `close`; it calls
+`set_partname`, `warning` (`errno` is the thread's own: Rust must set `errno` before the callback as the C++ pipe code
+left it) and `select_by_flags`. `cancel` may be called while the thread runs (`stop` is an atomic). The handle is never
+used by two caller threads. The stub starts no thread.
+
+### Owner side
+
+| Object | Owner | Crossing |
+|--------|-------|----------|
+| the handle (thread state, chain, `zstreambuf` or Rust zstream) | **Rust** from `new` to `close` | opaque `void*`; the facade closes it in `~Zthread` |
+| pipe read end | C++ after the call returns | descriptor, then `FILE*`, `fclose`d by `Grep::close_file`; if `fdopen` fails the facade `close`s it and Rust sees a broken pipe |
+| pipe write end | Rust | never crosses |
+| source `FILE*` (`file_in`) | C++ (opened by `open_file`) | borrowed until the next `start` or `close`; the legacy `zstreambuf` closes it at end of input |
+| `Grep::partname` | C++ | written through the callback; read by the Grep thread after data arrives on the pipe (ordering is the pipe) |
+| flags `flag_no_filename`, `flag_no_header` | Rust (`settings`) | Rust writes `flag_no_header = false` for archives, as the legacy thread did |
+| `findpart` | Rust (copy of `find`) | the C++ keeps `find` alive only for the call |
+
+### Error kinds per crossing
+
+| Crossing | Error kind |
+|----------|------------|
+| `start`, `open_next` | status `ZTHREAD_OK` (fd set), `ZTHREAD_NONE` (the legacy NULL; the warning "cannot create pipe/thread to decompress" was already given through `warning`, or there is no next file), `ZTHREAD_NOT_PORTED` (stub; the facade warns "decompression thread is not ported" and returns NULL) |
+| `cancel`, `close` | infallible, `close` accepts NULL and repeats |
+| thread creation failure | warning `cannot create thread to decompress` and `ZTHREAD_NONE`, as in C++ |
+| panic | never crosses: the entries catch it and return `ZTHREAD_NONE` (release builds are `panic = "abort"` anyway) |
+| a short `write` to a broken pipe | the legacy drain logic, no error value |
+
+### Unknown ownership
+
+- Does anything besides `fclose(input.file())` close the read end when `open_next` returns NULL after the pipe was
+  opened? (In the legacy `open_next` failure path both ends are closed inside; the Port must keep that.)
+- `file_in` when `start` returns NULL: `open_file` `fclose`s it; when the stream already took it the legacy
+  `zstreambuf` also may. Only the Port can tell which path double-closes; the stub does not touch it.
+
+### Retained
+
+`ZthreadCpp` stays the product code until the Port; `select_matching` is called through a never-started `ZthreadCpp`
+member of the rust facade (`selector`, `findpart` NULL) until the Port splits the findpart logic from the flags part.
+`src/zthread.hpp` (an older, ugrep-indexer copy of the same struct) is **kept**: no source includes it any more
+(`src/ugrep-indexer.cpp` is the Rust entry stub), so it is not compiled, but `msvc/ugrep-indexer.vcxproj:101` lists it as
+a `ClInclude` and `src/Makefile.am:67,95` distribute it. Removing it changes the project and the distribution lists,
+which is not a seam-preparation move; it goes with the Cleanup that deletes `ZthreadCpp`.
+
+### Tap
+
+`src/zthread_tap.hpp`, built with `/p:CppRustTap=true` (`CPP2RUST_TAP`, C++17): `TAP_CALL("src_core.zthread_start", ztstage,
+pathname, file_in, find)` + `TAP_RET(pipe)`, the same on `zthread_open_next` (pathname), `zthread_cancel`,
+`zthread_close`; a `FILE*` is recorded as a per-case object id (`"#n"`) or `null`, never an address. The Rust tap, the
+capture script and the replay harness belong to the Behavior task. Without the macro all of this compiles to nothing.
+
+### Build
+
+`/p:CPP_RUST_IMPL_ZTHREAD=cpp|rust` (default `cpp`) in `msvc/rust.props`; `rust` defines `CPP_RUST_IMPL_ZTHREAD_RUST` for
+every `ClCompile`, so the facade calls `ugrep_core_zthread_*` of the always-linked umbrella. The facade only exists when
+`HAVE_LIBZ` is defined (as before); the Base configurations may not define it.
+
+### Text for the migration records (to be appended by a task that may write `migration/`)
+
+`decisions.md`: `D-zthread-seam` | scope | the Zthread port is back in scope (D-S1-supersede); Prepare seam done; Rust Zthread lives
+in `rust/src_core` with a dependency on `rust/src_leaves` (acyclic); `src/zthread.hpp` kept, listed only (reason above) |
+`rust/src_core/SEAM.md`. `units/zthread.yaml`: `unit: zthread`, `component: src_core`, `functions: [src_core.zthread_start,
+src_core.zthread_open_next, src_core.zthread_cancel, src_core.zthread_close]`, `cpp_files: [src/ugrep.cpp, src/zthread.hpp]`,
+`rust_files: rust/src_core/src/zthread.rs rust/src_core/src/ffi/zthread.rs`, `depends_on: [zstream_core]`, `status: planned`.
 
 ## ugrep.cpp Grep part 1 retained (D-src_core-grep1-retained)
 

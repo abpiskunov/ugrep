@@ -46,6 +46,10 @@ pub mod output_buf;
 pub mod output_buf_ffi;
 #[path = "ffi/output_sync.rs"]
 pub mod output_sync_ffi;
+// the Zthread seam (decompression thread of src/ugrep.cpp): types and signatures in `zthread.rs` (declared from
+// `signatures.rs`), C-ABI entries of src/zthread_seam.h; stubs until the Port task
+#[path = "ffi/zthread.rs"]
+pub mod zthread_ffi;
 
 use signatures as sig;
 
