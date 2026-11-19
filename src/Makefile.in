@@ -114,10 +114,10 @@ CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
 am_ugrep_OBJECTS = ugrep-ugrep.$(OBJEXT) ugrep-cnf.$(OBJEXT) \
-	ugrep-glob_facade.$(OBJEXT) \
-	ugrep-query.$(OBJEXT) ugrep-screen.$(OBJEXT) \
-	ugrep-settings.$(OBJEXT) ugrep-stats.$(OBJEXT) \
-	ugrep-vkey.$(OBJEXT) ugrep-zopen_facade.$(OBJEXT)
+	ugrep-glob_facade.$(OBJEXT) ugrep-query.$(OBJEXT) \
+	ugrep-screen.$(OBJEXT) ugrep-settings.$(OBJEXT) \
+	ugrep-stats.$(OBJEXT) ugrep-vkey.$(OBJEXT) \
+	ugrep-zopen_facade.$(OBJEXT)
 ugrep_OBJECTS = $(am_ugrep_OBJECTS)
 am__DEPENDENCIES_1 =
 am__dirstamp = $(am__leading_dot)dirstamp
@@ -145,10 +145,10 @@ am__maybe_remake_depfiles = depfiles
 am__depfiles_remade =  \
 	$(top_builddir)/lib/$(DEPDIR)/ugrep_indexer-input.Po \
 	./$(DEPDIR)/ugrep-cnf.Po ./$(DEPDIR)/ugrep-glob_facade.Po \
-	./$(DEPDIR)/ugrep-query.Po \
-	./$(DEPDIR)/ugrep-screen.Po ./$(DEPDIR)/ugrep-settings.Po \
-	./$(DEPDIR)/ugrep-stats.Po ./$(DEPDIR)/ugrep-ugrep.Po \
-	./$(DEPDIR)/ugrep-vkey.Po ./$(DEPDIR)/ugrep-zopen_facade.Po \
+	./$(DEPDIR)/ugrep-query.Po ./$(DEPDIR)/ugrep-screen.Po \
+	./$(DEPDIR)/ugrep-settings.Po ./$(DEPDIR)/ugrep-stats.Po \
+	./$(DEPDIR)/ugrep-ugrep.Po ./$(DEPDIR)/ugrep-vkey.Po \
+	./$(DEPDIR)/ugrep-zopen_facade.Po \
 	./$(DEPDIR)/ugrep_indexer-glob_facade.Po \
 	./$(DEPDIR)/ugrep_indexer-ugrep-indexer.Po \
 	./$(DEPDIR)/ugrep_indexer-zopen_facade.Po
