@@ -34,7 +34,7 @@ pub mod terminal;
 #[path = "ffi/terminal.rs"]
 pub mod terminal_ffi;
 
-// `Output` (src/output.cpp): types-and-signatures of the output seam; stubs until the Port tasks
+// `Output` (src/output.hpp, src/output_rust.hpp): types-and-signatures of the output seam; stubs until the Port tasks
 pub mod output;
 pub mod output_format;
 #[path = "ffi/output.rs"]

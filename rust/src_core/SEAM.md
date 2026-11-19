@@ -212,10 +212,10 @@ The ugrep.cpp ~4670-4765 (main/wmain) and ~5282-6354 (options, option_regexp/and
 
 ## Seam: output (src/output.cpp, src/output.hpp) - Prepare seam
 
-Switch: removed by the output-core and output-format Ports. Every ported member (colour, `Dump::line`, both `header`, `binary_file_matches`, `flush_truncated_lines`, `Sync`, `format` x2, `format_invert`, `quote`, `cpp`, `csv`, `hex`, `json`, `xml`) calls Rust unconditionally; all `*_cpp` bodies, the inline matcher overloads (`mat`, `quote(matcher)`, ...), `capture` and the C++ `Sync` are deleted; `CPP_RUST_IMPL_OUTPUT` no longer exists. `Output::Sync::Lock` holds its own reference to the reference-counted Rust sync object, and `Sync::acquire/try_acquire/release/finish` use that retained `lock->handle`, never `this->handle`, so an `~Output` flush after the `Sync` is destroyed never reads a destroyed object. Only `src/ugrep.cpp` includes `output.hpp`; **no call site changed**, the public
+Switch: removed by the output-core and output-format Ports. Every ported member (colour, `Dump::line`, both `header`, `binary_file_matches`, `flush_truncated_lines`, `Sync`, `format` x2, `format_invert`, `quote`, `cpp`, `csv`, `hex`, `json`, `xml`) calls Rust unconditionally; all `*_cpp` bodies, the inline matcher overloads (`mat`, `quote(matcher)`, ...), `capture` and the C++ `Sync` are deleted; `CPP_RUST_IMPL_OUTPUT` no longer exists. `Sync::Lock` and `lock->handle` are gone: each `OutputBuf` holds its own reference to the reference-counted Rust sync object, so an `~Output` flush after the `Sync` is destroyed never reads a destroyed object. Only `src/ugrep.cpp` includes `output.hpp`; **no call site changed**, the public
 `Output` API is the facade.
 
-Facade (members of `Output`, in `src/output.cpp`, end of file): `color`, `header` x2, `binary_file_matches`, `format` x2,
+Facade (members of `Output`, inline in `src/output_rust.hpp`; `src/output.cpp` is deleted): `color`, `header` x2, `binary_file_matches`, `format` x2,
 `format_invert`, `quote`, `cpp`, `csv`, `hex`, `json`, `xml`, `Dump::line`. Rust bridge: `output_*` in `rust/src_core/src/lib.rs`, bodies in
 `rust/src_core/src/output.rs` and `output_format.rs`. C++ conversions: `src/output_rust.hpp`.
 

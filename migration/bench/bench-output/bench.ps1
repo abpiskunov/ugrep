@@ -18,7 +18,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $Baseline = (Resolve-Path $Baseline).Path
 $Candidate = (Resolve-Path $Candidate).Path
-$dir = Join-Path ([IO.Path]::GetTempPath()) ("ugrep-bench-" + [guid]::NewGuid().ToString('N'))
+$dirName = 'ugrep-bench-' + [guid]::NewGuid().ToString('N')
+$dir = Join-Path ([IO.Path]::GetTempPath()) $dirName
 New-Item -ItemType Directory $dir | Out-Null
 
 try {
@@ -35,26 +36,41 @@ try {
     [IO.File]::WriteAllText((Join-Path $dir "f$f.txt"), $sb.ToString())
   }
 
-  $cases = @(
+  $base = @(
     @{ name = 'plain';             args = "needle `"$dir`" -r" },
     @{ name = '-o';                args = "-o `"needle \w+`" `"$dir`" -r" },
     @{ name = '-c';                args = "-c needle `"$dir`" -r" },
     @{ name = '-n --color=always'; args = "-n --color=always needle `"$dir`" -r" },
-    @{ name = '--json';            args = "--json needle `"$dir`" -r" },
-    @{ name = '-J1';               args = "-J1 needle `"$dir`" -r" },
-    @{ name = 'default threads';   args = "-n -i `"alpha.*needle`" `"$dir`" -r" }
+    @{ name = '--json';            args = "--json needle `"$dir`" -r" }
   )
+  # every case with one worker (-J1) and with the default thread count
+  $cases = foreach ($t in @('-J1', 'default threads')) {
+    foreach ($b in $base) {
+      $pre = if ($t -eq '-J1') { '-J1 ' } else { '' }
+      @{ name = "$($b.name) [$t]"; args = $pre + $b.args }
+    }
+  }
 
   function Time-One([string]$exe, [string]$a) {
     $sw = [Diagnostics.Stopwatch]::StartNew()
     cmd /c "`"$exe`" $a > NUL 2>&1"
     $sw.Stop()
+    if ($LASTEXITCODE -ne 0) { throw "exit code ${LASTEXITCODE}: $exe $a" }
     $sw.Elapsed.TotalMilliseconds
+  }
+  # Output hash with a stable file order (--sort=name), so default threads are comparable
+  function Hash-One([string]$exe, [string]$a) {
+    $out = Join-Path ([IO.Path]::GetTempPath()) ($dirName + '-out.bin')
+    cmd /c "`"$exe`" --sort=name $a > `"$out`" 2>&1"
+    if ($LASTEXITCODE -ne 0) { throw "exit code ${LASTEXITCODE}: $exe $a" }
+    (Get-FileHash -Algorithm SHA256 $out).Hash
   }
   function Median($v) { $s = $v | Sort-Object; $s[[int][math]::Floor($s.Count / 2)] }
 
   $failed = $false
   $rows = foreach ($c in $cases) {
+    $hb = Hash-One $Baseline $c.args; $hr = Hash-One $Candidate $c.args
+    if ($hb -ne $hr) { throw "output differs between baseline and candidate for case '$($c.name)'" }
     [void](Time-One $Baseline $c.args); [void](Time-One $Candidate $c.args)
     $b = @(); $r = @()
     for ($i = 0; $i -lt $Runs; $i++) {
@@ -70,5 +86,5 @@ try {
   if ($failed) { "RESULT: FAIL (a ratio exceeds $Limit)"; exit 1 } else { "RESULT: PASS (all ratios <= $Limit)" }
 }
 finally {
-  Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+  Remove-Item -Recurse -Force $dir, (Join-Path ([IO.Path]::GetTempPath()) ($dirName + '-out.bin')) -ErrorAction SilentlyContinue
 }

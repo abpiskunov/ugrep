@@ -3,7 +3,7 @@ unit: output-buffer
 component: src_core
 functions: [src_core.ugrep_output_new, src_core.ugrep_output_free, src_core.ugrep_output_flush, src_core.ugrep_output_next, src_core.ugrep_output_try_flush, src_core.ugrep_output_begin, src_core.ugrep_output_acquire, src_core.ugrep_output_release, src_core.ugrep_output_end, src_core.ugrep_output_cancel, src_core.ugrep_output_dump_hex, src_core.ugrep_output_tree_reset, src_core.output_header_tree]
 cpp_files: [src/output.hpp, src/output_rust.hpp, src/ugrep.cpp]
-rust_files: rust/src_core/src/output_buf.rs rust/src_core/src/ffi/output_buf.rs rust/src_core/src/output.rs rust/src_core/src/lib.rs
+rust_files: rust/src_core/src/ffi/output_buf_core.rs rust/src_core/src/ffi/output_buf.rs rust/src_core/src/output.rs rust/src_core/src/lib.rs
 rust_crate_name: src_core
 harness_crate_name: src_core-harness
 depends_on: [output-core, output-format]

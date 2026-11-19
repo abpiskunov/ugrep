@@ -1,8 +1,8 @@
-//! Types-and-signatures module for the `output` seam (src/output.cpp, src/output.hpp). See rust/src_core/SEAM.md,
+//! Types-and-signatures module for the `output` seam (src/output.hpp, src/output_rust.hpp). See rust/src_core/SEAM.md,
 //! section Seam: output.
 //!
 //! The shared structs are declared in the cxx bridge (`lib.rs`, module `ffi`) and are the types of these signatures.
-//! The C++ facade (src/output.cpp) calls them; Rust is the only implementation.
+//! The C++ facade (src/output_rust.hpp) calls them; Rust is the only implementation.
 //!
 //! Shape of the seam: every function is a pure function of its inputs (except `--tree` headers, which stay in C++
 //! because they take the Sync lock and update the process-wide `Output::Tree` state). C++ keeps the `Output` object (buffer,
