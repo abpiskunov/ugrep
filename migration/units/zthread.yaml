@@ -3,7 +3,7 @@ unit: zthread
 component: src_core
 functions: [src_core.zthread_start, src_core.zthread_open_next, src_core.zthread_cancel, src_core.zthread_close]
 cpp_files: [src/ugrep.cpp, src/zthread.hpp]
-rust_files: [rust/src_core/src/zthread.rs, rust/src_core/src/ffi/zthread.rs]
+rust_files: rust/src_core/src/zthread.rs rust/src_core/src/ffi/zthread.rs
 rust_crate_name: src_core
 harness_crate_name: src_core-harness
 depends_on: [zstream_core]

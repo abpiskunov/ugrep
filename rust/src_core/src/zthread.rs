@@ -39,10 +39,12 @@ pub trait Host: Send + Sync {
 
 /// The decompression thread state of one `Grep` (and, inside Rust, of each stage of a `--zmax>1` chain).
 ///
-/// Thread contract: `cancel` may run on any thread at the same time as `start`/`open_next`/`close` of the search
+/// Thread contract: `cancel` may run on any thread at the same time as `start`/`open_next` of the search
 /// thread (the query UI thread cancels while the search is inside `search`/`open_file`/`close_file`), so every method
 /// but `close` takes `&self` and the shared state is atomic or behind a `Mutex`. The Port keeps all mutable state of
 /// a stage in a `Mutex` (with `Condvar`s) and never forms a `&mut` to a live `Zthread`.
+/// `cancel` never overlaps `close`: `close` runs from `~Grep` after the grep handle is cleared, so no canceller can
+/// reach the handle any more.
 pub struct Zthread {
     pub host: Arc<dyn Host>,
     pub is_chained: bool,

@@ -241,7 +241,7 @@ that stays inside one side, the facade is not re-entered.
 
 ### Thread affinity
 
-`start`, `open_next`, `cancel` and `close` are called by the thread that owns the `Grep` (a `GrepWorker` thread, or the main
+`start`, `open_next` and `close` are called by the thread that owns the `Grep` (a `GrepWorker` thread, or the main
 thread for stdin). The decompression thread (one per stage) is created by `start` and joined by `close`; it calls
 `set_partname`, `warning` (`errno` is the thread's own: Rust must set `errno` before the callback as the C++ pipe code
 left it) and `select_by_flags`. The stub starts no thread.

@@ -11,7 +11,7 @@
 //
 // Threads: start, open_next and close are called by the one thread that owns the Grep object (the search thread).
 // cancel may be called from ANY thread at the same time, e.g. the query UI thread (Static::cancel_ugrep ->
-// Grep::cancel -> Zthread::cancel) while the search thread is inside start/open_next/close; grep_handle_mutex does not
+// Grep::cancel -> Zthread::cancel) while the search thread is inside start/open_next (never close: it runs from ~Grep after the grep handle is cleared); grep_handle_mutex does not
 // serialize it. Rust therefore forms only a shared reference to the handle in start/open_next/cancel and keeps its
 // state in atomics and Mutexes; the owner must not call close() while another thread can still call cancel(), as with
 // the legacy ZthreadCpp. The env
