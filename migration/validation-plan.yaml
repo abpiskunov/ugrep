@@ -100,7 +100,6 @@ components:
     cleaned: true   # D-behavior-cleaned: no C++ seam or coverage left after Cleanup; catalog changes use the *-cleaned behavior gates
     level: 3
     cpp_sources: "src/ugrep-indexer.cpp"
-    cpp_headers: "src/zthread.hpp"
     rust_crate: rust/src_indexer
     harness_crate: rust/src_indexer-harness
     build_config: Base-Release   # D-src_core-codec: the msvc configuration the gates build and judge
