@@ -1,4 +1,4 @@
-"""Generates migration/corpus/zthread/cases.jsonl: surface cases of the decompression thread of ugrep.cpp
+"""Appends the zt-* cases to migration/corpus/src_core/cases.jsonl (replacing earlier zt-* lines): surface cases of the decompression thread of ugrep.cpp
 (struct Zthread: -z, --zmax, zip/tar parts, cancellation, corrupt input). Inputs only; the expected
 observations are recorded by `cpp2rust-tools run-cases` against the codec-enabled C++ reference
 msvc/bin/CodecRef-x64/ugrep.exe (migration/harness/zstream/build-codec-ref.ps1).
@@ -16,7 +16,8 @@ import tarfile
 import zipfile
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-OUT = os.path.join(ROOT, "migration", "corpus", "zthread", "cases.jsonl")
+OUT = os.path.join(ROOT, "migration", "corpus", "src_core", "cases.jsonl")
+PREFIX = "zt-"
 
 T1 = b"alpha foo one\nbeta two\nfoo gamma foo\ndelta\nlast foo line\n"
 T2 = b"second foo member\nnothing here\n"
@@ -68,7 +69,7 @@ cases = []
 
 
 def case(cid, args, files=None, stdin=None):
-    c = {"id": cid, "args": ["-J1", "--sort=name"] + args}
+    c = {"id": PREFIX + cid, "args": ["-J1", "--sort=name"] + args}
     if files:
         c["files"] = {k: {"hex": v.hex()} for k, v in files.items()}
     if stdin is not None:
@@ -381,8 +382,13 @@ case("tzst", ["-z", "--with-filename", "foo", "a.tzst"], {"a.tzst": bytes.fromhe
 case("tzst-zmax2", ["-z", "--zmax=2", "--with-filename", "foo", "a.tzst"], {"a.tzst": bytes.fromhex("28b52ffd0458b50300c2441016a0a53a00dfae12bb9b35fadf97b2b689e4b75fbd2903bbca055b22b942d668681889ad77958f0d3d07b8f1a43cefebd19b7388490bf9ff6855fd8f2ff0825c011100fe7315901720ab6807d41b1820538802d420000a1c4819404090805148873539f80dd2800027c64cb382165c472760047d6526c4")})
 case("tlzma", ["-z", "--with-filename", "foo", "a.tlzma"], {"a.tlzma": bytes.fromhex("5d00008000ffffffffffffffff00368c41c78430166b02f614d36835dcbd863e5c9cbed0efe4dd06b2b39df7500784f7d65b004a25ae097e3c48abedec5ffa5c49132b2da6aee3db998add0e5516d091cb76b2a9f19cd20f9e0a64f9205eee87fa0c0f5e07325737600c24f6dc4ab906898219b85c8e21d32685c9cb40ad67fce59c82")})
 
-os.makedirs(os.path.dirname(OUT), exist_ok=True)
+keep = []
+if os.path.exists(OUT):
+    with open(OUT, newline="") as f:
+        keep = [l for l in f.read().split("\n") if l and not l.startswith('{"id":"%s' % PREFIX)]
 with open(OUT, "w", newline="\n") as f:
+    for l in keep:
+        f.write(l + "\n")
     for c in cases:
         f.write(json.dumps(c, separators=(",", ":")) + "\n")
 print(len(cases), "cases ->", OUT)

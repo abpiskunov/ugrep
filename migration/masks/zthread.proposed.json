@@ -1,6 +1,0 @@
-{
-  "schema": "cpp2rust-masks/1",
-  "masks": [],
-  "rewrites": [],
-  "note": "zthread Behavior: no noise found. 177 cases x 5 runs of the C++ reference gave 0 flaky cases and C++ against itself gave 0 divergent cases (migration/out/zthread/noise.json). Warning lines end in CRLF on Windows (not noise: same on every run). Compared with the existing src_core masks (version SIMD level, thread count, host name), none applies to these cases."
-}
