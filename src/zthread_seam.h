@@ -9,7 +9,12 @@
 // (as with the legacy zstreambuf). The pipe read end returned by start/open_next is a file descriptor owned by
 // the C++ caller from then on (the facade fdopen()s it, Grep fclose()s it); the write end stays with Rust.
 //
-// Threads: start, open_next, cancel and close are called by the one thread that owns the Grep object. The env
+// Threads: start, open_next and close are called by the one thread that owns the Grep object (the search thread).
+// cancel may be called from ANY thread at the same time, e.g. the query UI thread (Static::cancel_ugrep ->
+// Grep::cancel -> Zthread::cancel) while the search thread is inside start/open_next/close; grep_handle_mutex does not
+// serialize it. Rust therefore forms only a shared reference to the handle in start/open_next/cancel and keeps its
+// state in atomics and Mutexes; the owner must not call close() while another thread can still call cancel(), as with
+// the legacy ZthreadCpp. The env
 // callbacks are called by the decompression threads that Rust creates (set_partname, warning, select_by_flags),
 // and by the caller thread (warning). Chained (--zmax>1) stages are internal to Rust.
 #ifndef ZTHREAD_SEAM_H

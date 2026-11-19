@@ -105,7 +105,9 @@ pub unsafe extern "C" fn ugrep_core_zthread_new(env: *const ZthreadEnv, is_chain
 /// `ZthreadCpp::start`.
 ///
 /// # Safety
-/// `handle` comes from [`ugrep_core_zthread_new`] and is used by one thread at a time; `pathname` is
+/// `handle` comes from [`ugrep_core_zthread_new`] and is not closed; start/open_next are called by the one search
+/// thread, and [`ugrep_core_zthread_cancel`] may run on any thread at the same time, so only a shared `&Zthread`
+/// is formed here; `pathname` is
 /// NUL-terminated, `find` is NULL or NUL-terminated, `file_in` is a `FILE*` that stays open until the next call
 /// of this function or [`ugrep_core_zthread_close`]; `fd` is valid for a write.
 #[export_name = "ugrep_core_zthread_start"]
@@ -119,7 +121,7 @@ pub unsafe extern "C" fn ugrep_core_zthread_start(
 ) -> c_int {
     guarded(|| {
         // SAFETY: see above.
-        let (zthread, pathname, find) = unsafe { (&mut *handle.cast::<Zthread>(), bytes(pathname).unwrap_or(b""), bytes(find)) };
+        let (zthread, pathname, find) = unsafe { (&*handle.cast::<Zthread>(), bytes(pathname).unwrap_or(b""), bytes(find)) };
         let outcome = zthread.start(ztstage, pathname, file_in, find);
         // SAFETY: see above.
         unsafe { report(outcome, fd) }
@@ -134,7 +136,7 @@ pub unsafe extern "C" fn ugrep_core_zthread_start(
 pub unsafe extern "C" fn ugrep_core_zthread_open_next(handle: *mut c_void, pathname: *const c_char, fd: *mut c_int) -> c_int {
     guarded(|| {
         // SAFETY: see above.
-        let (zthread, pathname) = unsafe { (&mut *handle.cast::<Zthread>(), bytes(pathname).unwrap_or(b"")) };
+        let (zthread, pathname) = unsafe { (&*handle.cast::<Zthread>(), bytes(pathname).unwrap_or(b"")) };
         let outcome = zthread.open_next(pathname);
         // SAFETY: see above.
         unsafe { report(outcome, fd) }
@@ -144,11 +146,12 @@ pub unsafe extern "C" fn ugrep_core_zthread_open_next(handle: *mut c_void, pathn
 /// `ZthreadCpp::cancel`.
 ///
 /// # Safety
-/// `handle` comes from [`ugrep_core_zthread_new`] and is not closed.
+/// `handle` comes from [`ugrep_core_zthread_new`] and is not closed during the call; may run on any thread, also
+/// while another thread is inside start/open_next.
 #[export_name = "ugrep_core_zthread_cancel"]
 pub unsafe extern "C" fn ugrep_core_zthread_cancel(handle: *mut c_void) {
     guarded(|| {
-        // SAFETY: see above; `cancel` takes `&self` because the flag it sets is read by the decompression threads.
+        // SAFETY: see above; a shared reference only, `cancel` sets an atomic flag read by the decompression threads.
         unsafe { &*handle.cast::<Zthread>() }.cancel();
         0
     });

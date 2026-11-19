@@ -6,6 +6,7 @@
 //! The notes (encoding, re-entrancy, thread affinity, owner side, error kinds) are in `SEAM.md`, "Zthread seam".
 
 use std::ffi::c_void;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 /// A C `FILE*`, borrowed from the caller. Opaque here; `ffi/zthread.rs` and `ffi/cfile`-style wrappers read it.
@@ -37,31 +38,44 @@ pub trait Host: Send + Sync {
 }
 
 /// The decompression thread state of one `Grep` (and, inside Rust, of each stage of a `--zmax>1` chain).
+///
+/// Thread contract: `cancel` may run on any thread at the same time as `start`/`open_next`/`close` of the search
+/// thread (the query UI thread cancels while the search is inside `search`/`open_file`/`close_file`), so every method
+/// but `close` takes `&self` and the shared state is atomic or behind a `Mutex`. The Port keeps all mutable state of
+/// a stage in a `Mutex` (with `Condvar`s) and never forms a `&mut` to a live `Zthread`.
 pub struct Zthread {
     pub host: Arc<dyn Host>,
     pub is_chained: bool,
+    cancelled: AtomicBool,
 }
 
 impl Zthread {
     /// `ZthreadCpp::ZthreadCpp(is_chained, partname)`; the partname lives behind [`Host::set_partname`].
     pub fn new(host: Arc<dyn Host>, is_chained: bool) -> Zthread {
-        Zthread { host, is_chained }
+        Zthread { host, is_chained, cancelled: AtomicBool::new(false) }
     }
 
     /// `ZthreadCpp::start`: start the decompression thread if it is not running and open a new pipe.
     /// `ztstage` is `flag_zmax`; `find` selects a part of a (nested) archive. `file_in` is borrowed until the next
     /// `start` or `close`.
-    pub fn start(&mut self, _ztstage: usize, _pathname: &[u8], _file_in: FilePtr, _find: Option<&[u8]>) -> Outcome {
+    pub fn start(&self, _ztstage: usize, _pathname: &[u8], _file_in: FilePtr, _find: Option<&[u8]>) -> Outcome {
         Outcome::NotPorted
     }
 
     /// `ZthreadCpp::open_next`: open the pipe to the next file or part of the archive.
-    pub fn open_next(&mut self, _pathname: &[u8]) -> Outcome {
+    pub fn open_next(&self, _pathname: &[u8]) -> Outcome {
         Outcome::NotPorted
     }
 
     /// `ZthreadCpp::cancel`: stop decompressing gracefully, recursively down the chain.
-    pub fn cancel(&self) {}
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+    }
+
+    /// Whether `cancel` was called.
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::SeqCst)
+    }
 
     /// `ZthreadCpp::join` and the destructor: join all stages and release the stream. Safe to call again.
     pub fn close(&mut self) {}
@@ -86,7 +100,9 @@ mod tests {
         let mut z = Zthread::new(Arc::new(NoHost), false);
         assert_eq!(z.start(1, b"a.gz", std::ptr::null_mut(), None), Outcome::NotPorted);
         assert_eq!(z.open_next(b"a.gz"), Outcome::NotPorted);
+        assert!(!z.is_cancelled());
         z.cancel();
+        assert!(z.is_cancelled());
         z.close();
         z.close();
         assert!(!z.is_chained);

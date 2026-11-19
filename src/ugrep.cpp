@@ -84,10 +84,10 @@ After this, you may want to test ugrep and install it (optional):
 
 // set_color() and trim() are implemented in Rust (rust/src_core), see rust/src_core/SEAM.md
 #include "core_rust.hpp"
-#include "zthread_tap.hpp"
 #ifdef CPP_RUST_IMPL_ZTHREAD_RUST
 # include "zthread_seam.h"
-#endif#include <reflex/matcher.h>
+#endif
+#include <reflex/matcher.h>
 #include <reflex/linematcher.h>
 #include <reflex/fuzzymatcher.h>
 #include <reflex/unicode.h>
@@ -1771,54 +1771,46 @@ struct Zthread {
   // start decompression thread if not running, open new pipe, returns pipe or NULL on failure
   FILE *start(size_t ztstage, const char *pathname, FILE *file_in, const char *find = NULL)
   {
-    TAP_CALL("src_core.zthread_start", ztstage, pathname, zthread_tap::file(file_in), find);
 #ifdef CPP_RUST_IMPL_ZTHREAD_RUST
     int fd = -1;
     FILE *pipe_in = pipe_stream(ugrep_core_zthread_start(handle, ztstage, pathname, file_in, find, &fd), fd, pathname);
 #else
     FILE *pipe_in = impl.start(ztstage, pathname, file_in, find);
 #endif
-    TAP_RET(zthread_tap::file(pipe_in));
     return pipe_in;
   }
 
   // open pipe to the next file or part in the archive or return NULL
   FILE *open_next(const char *pathname)
   {
-    TAP_CALL("src_core.zthread_open_next", pathname);
 #ifdef CPP_RUST_IMPL_ZTHREAD_RUST
     int fd = -1;
     FILE *pipe_in = pipe_stream(ugrep_core_zthread_open_next(handle, pathname, &fd), fd, pathname);
 #else
     FILE *pipe_in = impl.open_next(pathname);
 #endif
-    TAP_RET(zthread_tap::file(pipe_in));
     return pipe_in;
   }
 
   // cancel decompression gracefully
   void cancel()
   {
-    TAP_CALL("src_core.zthread_cancel");
 #ifdef CPP_RUST_IMPL_ZTHREAD_RUST
     ugrep_core_zthread_cancel(handle);
 #else
     impl.cancel();
 #endif
-    TAP_RET(true);
   }
 
   // join the decompression threads and release their resources, safe to call again (the destructor calls it)
   void close()
   {
-    TAP_CALL("src_core.zthread_close");
 #ifdef CPP_RUST_IMPL_ZTHREAD_RUST
     ugrep_core_zthread_close(handle);
     handle = NULL;
 #else
     impl.join();
 #endif
-    TAP_RET(true);
   }
 
 private:

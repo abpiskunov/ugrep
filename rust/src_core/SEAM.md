@@ -211,9 +211,9 @@ are one thread state machine; there is no seam inside it), `Grep::partname` (rea
    then the member destructor runs `join()` again, a no-op (`thread` not joinable, `zstream` NULL).
 3. C ABI `src/zthread_seam.h` and Rust `src/ffi/zthread.rs`; types-and-signatures `src/zthread.rs`
    (declared from `signatures.rs`, so the replay harness sees it); `msvc/rust.props` and `rust.targets`
-   (`CPP_RUST_IMPL_ZTHREAD`, `/p:CppRustTap=true`).
-4. Tap: `src/zthread_tap.hpp` (`TAP_CALL`/`TAP_RET` on the four facade functions, `src_core.zthread_*`, the `FILE*`
-   encoder).
+   (`CPP_RUST_IMPL_ZTHREAD`).
+4. No tap: `src_core` is `cleaned: true` and its cleanup gate runs `policy-scan --no-tap rust/src_core/src src`, so no
+   `CPP2RUST_TAP` / `TAP_*` code lives in the product tree.
 
 ### Where the Rust Zthread lives
 
@@ -244,8 +244,19 @@ that stays inside one side, the facade is not re-entered.
 `start`, `open_next`, `cancel` and `close` are called by the thread that owns the `Grep` (a `GrepWorker` thread, or the main
 thread for stdin). The decompression thread (one per stage) is created by `start` and joined by `close`; it calls
 `set_partname`, `warning` (`errno` is the thread's own: Rust must set `errno` before the callback as the C++ pipe code
-left it) and `select_by_flags`. `cancel` may be called while the thread runs (`stop` is an atomic). The handle is never
-used by two caller threads. The stub starts no thread.
+left it) and `select_by_flags`. The stub starts no thread.
+
+**`cancel` may come from any thread, at the same time as `start`/`open_next`/`close_file` work of the search thread.**
+The query UI thread calls it (`query.cpp:900,1487,1806,1831,1855,1863` -> `Static::cancel_ugrep()` -> `Grep::cancel()` ->
+`zthread.cancel()`) while the search thread is inside `search`/`open_file`/`close_file`; `grep_handle_mutex` does not
+serialize this. Consequences for Rust: the FFI forms only `&Zthread` (never `&mut`) in `start`, `open_next` and `cancel`;
+`Zthread` methods other than `close` take `&self`; the cancel flag is an `AtomicBool` and all other mutable state of a
+stage goes behind a `Mutex` (with `Condvar`s). `close` takes the handle by value and runs on the owner thread after the
+search ended, as with the legacy destructor; `Zthread` is `Send + Sync` because of this, documented in the Port.
+
+**Port requirements on the switch:** the gate judges the default build, so the Port (or Switch over) must delete
+`ZthreadCpp`, its facade branch and the `CPP_RUST_IMPL_ZTHREAD` switch (`rust.props`, `rust.targets`,
+`CPP_RUST_IMPL_ZTHREAD_RUST` in `ugrep.cpp`); flipping the default is not enough (the lesson of the Output ports, #90).
 
 ### Owner side
 
@@ -287,10 +298,9 @@ which is not a seam-preparation move; it goes with the Cleanup that deletes `Zth
 
 ### Tap
 
-`src/zthread_tap.hpp`, built with `/p:CppRustTap=true` (`CPP2RUST_TAP`, C++17): `TAP_CALL("src_core.zthread_start", ztstage,
-pathname, file_in, find)` + `TAP_RET(pipe)`, the same on `zthread_open_next` (pathname), `zthread_cancel`,
-`zthread_close`; a `FILE*` is recorded as a per-case object id (`"#n"`) or `null`, never an address. The Rust tap, the
-capture script and the replay harness belong to the Behavior task. Without the macro all of this compiles to nothing.
+None in the product tree (`src_core` is cleaned; `policy-scan --no-tap` would fail on it). New behavior is recorded from a
+reference build outside the product, like `migration/harness/zstream/build-codec-ref.ps1`, and the Port is judged with
+surface cases (`unit-cleaned`).
 
 ### Build
 
