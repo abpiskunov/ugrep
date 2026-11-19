@@ -90,8 +90,11 @@ case("gz-count", ["-zc", "foo", "a.gz"], {"a.gz": gz(T1)})
 case("gz-fname-n", ["-zn", "--with-filename", "foo", "a.gz"], {"a.gz": gz(T1)})
 case("gz-nomatch", ["-z", "zzz", "a.gz"], {"a.gz": gz(T1)})
 case("bz2", ["-z", "foo", "a.bz2"], {"a.bz2": bz2.compress(T1)})
+case("bz2-no-z", ["foo", "a.bz2"], {"a.bz2": bz2.compress(T1)})
 case("xz", ["-z", "foo", "a.xz"], {"a.xz": lzma.compress(T1)})
+case("xz-no-z", ["foo", "a.xz"], {"a.xz": lzma.compress(T1)})
 case("lzma-alone", ["-z", "foo", "a.lzma"], {"a.lzma": lzma.compress(T1, format=lzma.FORMAT_ALONE)})
+case("lzma-alone-no-z", ["foo", "a.lzma"], {"a.lzma": lzma.compress(T1, format=lzma.FORMAT_ALONE)})
 case("gz-big", ["-zc", "foo", "big.gz"], {"big.gz": gz(BIG)})
 case("bz2-big", ["-zc", "foo", "big.bz2"], {"big.bz2": bz2.compress(BIG)})
 case("xz-big", ["-zc", "foo", "big.xz"], {"big.xz": lzma.compress(BIG)})
@@ -122,7 +125,7 @@ case("zip-exclude", ["-z", "--exclude=y*", "--with-filename", "foo", "a.zip"], {
 case("zip-hidden", ["-z", "--with-filename", "foo", "a.zip"], {"a.zip": zipf([(".hid.txt", T1), ("v.txt", T2)])})
 case("zip-no-hidden", ["-z", "--no-hidden", "--with-filename", "foo", "a.zip"],
      {"a.zip": zipf([(".hid.txt", T1), ("v.txt", T2)])})
-case("zip-no-filename", ["-z", "-H", "foo", "a.zip"], {"a.zip": zipf(MEM)})
+case("zip-H", ["-z", "-H", "foo", "a.zip"], {"a.zip": zipf(MEM)})
 case("zip-no-header", ["-z", "--no-filename", "-c", "foo", "a.zip"], {"a.zip": zipf(MEM)})
 case("zip-big-member", ["-zc", "--with-filename", "foo", "a.zip"], {"a.zip": zipf([("big.txt", BIG), ("s.txt", T1)])})
 case("zip-many-members", ["-zc", "--with-filename", "foo", "a.zip"],
@@ -184,8 +187,11 @@ case("zmax2-multi", ["-z", "--zmax=2", "-c", "--with-filename", "foo", "a.zip", 
 case("zmax0", ["-z", "--zmax=0", "foo", "a.gz"], {"a.gz": gz(T1)})
 case("zmax-invalid", ["-z", "--zmax=x", "foo", "a.gz"], {"a.gz": gz(T1)})
 case("zmax-large", ["-z", "--zmax=99", "foo", "a.gz"], {"a.gz": gz(gz(T1))})
-case("zmax-option-short", ["-z1", "foo", "a.gz"], {"a.gz": gz(T1)})
-case("zmax-option-short2", ["-z2", "foo", "a.gz"], {"a.gz": gz(gz(T1))})
+# -N is --depth=N (directory recursion depth, implies -r), not --zmax
+case("depth-z1-dir", ["-z1", "foo", "."], {"a.gz": gz(T1), "d/b.gz": gz(T2)})
+case("depth-z2-dir", ["-z2", "foo", "."], {"a.gz": gz(T1), "d/b.gz": gz(T2)})
+case("depth-option-single-gz", ["-z1", "foo", "a.gz"], {"a.gz": gz(T1)})
+case("depth-option-double-gz", ["-z2", "foo", "a.gz"], {"a.gz": gz(gz(T1))})
 
 # cancellation during extraction: -m, -l, -q with early exit and the pipe closed by the reader
 case("cancel-m1-gz-big", ["-z", "-m1", "foo", "big.gz"], {"big.gz": gz(BIG)})
@@ -226,6 +232,7 @@ case("cancel-late-match-l", ["-zl", "-e", "zzz", "-e", "final line marker", "big
 
 # corrupt, truncated and unreadable inputs: warnings
 GZ1 = gz(T1)
+BADGZ = GZ1[:-8] + b"\x00\x00\x00\x00" + GZ1[-4:]  # gzip magic, bad CRC
 case("corrupt-gz-garbage", ["-z", "foo", "a.gz"], {"a.gz": b"this is not gzip data\nfoo\n"})
 case("corrupt-gz-truncated", ["-z", "foo", "a.gz"], {"a.gz": GZ1[: len(GZ1) // 2]})
 case("corrupt-gz-bad-crc", ["-z", "foo", "a.gz"], {"a.gz": GZ1[:-8] + b"\x00\x00\x00\x00" + GZ1[-4:]})
@@ -254,9 +261,9 @@ case("corrupt-zmax2-zip-inner-gz", ["-z", "--zmax=2", "--with-filename", "foo", 
 case("corrupt-zmax2-tar-inner-gz", ["-z", "--zmax=2", "--with-filename", "foo", "a.tar"],
      {"a.tar": tar([("in.gz", GZ1[:20]), ("p.txt", T2)])})
 case("corrupt-multi-files-one-bad", ["-z", "--with-filename", "foo", "a.gz", "bad.gz", "c.gz"],
-     {"a.gz": gz(T1), "bad.gz": b"garbage garbage", "c.gz": gz(T2)})
-case("corrupt-q-bad", ["-zq", "foo", "bad.gz", "a.gz"], {"bad.gz": b"garbage", "a.gz": gz(T1)})
-case("corrupt-no-messages", ["-z", "-s", "foo", "bad.gz", "a.gz"], {"bad.gz": b"garbage", "a.gz": gz(T1)})
+     {"a.gz": gz(T1), "bad.gz": BADGZ, "c.gz": gz(T2)})
+case("corrupt-q-bad", ["-zq", "foo", "bad.gz", "a.gz"], {"bad.gz": BADGZ, "a.gz": gz(T1)})
+case("corrupt-no-messages", ["-z", "-s", "foo", "bad.gz", "a.gz"], {"bad.gz": BADGZ, "a.gz": gz(T1)})
 case("corrupt-empty-zip", ["-z", "foo", "e.zip"], {"e.zip": b"PK\x05\x06" + b"\x00" * 18})
 case("unreadable-missing", ["-z", "foo", "nonexistent.gz"])
 case("unreadable-missing-and-ok", ["-z", "foo", "nonexistent.gz", "a.gz"], {"a.gz": gz(T1)})
@@ -274,6 +281,8 @@ case("zip-context", ["-z", "-C1", "-n", "--with-filename", "foo", "a.zip"], {"a.
 case("zip-invert", ["-z", "-v", "-c", "--with-filename", "foo", "a.zip"], {"a.zip": zipf(MEM)})
 case("zip-o", ["-z", "-o", "--with-filename", "foo", "a.zip"], {"a.zip": zipf(MEM)})
 case("zip-heading", ["-z", "--heading", "-n", "foo", "a.zip"], {"a.zip": zipf(MEM)})
+case("zip-heading-with-filename", ["-z", "--with-filename", "--heading", "-n", "foo", "a.zip"], {"a.zip": zipf(MEM)})
+case("zip-single-no-heading", ["-z", "-n", "foo", "a.zip"], {"a.zip": zipf(MEM)})
 case("zip-tree", ["-z", "--tree", "-c", "foo", "a.zip"], {"a.zip": zipf([("d/x.txt", T1), ("d/e/y.txt", T2)])})
 case("zip-filter-ext", ["-z", "-t", "txt", "--with-filename", "foo", "a.zip"], {"a.zip": zipf(MEM + [("c.c", T1)])})
 case("zip-glob-name", ["-z", "-g", "y*", "--with-filename", "foo", "a.zip"], {"a.zip": zipf(MEM)})
@@ -429,7 +438,7 @@ case("zmax1-lz4-of-gz", ["-z", "foo", "a.lz4"], {"a.lz4": FX["lz4_of_gz"]})
 case("cancel-m1-lz4-big", ["-z", "-m1", "foo", "big.lz4"], {"big.lz4": FX["lz4_big"]})
 case("cancel-l-lz4-big", ["-zl", "foo", "big.lz4"], {"big.lz4": FX["lz4_big"]})
 case("cancel-q-lz4-big", ["-zq", "foo", "big.lz4"], {"big.lz4": FX["lz4_big"]})
-case("cancel-l-tlz4-big", ["-zl", "foo", "a.tlz4"], {"a.tlz4": FX["lz4_bigtar"]})
+case("cancel-l-tar-lz4-big", ["-zl", "foo", "a.tar.lz4"], {"a.tar.lz4": FX["lz4_bigtar"]})
 case("corrupt-lz4-truncated", ["-z", "foo", "a.lz4"], {"a.lz4": FX["lz4_t1"][:40]})
 case("corrupt-lz4-garbage", ["-z", "foo", "a.lz4"], {"a.lz4": b"\x04\x22\x4d\x18garbage garbage garbage garbage"})
 case("corrupt-lz4-bad-magic", ["-z", "foo", "a.lz4"], {"a.lz4": b"\x00" + FX["lz4_t1"][1:]})

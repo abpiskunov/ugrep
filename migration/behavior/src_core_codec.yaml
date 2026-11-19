@@ -13,10 +13,10 @@ observation: {}
 
 behaviors:
   - id: B-src_core_codec-001
-    statement: "-z decompresses gzip, bzip2, xz, lzma-alone and lz4 files and searches the decompressed text; without -z the same file is searched as raw bytes (no match for gzip, bzip2, xz and lzma; 'Binary file NAME matches' for a small lz4 frame)"
+    statement: "-z decompresses gzip, bzip2, xz, lzma-alone and lz4 files and searches the decompressed text; without -z the same file is searched as raw bytes (no match and exit 1 for gzip, bzip2, xz and lzma; 'Binary file NAME matches' for a small lz4 frame)"
     kind: normal
     status: observed
-    evidence: ["case:zt-gz", "case:zt-bz2", "case:zt-xz", "case:zt-lzma-alone", "case:zt-gz-no-z", "case:zt-lz4", "case:zt-lz4-no-z", "case:zt-lz4-count"]
+    evidence: ["case:zt-gz", "case:zt-bz2", "case:zt-xz", "case:zt-lzma-alone", "case:zt-gz-no-z", "case:zt-bz2-no-z", "case:zt-xz-no-z", "case:zt-lzma-alone-no-z", "case:zt-lz4", "case:zt-lz4-no-z", "case:zt-lz4-count"]
     origin: capture
   - id: B-src_core_codec-002
     statement: "Concatenated gzip, bzip2, xz and lz4 members are searched as one stream; gzip header fields (FNAME, FCOMMENT) are skipped"
@@ -25,7 +25,7 @@ behaviors:
     evidence: ["case:zt-gz-concatenated", "case:zt-bz2-multistream", "case:zt-xz-multistream", "case:zt-gz-header-fields", "case:zt-lz4-concatenated"]
     origin: capture
   - id: B-src_core_codec-003
-    statement: "Large streams (about 600 KB decoded, generated from repeated text so the fixtures stay small) through the pipe produce the same counts as small ones, for gzip, bzip2, xz, lz4 (also with 64 KB blocks and a content checksum), zip, 7z, tar and tgz members"
+    statement: "Large streams (about 600 KB decoded, or about 85 KB per tar member, generated from repeated text so the fixtures stay small) through the pipe produce the same counts as small ones, for gzip, bzip2, xz, lz4 (also with 64 KB blocks and a content checksum), zip, 7z, tar and tgz members"
     kind: resource
     status: observed
     evidence: ["case:zt-gz-big", "case:zt-bz2-big", "case:zt-xz-big", "case:zt-lz4-big", "case:zt-lz4-big-checksum-64k", "case:zt-zip-big-member", "case:zt-7z-big-member", "case:zt-tar-big-member", "case:zt-tgz-big", "case:zt-zip-data-descriptor-big"]
@@ -49,10 +49,11 @@ behaviors:
     evidence: ["case:zt-zip", "case:zt-zip-stored", "case:zt-zip-bzip2", "case:zt-zip-data-descriptor", "case:zt-zip-duplicate-names", "case:zt-zip-member-names-unicode", "case:zt-tar", "case:zt-tar-pax", "case:zt-tar-gnu-longname", "case:zt-tar-dirs-empty-binary", "case:zt-tar-symlink", "case:zt-cpio", "case:zt-cpio-gz", "case:zt-zip-dirs-empty-binary", "case:zt-zip-many-members"]
     origin: capture
   - id: B-src_core_codec-007
-    statement: "tgz, tar.gz, tbz, txz, tzst and tar.lz4 are decompressed and then split into members in one pass, with only --zmax=1 (the default): a.tgz{x.txt}; the name a.tlz4 is not a tar name and is searched as one lz4 stream ('Binary file a.tlz4 matches')"
+    statement: "tgz, tar.gz, tbz, txz, tzst and tar.lz4 are decompressed and then split into members in one pass, with only --zmax=1 (the default): a.tgz{x.txt}; lz4 is chosen only by the .lz4 extension, so a.tar.lz4 is decoded and split, while the name a.tlz4 is not decompressed (searched as raw bytes: 'Binary file a.tlz4 matches')"
     kind: normal
     status: observed
     evidence: ["case:zt-tgz", "case:zt-tar-gz-ext", "case:zt-tbz", "case:zt-txz", "case:zt-tzst", "case:zt-tgz-big", "case:zt-tar-lz4", "case:zt-tlz4"]
+    # zt-tlz4 shows no decoding: it is evidence of the extension rule only
     origin: capture
   - id: B-src_core_codec-008
     statement: "The flags part of select_matching is applied per member: --include/--exclude/-g/-t filter members by name, hidden members (leading dot) are skipped, --no-hidden has no extra effect on them"
@@ -61,10 +62,10 @@ behaviors:
     evidence: ["case:zt-zip-include", "case:zt-zip-exclude", "case:zt-zip-hidden", "case:zt-zip-no-hidden", "case:zt-tar-include", "case:zt-zip-filter-ext", "case:zt-zip-glob-name", "case:zt-zmax2-include", "case:zt-7z-include"]
     origin: capture
   - id: B-src_core_codec-009
-    statement: "Archive output is per member for -c, -l, -L, -v, -o, -n, -C, --null, --json, --csv and --format (%f is ARCHIVE{MEMBER}); -h/--no-filename does not remove the part name from -c output"
+    statement: "Archive output is per member for -c, -l, -L, -v, -o, -n, -C, --null, --json, --csv and --format (%f is ARCHIVE{MEMBER}); --no-filename does not remove the part name from -c output; -H is --with-filename"
     kind: normal
     status: observed
-    evidence: ["case:zt-zip-count", "case:zt-zip-files-with-matches", "case:zt-zip-files-without-match", "case:zt-zip-invert", "case:zt-zip-o", "case:zt-zip-context", "case:zt-zip-l-null", "case:zt-zip-json", "case:zt-zip-csv", "case:zt-zip-format", "case:zt-zip-no-header", "case:zt-zip-tree", "case:zt-tar-count", "case:zt-tar-l"]
+    evidence: ["case:zt-zip-count", "case:zt-zip-files-with-matches", "case:zt-zip-files-without-match", "case:zt-zip-invert", "case:zt-zip-o", "case:zt-zip-context", "case:zt-zip-l-null", "case:zt-zip-json", "case:zt-zip-csv", "case:zt-zip-format", "case:zt-zip-no-header", "case:zt-zip-H", "case:zt-zip-tree", "case:zt-tar-count", "case:zt-tar-l"]
     origin: capture
   - id: B-src_core_codec-010
     statement: "Binary members of an archive print 'Binary file ARCHIVE{MEMBER} matches', are skipped by -I, and shown as a hex dump with --hexdump"
@@ -85,16 +86,16 @@ behaviors:
     evidence: ["case:zt-gz-multi-files", "case:zt-gz-recursive", "case:zt-multi-archives", "case:zt-recursive-archives", "case:zt-gz-count-multiple", "case:zt-gz-glob-name", "case:zt-7z-multi-archives", "case:zt-lz4-multi-files"]
     origin: capture
   - id: B-src_core_codec-013
-    statement: "--zmax=1 (default) decompresses one level: a gzip of a gzip (or of an lz4 frame), or a gzip inside a zip, tar or 7z, is not decompressed further (no match, or the inner member is reported as binary/not matched)"
+    statement: "--zmax=1 (default) decompresses one level: a gzip of a gzip, an lz4 frame containing a gzip, or a gzip inside a zip, tar or 7z, is not decompressed further (exit 1 with no output for the nested streams; the inner member of an archive is not matched)"
     kind: normal
     status: observed
-    evidence: ["case:zt-zmax1-gz-gz", "case:zt-zmax1-zip-of-gz", "case:zt-zmax1-tar-of-tar", "case:zt-zmax2-gz-gz-gz-short", "case:zt-zmax1-7z-of-gz", "case:zt-zmax1-lz4-of-gz"]
+    evidence: ["case:zt-zmax1-gz-gz", "case:zt-zmax1-zip-of-gz", "case:zt-zmax1-tar-of-tar", "case:zt-zmax1-7z-of-gz", "case:zt-zmax1-lz4-of-gz"]
     origin: capture
   - id: B-src_core_codec-014
-    statement: "--zmax=N>1 chains N-1 further decompression threads: nested gzip/bzip2/xz/lz4 of any codec mix, archives inside archives (zip of zip, tar of tar, zip of tgz, tgz of tgz, zip of cpio, 7z of gzip, 7z of tgz) are searched, with the part name ARCHIVE{INNER:MEMBER}; a compressed non-archive member keeps ARCHIVE{MEMBER}"
+    statement: "--zmax=N>1 chains N-1 further decompression threads: nested gzip/bzip2/xz/lz4 of any codec mix, archives inside archives (zip of zip, tar of tar, zip of tgz, tgz of tgz, zip of cpio, 7z of gzip, 7z of tgz) are searched, with the part name ARCHIVE{INNER:MEMBER}; a compressed non-archive member keeps ARCHIVE{MEMBER}; a stream nested deeper than --zmax (a triple gzip at --zmax=2) is not decompressed further (exit 1)"
     kind: normal
     status: observed
-    evidence: ["case:zt-zmax2-gz-gz", "case:zt-zmax3-gz-gz-gz", "case:zt-zmax2-gz-bz2", "case:zt-zmax3-xz-gz-bz2", "case:zt-zmax2-zip-of-gz", "case:zt-zmax2-tar-of-gz", "case:zt-zmax2-tar-of-tar", "case:zt-zmax2-zip-of-zip", "case:zt-zmax2-zip-of-tgz", "case:zt-zmax3-zip-of-tgz", "case:zt-zmax2-tgz-of-tgz", "case:zt-zmax3-tgz-of-tgz", "case:zt-zmax2-zip-of-cpio", "case:zt-tzst-zmax2", "case:zt-zmax2-7z-of-gz", "case:zt-zmax3-7z-of-tgz", "case:zt-zmax2-lz4-of-gz"]
+    evidence: ["case:zt-zmax2-gz-gz", "case:zt-zmax3-gz-gz-gz", "case:zt-zmax2-gz-gz-gz-short", "case:zt-zmax2-gz-bz2", "case:zt-zmax3-xz-gz-bz2", "case:zt-zmax2-zip-of-gz", "case:zt-zmax2-tar-of-gz", "case:zt-zmax2-tar-of-tar", "case:zt-zmax2-zip-of-zip", "case:zt-zmax2-zip-of-tgz", "case:zt-zmax3-zip-of-tgz", "case:zt-zmax2-tgz-of-tgz", "case:zt-zmax3-tgz-of-tgz", "case:zt-zmax2-zip-of-cpio", "case:zt-tzst-zmax2", "case:zt-zmax2-7z-of-gz", "case:zt-zmax3-7z-of-tgz", "case:zt-zmax2-lz4-of-gz"]
     origin: capture
   - id: B-src_core_codec-015
     statement: "With --zmax>1 -c, -l, --include and big streams give the same totals as without nesting; several top-level files of different nesting depth are handled in one run"
@@ -103,10 +104,10 @@ behaviors:
     evidence: ["case:zt-zmax2-count", "case:zt-zmax2-l", "case:zt-zmax2-big", "case:zt-zmax2-multi"]
     origin: capture
   - id: B-src_core_codec-016
-    statement: "--zmax=0 and a non-number are rejected with 'invalid argument --zmax=X' and exit 2; a large value (99) is accepted; -z1 and -z2 are accepted spellings of -z with the archive nesting depth (-z2 on a double gzip exits 1 with no output, -z1 on a single gzip prints with the file name prefix), not of --zmax"
+    statement: "--zmax=0 and a non-number are rejected with 'invalid argument --zmax=X' and exit 2; a large value (99) is accepted. -z1 and -z2 are not --zmax: in short options -z only sets decompression and the digit is -N = --depth=N, the directory recursion depth, which implies -r and file name output and leaves --zmax at 1 (-z1 on a.gz prints with the 'a.gz:' prefix, -z2 on a double gzip exits 1 with no output because zmax is still 1; -z1 on a directory searches only the top-level a.gz, -z2 also d/b.gz)"
     kind: error
     status: observed
-    evidence: ["case:zt-zmax0", "case:zt-zmax-invalid", "case:zt-zmax-large", "case:zt-zmax-option-short", "case:zt-zmax-option-short2"]
+    evidence: ["case:zt-zmax0", "case:zt-zmax-invalid", "case:zt-zmax-large", "case:zt-depth-option-single-gz", "case:zt-depth-option-double-gz", "case:zt-depth-z1-dir", "case:zt-depth-z2-dir"]
     origin: capture
   - id: B-src_core_codec-017
     statement: "Cancellation: -m1 on a large gzip/bzip2/xz/lz4 stream stops after the first match and the process exits normally (the decompression thread is cancelled mid-stream, no warning, no hang)"
@@ -115,13 +116,13 @@ behaviors:
     evidence: ["case:zt-cancel-m1-gz-big", "case:zt-cancel-m3-gz-big", "case:zt-cancel-m1-bz2-big", "case:zt-cancel-m1-xz-big", "case:zt-cancel-m1-lz4-big", "case:zt-cancel-late-match-l"]
     origin: capture
   - id: B-src_core_codec-018
-    statement: "Cancellation: -l and -q stop the extraction of the rest of a large archive or stream after the first match, for gzip, lz4, zip, tar, tgz and 7z (-q prints nothing and exits 0 on first match, exit 1 when nothing matches)"
+    statement: "Cancellation: -l and -q on a large gzip or lz4 stream stop after the first match (-l prints the name once, -q prints nothing and exits 0, exit 1 when nothing matches). For archives (zip, tar, tgz, 7z, tar.lz4) -l stops only the current member, not the archive: every member that matches is still listed (a.zip{a.txt}, a.zip{b.txt}, a.zip{c.txt}), and -q exits 0 with no output on the first match. No warning, no hang"
     kind: resource
     status: observed
-    evidence: ["case:zt-cancel-l-gz-big", "case:zt-cancel-q-gz-big", "case:zt-cancel-l-zip-big", "case:zt-cancel-q-zip-big", "case:zt-cancel-q-nomatch-zip", "case:zt-cancel-l-tar-big", "case:zt-cancel-q-tar-big", "case:zt-cancel-l-tgz-big", "case:zt-cancel-q-tgz-big", "case:zt-cancel-l-7z-big", "case:zt-cancel-q-7z-big", "case:zt-cancel-m1-7z-big", "case:zt-cancel-l-lz4-big", "case:zt-cancel-q-lz4-big", "case:zt-cancel-l-tlz4-big"]
+    evidence: ["case:zt-cancel-l-gz-big", "case:zt-cancel-q-gz-big", "case:zt-cancel-l-zip-big", "case:zt-cancel-q-zip-big", "case:zt-cancel-q-nomatch-zip", "case:zt-cancel-l-tar-big", "case:zt-cancel-q-tar-big", "case:zt-cancel-l-tgz-big", "case:zt-cancel-q-tgz-big", "case:zt-cancel-l-7z-big", "case:zt-cancel-q-7z-big", "case:zt-cancel-l-lz4-big", "case:zt-cancel-q-lz4-big", "case:zt-cancel-l-tar-lz4-big"]
     origin: capture
   - id: B-src_core_codec-019
-    statement: "Cancellation with --zmax>1 cancels the whole chain of decompression threads (gzip of gzip, zip of tgz, many nested parts), also at -m, -l and -q, without hang, warning or output after the match"
+    statement: "Cancellation with --zmax>1 stops the chain of decompression threads of the current member without hang or warning: -l on a double gzip prints the name once, -m1 prints the first match, -q prints nothing and exits 0. Over archives, -l and -m1 still act per member: zip of tgz at -l lists all 4 parts (a.zip{in.tgz:a.txt}, {in.tgz:b.txt}, {in.tgz:c.txt}, a.zip{p.txt}), -m1 -c prints 4 count lines, and a zip of 6 gzip members at -l lists all 6"
     kind: resource
     status: observed
     evidence: ["case:zt-cancel-l-zmax2-gz-big", "case:zt-cancel-m1-zmax2-gz-big", "case:zt-cancel-q-zmax2-gz-big", "case:zt-cancel-l-zmax2-zip-tgz", "case:zt-cancel-m1-zmax3-zip-tgz", "case:zt-cancel-q-zmax3-zip-tgz", "case:zt-zmax2-cancel-many-parts", "case:zt-zmax2-cancel-q-many-parts", "case:zt-zmax2-m1-many-parts"]
@@ -139,22 +140,28 @@ behaviors:
     evidence: ["case:zt-corrupt-gz-bad-crc", "case:zt-corrupt-gz-bad-trailer-len", "case:zt-corrupt-gz-bad-middle", "case:zt-corrupt-bz2-garbage", "case:zt-corrupt-xz-garbage", "case:zt-corrupt-zip-truncated", "case:zt-corrupt-zip-garbage", "case:zt-corrupt-zip-no-central-dir", "case:zt-zip-encrypted-flag", "case:zt-corrupt-lz4-garbage", "case:zt-corrupt-lz4-bad-magic"]
     origin: capture
   - id: B-src_core_codec-022
-    statement: "A file with a .gz name that is not gzip is searched as plain text, without warning"
+    statement: "A file with a .gz name that is not gzip (no gzip magic) is searched as plain text, without warning"
     kind: edge-case
     status: observed
-    evidence: ["case:zt-corrupt-gz-garbage", "case:zt-corrupt-tar-garbage-ext"]
+    evidence: ["case:zt-corrupt-gz-garbage"]
     origin: capture
   - id: B-src_core_codec-023
-    statement: "One corrupt file among several does not stop the search of the others; -s drops the warning, -q exits 0 on a later match"
+    statement: "One corrupt gzip (gzip magic, bad CRC) among several files does not stop the search of the others: 'ugrep: cannot decompress bad.gz: an error was detected in the gzip compressed data' is printed and the exit is 0; -s drops the warning; -q exits 0 on a later match without a warning"
     kind: error
     status: observed
     evidence: ["case:zt-corrupt-multi-files-one-bad", "case:zt-corrupt-no-messages", "case:zt-corrupt-q-bad"]
     origin: capture
   - id: B-src_core_codec-024
-    statement: "A zip with no entries, an empty tar (zero blocks) and a lzma-alone tar named .tlzma give no output, no warning and exit 1"
+    statement: "A zip with no entries and an empty tar (zero blocks) give no output, no warning and exit 1"
     kind: edge-case
     status: observed
-    evidence: ["case:zt-corrupt-empty-zip", "case:zt-tar-empty-archive", "case:zt-tlzma"]
+    evidence: ["case:zt-corrupt-empty-zip", "case:zt-tar-empty-archive"]
+    origin: capture
+  - id: B-src_core_codec-039
+    statement: "Names that are not a recognized compressed extension are not decompressed even with -z: a.tlzma (lzma-alone tar) gives no match and exit 1, a.tlz4 is searched as raw bytes ('Binary file a.tlz4 matches')"
+    kind: edge-case
+    status: observed
+    evidence: ["case:zt-tlzma", "case:zt-tlz4"]
     origin: capture
   - id: B-src_core_codec-025
     statement: "A missing .gz file warns 'ugrep: warning: NAME: No such file or directory' and exits 2, other files are still searched; -s hides the warning (exit stays 2); a directory argument is searched recursively"
@@ -169,16 +176,10 @@ behaviors:
     evidence: ["case:zt-stdin-text-z"]
     origin: capture
   - id: B-src_core_codec-027
-    statement: "-z reads 7z archives (LZMA2, LZMA1 and stored members, compressed header) member by member as ARCHIVE{MEMBER}, with -c, -l, -L and --include applied per member; without -z a 7z file is not matched; a 7z holding a gzip or tgz is searched into only with --zmax>1"
+    statement: "-z reads 7z archives (LZMA2, LZMA1 and stored members, compressed header) member by member as ARCHIVE{MEMBER}, with -c, -l, -L and --include applied per member; without -z a 7z file is not matched"
     kind: normal
     status: observed
-    evidence: ["case:zt-7z", "case:zt-7z-count", "case:zt-7z-l", "case:zt-7z-L", "case:zt-7z-no-z", "case:zt-7z-lzma1", "case:zt-7z-copy", "case:zt-7z-include", "case:zt-7z-multi-archives", "case:zt-zmax2-7z-of-gz", "case:zt-zmax3-7z-of-tgz"]
-    origin: capture
-  - id: B-src_core_codec-028
-    statement: "-z reads lz4 frames (single, concatenated, 64 KB blocks, content checksum, mixed with other codecs on one command line) and decompresses a .tar.lz4 into members; an lz4 stream holding a gzip is searched into only with --zmax>1"
-    kind: normal
-    status: observed
-    evidence: ["case:zt-lz4", "case:zt-lz4-concatenated", "case:zt-lz4-big", "case:zt-lz4-big-checksum-64k", "case:zt-lz4-multi-files", "case:zt-tar-lz4", "case:zt-zmax1-lz4-of-gz", "case:zt-zmax2-lz4-of-gz"]
+    evidence: ["case:zt-7z", "case:zt-7z-count", "case:zt-7z-l", "case:zt-7z-L", "case:zt-7z-no-z", "case:zt-7z-lzma1", "case:zt-7z-copy", "case:zt-7z-include", "case:zt-7z-multi-archives"]
     origin: capture
   - id: B-src_core_codec-029
     statement: "A 7z inside a zip is not read even with --zmax=2: 'ugrep: cannot decompress in.7z: 7zip archive: encrypted data or 7z input is not seekable', exit 1"
@@ -190,33 +191,37 @@ behaviors:
   - id: B-src_core_codec-030
     statement: "A truncated gzip prints the lines decoded so far and exits 0, with no warning (also a truncated big gzip: count of the decoded part)"
     kind: error
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-zstream-049
     suspicious: true
-    why: "silent data loss: unlike a bad CRC, a truncated gzip is not reported; the user cannot tell a short result from a complete one"
+    why: "same -z behavior as B-src_leaves-049 (Q-zstream-049, bug-preserve): silent data loss, not a new Triage question"
     evidence: ["case:zt-corrupt-gz-truncated", "case:zt-corrupt-gz-big-truncated"]
     origin: capture
   - id: B-src_core_codec-031
     statement: "A truncated bzip2, xz or tgz stream yields no output, no warning and exit 1 (the same exit as 'no match')"
     kind: error
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-zstream-050
     suspicious: true
-    why: "silent: indistinguishable from no match; gzip, zip and corrupt-content cases do warn"
+    why: "same -z behavior as B-src_leaves-050 (Q-zstream-050, bug-preserve): silent, indistinguishable from no match; not a new Triage question"
     evidence: ["case:zt-corrupt-bz2-truncated", "case:zt-corrupt-xz-truncated", "case:zt-corrupt-tgz-truncated"]
     origin: capture
   - id: B-src_core_codec-032
     statement: "A zip member whose compressed bytes are damaged is output with wrong text and no warning (the zip member CRC-32 is not checked because WITH_ZIP_CRC32 is not defined)"
     kind: error
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-zstream-054
     suspicious: true
-    why: "wrong data is searched and reported without any error"
+    why: "same -z behavior as B-src_leaves-054 (Q-zstream-054, bug-preserve): wrong data reported without any error; not a new Triage question"
     evidence: ["case:zt-corrupt-zip-bad-member-data"]
     origin: capture
   - id: B-src_core_codec-033
     statement: "A zip with LZMA-compressed members (method 14, made by Python zipfile) is rejected with 'a lzma decompression error was detected in the zip compressed data'"
     kind: error
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-zstream-054
     suspicious: true
-    why: "a valid zip method is reported as an error; unclear whether the C++ is wrong or the writer's header is unsupported"
+    why: "same -z behavior as B-src_leaves-054 (Q-zstream-054, bug-preserve): the LZMA zip method (14) is rejected; not a new Triage question"
     evidence: ["case:zt-zip-lzma"]
     origin: capture
   - id: B-src_core_codec-034
@@ -228,35 +233,37 @@ behaviors:
     evidence: ["case:zt-corrupt-tar-truncated", "case:zt-corrupt-tar-bad-checksum", "case:zt-cpio-truncated", "case:zt-cpio-handmade"]
     origin: capture
   - id: B-src_core_codec-035
-    statement: "--heading with an archive prints the member lines as '{MEMBER}:LINE:text' with no heading line and without the archive name"
+    statement: "A single archive shown without file names (no --with-filename, one file) prints the member lines as '{MEMBER}:LINE:text' without the archive name and without a heading line; with --with-filename --heading the C++ prints an 'a.zip' heading line before each member's lines (members keep '{MEMBER}:LINE:text'), then a blank line"
     kind: edge-case
     status: hypothesis
     suspicious: true
-    why: "the archive name is lost in --heading output; other options print ARCHIVE{MEMBER}"
-    evidence: ["case:zt-zip-heading"]
+    why: "the archive name is dropped from the line prefix, so lines of different archives cannot be told apart without a heading; other options print ARCHIVE{MEMBER}"
+    evidence: ["case:zt-zip-heading", "case:zt-zip-single-no-heading", "case:zt-zip-heading-with-filename"]
     origin: capture
   - id: B-src_core_codec-036
-    statement: "Under --zmax=2 a corrupt gzip member inside a zip/tar is output with half-decoded text ('alpha foo') and no warning; a truncated inner gzip as the top-level stream outputs the decoded part with no warning"
+    statement: "Under --zmax=2 a corrupt gzip member inside a zip or tar is output with half-decoded text ('alpha foo') and no warning"
     kind: error
     status: hypothesis
     suspicious: true
-    why: "the same silent-truncation behavior as B-src_core_codec-030, one level down the chain: a corrupt inner stream is never reported"
-    evidence: ["case:zt-corrupt-zmax2-zip-inner-gz", "case:zt-corrupt-zmax2-tar-inner-gz", "case:zt-corrupt-zmax2-inner-gz"]
+    why: "a corrupt inner stream of an archive member is never reported (Zthread chain: the inner thread's error is not forwarded)"
+    evidence: ["case:zt-corrupt-zmax2-zip-inner-gz", "case:zt-corrupt-zmax2-tar-inner-gz"]
     origin: capture
   - id: B-src_core_codec-037
     statement: "A truncated, garbage or bad-header-CRC 7z is reported with 'cannot decompress a.7z: 7zip archive: encrypted data or 7z input is not seekable' (exit 1, sometimes followed by a second line); a 7z with a damaged data byte yields no output, no warning and exit 1"
     kind: error
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-zstream-053
     suspicious: true
-    why: "the message names encryption or seekability for a plainly corrupt file, and a damaged data byte is silent (same exit as no match)"
+    why: "same -z behavior as B-src_leaves-053 (Q-zstream-053, bug-preserve): misleading 7z diagnostics and a silent damaged data byte; not a new Triage question"
     evidence: ["case:zt-corrupt-7z-truncated", "case:zt-corrupt-7z-garbage", "case:zt-corrupt-7z-bad-header-crc", "case:zt-corrupt-7z-damaged-data"]
     origin: capture
   - id: B-src_core_codec-038
     statement: "A truncated lz4 frame warns 'ugrep: warning: cannot read NAME  ' (two trailing spaces) and exits 2, even when part of the data was decoded and counted (-c prints the partial count); a garbage lz4 or a bad magic is 'cannot decompress' with exit 1"
     kind: error
-    status: hypothesis
+    status: bug-preserve
+    decision: Q-zstream-050
     suspicious: true
-    why: "differs from every other codec (gzip truncation is silent, bzip2/xz truncation is silent exit 1) and the message has no reason and trailing blanks"
+    why: "same -z behavior as B-src_leaves-050 (Q-zstream-050, bug-preserve): truncated lz4 warns 'cannot read' unlike the other codecs; not a new Triage question"
     evidence: ["case:zt-corrupt-lz4-truncated", "case:zt-corrupt-lz4-big-truncated"]
     origin: capture
 
@@ -269,7 +276,7 @@ uncovered:
 
 discovery:
   rounds:
-    - {round: 1, source: llm-proposed, new_cases: 177, new_coverage: 0.0, new_behaviors: 34, note: "gzip/bzip2/xz/lzma, zip, tar, cpio, tgz/tbz/txz/tzst, --zmax 1/2/3, cancellation with -m/-l/-q, corrupt and unreadable inputs; generator migration/harness/src_core_codec/gen_cases.py; recorded 5x on Pcre-Release, flaky 0"}
+    - {round: 1, source: llm-proposed, new_cases: 184, new_coverage: 0.0, new_behaviors: 34, note: "gzip/bzip2/xz/lzma, zip, tar, cpio, tgz/tbz/txz/tzst, --zmax 1/2/3, cancellation with -m/-l/-q, corrupt and unreadable inputs; generator migration/harness/src_core_codec/gen_cases.py; recorded 5x on Pcre-Release, flaky 0"}
     - {round: 2, source: llm-proposed, new_cases: 40, new_coverage: 0.0, new_behaviors: 4, note: "7z and lz4 (fixtures built once with py7zr and python-lz4, kept in fixtures.json): archives, nesting, cancellation, corrupt inputs; recorded 5x, flaky 0"}
-    - {round: 3, source: self-run, new_cases: 0, new_coverage: 0.0, new_behaviors: 0, note: "C++ against itself: 217 cases, 0 divergent, 0 proposed masks, 0 unstable sequences"}
+    - {round: 3, source: self-run, new_cases: 0, new_coverage: 0.0, new_behaviors: 0, note: "C++ against itself: 224 cases, 0 divergent, 0 proposed masks, 0 unstable sequences"}
     - {round: 4, source: llm-proposed, new_cases: 0, new_coverage: 0.0, new_behaviors: 0, note: "9 probes (7z and lz4 with -n, -o, -v, -r, -m1, --zmax=2/3): every observation fits an existing entry, 0 flaky; not admitted"}
