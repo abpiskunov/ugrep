@@ -643,17 +643,17 @@ struct Zthread {
   // start decompression thread if not running, open new pipe, returns pipe or NULL on failure
   FILE *start(size_t ztstage, const char *pathname, FILE *file_in, const char *find = NULL)
   {
-    int fd = -1;
-    int status = ugrep_core_zthread_start(handle, ztstage, pathname, file_in, find, &fd);
-    return pipe_stream(status, fd, pathname);
+    FILE *file = NULL;
+    int status = ugrep_core_zthread_start(handle, ztstage, pathname, file_in, find, &file);
+    return status == ZTHREAD_OK ? file : NULL;
   }
 
   // open pipe to the next file or part in the archive or return NULL
   FILE *open_next(const char *pathname)
   {
-    int fd = -1;
-    int status = ugrep_core_zthread_open_next(handle, pathname, &fd);
-    return pipe_stream(status, fd, pathname);
+    FILE *file = NULL;
+    int status = ugrep_core_zthread_open_next(handle, pathname, &file);
+    return status == ZTHREAD_OK ? file : NULL;
   }
 
   // cancel decompression gracefully
@@ -670,20 +670,6 @@ struct Zthread {
   }
 
 private:
-
-  // the pipe read end from Rust as a FILE*, closed by Grep::close_file() with fclose(), NULL if there is none
-  static FILE *pipe_stream(int status, int fd, const char *pathname)
-  {
-    if (status == ZTHREAD_OK && fd >= 0)
-    {
-      FILE *pipe_in = fdopen(fd, "rb");
-      if (pipe_in != NULL)
-        return pipe_in;
-      ::close(fd);
-      warning("cannot create pipe to decompress", pathname);
-    }
-    return NULL;
-  }
 
   static void set_partname(void *ctx, const char *name, size_t len)
   {

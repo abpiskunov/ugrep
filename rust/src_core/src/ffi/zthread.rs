@@ -3,7 +3,7 @@
 //! part of `select_matching()`), and the pipe read end handed back as a file descriptor. The decompression thread is
 //! `zthread_core.rs`; the C runtime calls it makes are in `zthread_sys.rs`.
 
-use crate::signatures::zthread::{Host, Outcome, ZstreamSettings, NO_FD};
+use crate::signatures::zthread::{Host, Outcome, ZstreamSettings};
 use crate::zthread_core::Zthread;
 use std::ffi::{c_char, c_int, c_void, CStr};
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -89,17 +89,17 @@ unsafe fn bytes<'a>(p: *const c_char) -> Option<&'a [u8]> {
     }
 }
 
-/// Stores the outcome in `*fd` and returns the `ZTHREAD_*` status.
+/// Stores the outcome in `*file` and returns the `ZTHREAD_*` status.
 ///
 /// # Safety
-/// `fd` is valid for a write.
-unsafe fn report(outcome: Outcome, fd: *mut c_int) -> c_int {
+/// `file` is valid for a write.
+unsafe fn report(outcome: Outcome, file: *mut *mut c_void) -> c_int {
     let (status, value) = match outcome {
         Outcome::Pipe(read_end) => (ZTHREAD_OK, read_end),
-        Outcome::None => (ZTHREAD_NONE, NO_FD),
+        Outcome::None => (ZTHREAD_NONE, std::ptr::null_mut()),
     };
     // SAFETY: see above.
-    unsafe { *fd = value };
+    unsafe { *file = value };
     status
 }
 
@@ -127,7 +127,8 @@ pub unsafe extern "C" fn ugrep_core_zthread_new(env: *const ZthreadEnv, is_chain
 /// thread, and [`ugrep_core_zthread_cancel`] may run on any thread at the same time, so only a shared `&Zthread`
 /// is formed here; `pathname` is
 /// NUL-terminated, `find` is NULL or NUL-terminated, `file_in` is a `FILE*` that stays open until the next call
-/// of this function or [`ugrep_core_zthread_close`]; `fd` is valid for a write.
+/// of this function or [`ugrep_core_zthread_close`]; `file` is valid for a write and receives the read end of the
+/// pipe as an open `FILE*` that the caller closes with `fclose`.
 #[export_name = "ugrep_core_zthread_start"]
 pub unsafe extern "C" fn ugrep_core_zthread_start(
     handle: *mut c_void,
@@ -135,14 +136,14 @@ pub unsafe extern "C" fn ugrep_core_zthread_start(
     pathname: *const c_char,
     file_in: *mut c_void,
     find: *const c_char,
-    fd: *mut c_int,
+    file: *mut *mut c_void,
 ) -> c_int {
     guarded(|| {
         // SAFETY: see above.
         let (zthread, pathname, find) = unsafe { (&*handle.cast::<Zthread>(), bytes(pathname).unwrap_or(b""), bytes(find)) };
         let outcome = zthread.start(ztstage, pathname, file_in, find);
         // SAFETY: see above.
-        unsafe { report(outcome, fd) }
+        unsafe { report(outcome, file) }
     })
 }
 
@@ -151,13 +152,13 @@ pub unsafe extern "C" fn ugrep_core_zthread_start(
 /// # Safety
 /// As [`ugrep_core_zthread_start`].
 #[export_name = "ugrep_core_zthread_open_next"]
-pub unsafe extern "C" fn ugrep_core_zthread_open_next(handle: *mut c_void, pathname: *const c_char, fd: *mut c_int) -> c_int {
+pub unsafe extern "C" fn ugrep_core_zthread_open_next(handle: *mut c_void, pathname: *const c_char, file: *mut *mut c_void) -> c_int {
     guarded(|| {
         // SAFETY: see above.
         let (zthread, pathname) = unsafe { (&*handle.cast::<Zthread>(), bytes(pathname).unwrap_or(b"")) };
         let outcome = zthread.open_next(pathname);
         // SAFETY: see above.
-        unsafe { report(outcome, fd) }
+        unsafe { report(outcome, file) }
     })
 }
 
@@ -218,16 +219,17 @@ mod tests {
             zs_max_7zip_size: 0,
         };
         // SAFETY: the table is valid, the handle is used by this thread only and closed once; the strings are
-        // NUL-terminated and `fd` is a local. There is no input file, so the thread has nothing to write.
+        // NUL-terminated and `file` is a local. There is no input file, so the thread has nothing to write.
         unsafe {
             let handle = ugrep_core_zthread_new(&env, 0);
-            let mut fd = 7;
-            assert_eq!(ugrep_core_zthread_start(handle, 1, c"a.gz".as_ptr(), std::ptr::null_mut(), std::ptr::null(), &mut fd), ZTHREAD_OK);
+            let mut file: *mut c_void = std::ptr::null_mut();
+            assert_eq!(ugrep_core_zthread_start(handle, 1, c"a.gz".as_ptr(), std::ptr::null_mut(), std::ptr::null(), &mut file), ZTHREAD_OK);
             let mut buf = [0u8; 8];
-            assert_eq!(crate::zthread_sys::read(fd, &mut buf), 0);
-            crate::zthread_sys::close(fd);
-            assert_eq!(ugrep_core_zthread_open_next(handle, c"a.gz".as_ptr(), &mut fd), ZTHREAD_NONE);
-            assert_eq!(fd, NO_FD);
+            let stream = crate::zthread_sys::CFile::from_raw(file);
+            assert_eq!(stream.read(&mut buf), 0);
+            drop(stream);
+            assert_eq!(ugrep_core_zthread_open_next(handle, c"a.gz".as_ptr(), &mut file), ZTHREAD_NONE);
+            assert!(file.is_null());
             ugrep_core_zthread_cancel(handle);
             ugrep_core_zthread_close(handle);
             ugrep_core_zthread_close(std::ptr::null_mut());

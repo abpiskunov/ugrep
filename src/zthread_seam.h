@@ -26,7 +26,7 @@
 extern "C" {
 #endif
 
-#define ZTHREAD_OK          0   // *fd is the read end of a new pipe
+#define ZTHREAD_OK          0   // *file is the read end of a new pipe, an open FILE* that the caller closes with fclose()
 #define ZTHREAD_NONE        1   // no pipe: the legacy functions return NULL (failure already reported, or no next file)
 
 // what stays in C++ and is called back by Rust
@@ -50,10 +50,10 @@ typedef struct ugrep_core_zthread_env {
 } ugrep_core_zthread_env;
 
 void *ugrep_core_zthread_new(const ugrep_core_zthread_env *env, int is_chained);
-// Zthread::start: returns ZTHREAD_*; find may be NULL
-int ugrep_core_zthread_start(void *handle, size_t ztstage, const char *pathname, FILE *file_in, const char *find, int *fd);
+// Zthread::start: returns ZTHREAD_*; find may be NULL; the pipe is fdopen()ed by Rust before the thread is told about it
+int ugrep_core_zthread_start(void *handle, size_t ztstage, const char *pathname, FILE *file_in, const char *find, FILE **file);
 // Zthread::open_next: returns ZTHREAD_*
-int ugrep_core_zthread_open_next(void *handle, const char *pathname, int *fd);
+int ugrep_core_zthread_open_next(void *handle, const char *pathname, FILE **file);
 // Zthread::cancel
 void ugrep_core_zthread_cancel(void *handle);
 // join the decompression threads and free the handle (~Zthread); handle may be NULL

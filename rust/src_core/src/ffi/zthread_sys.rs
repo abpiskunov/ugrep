@@ -2,9 +2,8 @@
 //! carry a raw `FILE*` or a stream between threads. Every `unsafe` of the decompression thread (`zthread_core.rs`)
 //! is here, next to the C-ABI entries of `ffi/zthread.rs`.
 
+use crate::zthread_core::Job;
 use std::ffi::{c_char, c_int, c_void};
-
-/// A C `FILE*`.
 pub type FilePtr = *mut c_void;
 
 #[cfg(windows)]
@@ -19,6 +18,10 @@ mod c {
         pub fn fclose(file: *mut c_void) -> c_int;
         #[cfg(test)]
         pub fn _read(fd: c_int, buf: *mut c_void, count: c_uint) -> c_int;
+        #[cfg(test)]
+        pub fn fread(buf: *mut c_void, size: usize, count: usize, file: *mut c_void) -> usize;
+        #[cfg(test)]
+        pub fn _fileno(file: *mut c_void) -> c_int;
     }
 }
 
@@ -34,6 +37,10 @@ mod c {
         pub fn fclose(file: *mut c_void) -> c_int;
         #[cfg(test)]
         pub fn read(fd: c_int, buf: *mut c_void, count: usize) -> isize;
+        #[cfg(test)]
+        pub fn fread(buf: *mut c_void, size: usize, count: usize, file: *mut c_void) -> usize;
+        #[cfg(test)]
+        pub fn fileno(file: *mut c_void) -> c_int;
     }
 }
 
@@ -49,8 +56,9 @@ pub fn pipe() -> Option<(i32, i32)> {
     (rc == 0).then_some((fds[0], fds[1]))
 }
 
-/// `close(fd)`; a negative descriptor is ignored.
-pub fn close(fd: i32) {
+/// `close(fd)`; a negative descriptor is ignored. Crate-private: the caller must own `fd` (a pipe end of this unit that
+/// no `FILE*` wraps) and not use it afterwards.
+pub(crate) fn close(fd: i32) {
     if fd < 0 {
         return;
     }
@@ -89,8 +97,10 @@ pub fn write(fd: i32, buf: &[u8]) -> isize {
 pub struct CFile(FilePtr);
 
 impl CFile {
-    /// `fdopen(fd, "rb")`; on failure the descriptor is still open and owned by the caller.
-    pub fn from_fd(fd: i32) -> Option<CFile> {
+    /// `fdopen(fd, "rb")`; on success the `FILE*` owns `fd`, on failure the descriptor is still open and owned by the
+    /// caller. Crate-private: the caller must own `fd` (the read end of a pipe of this unit) and not close it again
+    /// after success.
+    pub(crate) fn from_fd(fd: i32) -> Option<CFile> {
         #[cfg(windows)]
         // SAFETY: the mode is a NUL-terminated string.
         let file = unsafe { c::_fdopen(fd, c"rb".as_ptr() as *const c_char) };
@@ -102,6 +112,51 @@ impl CFile {
 
     pub fn as_ptr(&self) -> FilePtr {
         self.0
+    }
+
+    /// Gives up ownership: the caller must `fclose` the returned `FILE*` (the C++ `Grep::close_file()` does).
+    pub fn into_raw(self) -> FilePtr {
+        let file = self.0;
+        std::mem::forget(self);
+        file
+    }
+
+    /// Takes ownership of a `FILE*` returned by [`CFile::into_raw`].
+    ///
+    /// # Safety
+    /// `file` is an open `FILE*` that nobody else closes.
+    #[cfg(test)]
+    pub unsafe fn from_raw(file: FilePtr) -> CFile {
+        CFile(file)
+    }
+
+    /// The pipe of a successful `start`/`open_next`, owned by the test.
+    #[cfg(test)]
+    pub fn from_outcome(outcome: crate::signatures::zthread::Outcome) -> CFile {
+        match outcome {
+            crate::signatures::zthread::Outcome::Pipe(file) => CFile(file),
+            crate::signatures::zthread::Outcome::None => panic!("no pipe"),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn read(&self, buf: &mut [u8]) -> usize {
+        // SAFETY: `buf` is valid for `buf.len()` bytes and `self.0` is open.
+        unsafe { c::fread(buf.as_mut_ptr().cast(), 1, buf.len(), self.0) }
+    }
+
+    #[cfg(test)]
+    pub fn fileno(&self) -> i32 {
+        #[cfg(windows)]
+        // SAFETY: `self.0` is open.
+        unsafe {
+            c::_fileno(self.0)
+        }
+        #[cfg(not(windows))]
+        // SAFETY: `self.0` is open.
+        unsafe {
+            c::fileno(self.0)
+        }
     }
 }
 
@@ -120,17 +175,21 @@ impl Drop for CFile {
 pub struct AssertSend<T>(T);
 
 impl<T> AssertSend<T> {
-    pub fn new(value: T) -> AssertSend<T> {
-        AssertSend(value)
-    }
-
     /// Taking the value by method makes a closure capture the whole wrapper, not its non-`Send` field.
     pub fn into_inner(self) -> T {
         self.0
     }
 }
 
-// SAFETY: see the type documentation.
+impl AssertSend<Job> {
+    /// The only way to build the wrapper: a job is handed to its decompression thread once, as the type documentation
+    /// requires.
+    pub(crate) fn job(job: Job) -> AssertSend<Job> {
+        AssertSend(job)
+    }
+}
+
+// SAFETY: see the type documentation; only `AssertSend<Job>` can be built.
 unsafe impl<T> Send for AssertSend<T> {}
 
 #[cfg(test)]

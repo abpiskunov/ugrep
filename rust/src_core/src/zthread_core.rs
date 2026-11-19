@@ -196,7 +196,7 @@ impl Zs {
 }
 
 /// The work of one `start`: the stream, the pipe from the next stage, the part to find.
-struct Job {
+pub(crate) struct Job {
     zs: Zs,
     zpipe_in: Option<CFile>,
     findpart: Option<Vec<u8>>,
@@ -214,6 +214,9 @@ struct State {
     zstrm_signal: bool,
     /// `pipe_ready` was notified: the receiver made a new pipe, or failed to.
     ready_signal: bool,
+    /// `open_next` failed to make a pipe: the thread gives up the archive, and has not yet gone idle in
+    /// `close_wait_zstream_open`, which would close the pipe of a `start` that came in between.
+    settling: bool,
     pipe_r: i32,
     pipe_w: i32,
     job: Option<AssertSend<Job>>,
@@ -239,7 +242,12 @@ struct Stage {
     pipe_close: Condvar,
     part_ready: Condvar,
     thread: Mutex<Option<JoinHandle<()>>>,
+    /// `fdopen` of a pipe read end; replaced in tests to inject its failure.
+    fdopen: Opener,
 }
+
+/// How the read end of a pipe becomes a `FILE*`.
+type Opener = Arc<dyn Fn(i32) -> Option<CFile> + Send + Sync>;
 
 /// Marks the end of the thread however it ends, and wakes everybody who may wait for it.
 struct ExitGuard<'a>(&'a Stage);
@@ -265,8 +273,9 @@ impl Drop for ExitGuard<'_> {
 }
 
 impl Stage {
-    fn new(host: Arc<dyn Host>, sink: Sink, is_chained: bool) -> Arc<Stage> {
+    fn new(host: Arc<dyn Host>, sink: Sink, is_chained: bool, fdopen: Opener) -> Arc<Stage> {
         Arc::new(Stage {
+            fdopen,
             host,
             sink,
             is_chained,
@@ -313,10 +322,19 @@ impl Stage {
         }
     }
 
-    /// `ZthreadCpp::start`: the read end of the new pipe, or `None` after reporting the failure.
-    fn start(self: &Arc<Self>, ztstage: usize, pathname: &[u8], file_in: FilePtr, find: Option<&[u8]>) -> Option<i32> {
+    /// The pathname of the "cannot create pipe" warning: a chained stage reports none.
+    fn pipe_warning(&self, pathname: &[u8]) {
+        self.host.warning(b"cannot create pipe to decompress", (!self.is_chained).then_some(pathname));
+    }
+
+    /// `ZthreadCpp::start`: the read end of the new pipe as a `FILE*`, or `None` after reporting the failure. The
+    /// `fdopen` happens here, before the job is handed to the thread, so that its failure leaves no thread behind.
+    fn start(self: &Arc<Self>, ztstage: usize, pathname: &[u8], file_in: FilePtr, find: Option<&[u8]>) -> Option<CFile> {
         {
             let mut g = lock(&self.st);
+            while g.settling && !g.exited {
+                g = wait(&self.pipe_close, g);
+            }
             g.pipe_r = NO_FD;
             g.pipe_w = NO_FD;
             g.is_assigned = false;
@@ -335,7 +353,13 @@ impl Stage {
         }
 
         let Some((pipe_r, pipe_w)) = zthread_sys::pipe() else {
-            self.host.warning(b"cannot create pipe to decompress", Some(pathname));
+            self.pipe_warning(pathname);
+            return None;
+        };
+        let Some(pipe_file) = (self.fdopen)(pipe_r) else {
+            zthread_sys::close(pipe_r);
+            zthread_sys::close(pipe_w);
+            self.pipe_warning(pathname);
             return None;
         };
         {
@@ -348,17 +372,10 @@ impl Stage {
         let mut zpipe_in = None;
         if ztstage > 1 {
             let chain = Arc::clone(lock(&self.chain).get_or_insert_with(|| {
-                Stage::new(Arc::clone(&self.host), Sink::Chain(Arc::clone(&self.own_part)), true)
+                Stage::new(Arc::clone(&self.host), Sink::Chain(Arc::clone(&self.own_part)), true, Arc::clone(&self.fdopen))
             }));
-            let file = chain.start(ztstage - 1, pathname, file_in, find).and_then(|fd| {
-                let file = CFile::from_fd(fd);
-                if file.is_none() {
-                    zthread_sys::close(fd);
-                    self.host.warning(b"cannot create pipe to decompress", Some(pathname));
-                }
-                file
-            });
-            let Some(file) = file else {
+            let Some(file) = chain.start(ztstage - 1, pathname, file_in, find) else {
+                drop(pipe_file);
                 self.close_pipe();
                 return None;
             };
@@ -376,7 +393,7 @@ impl Stage {
             zs.open(pathname, file_in);
         }
 
-        let job = AssertSend::new(Job { zs, zpipe_in, findpart: findpart.map(<[u8]>::to_vec) });
+        let job = AssertSend::job(Job { zs, zpipe_in, findpart: findpart.map(<[u8]>::to_vec) });
         let joinable = lock(&self.thread).is_some();
         let mut g = lock(&self.st);
         g.is_extracting = false;
@@ -399,26 +416,28 @@ impl Stage {
                 Ok(handle) => *lock(&self.thread) = Some(handle),
                 Err(_) => {
                     lock(&self.st).job = None;
+                    drop(pipe_file);
                     self.close_pipe();
                     self.host.warning(b"cannot create thread to decompress", Some(pathname));
                     return None;
                 }
             }
         }
-        Some(pipe_r)
+        Some(pipe_file)
     }
 
-    /// Closes both ends of the pipe of a start that failed.
+    /// Closes the write end of the pipe of a start that failed; the caller drops the read end's `FILE*`.
     fn close_pipe(&self) {
         let mut g = lock(&self.st);
-        zthread_sys::close(g.pipe_r);
         zthread_sys::close(g.pipe_w);
         g.pipe_r = NO_FD;
         g.pipe_w = NO_FD;
     }
 
-    /// `ZthreadCpp::open_next`: the read end of the pipe to the next file or part in the archive, or `None`.
-    fn open_next(&self) -> Option<i32> {
+    /// `ZthreadCpp::open_next`: the read end of the pipe to the next file or part in the archive as a `FILE*`, or
+    /// `None`. As in `start`, the `fdopen` is done before the thread is told about the pipe; on failure the thread
+    /// and the receiver are signalled as for a pipe that could not be created.
+    fn open_next(&self, pathname: &[u8]) -> Option<CFile> {
         let mut g = lock(&self.st);
         if g.pipe_r == NO_FD {
             return None;
@@ -436,22 +455,26 @@ impl Stage {
             return None;
         }
         if let Some((pipe_r, pipe_w)) = zthread_sys::pipe() {
-            g.pipe_r = pipe_r;
-            g.pipe_w = pipe_w;
-            // notify the decompression filter thread of the new pipe
-            g.ready_signal = true;
-            self.pipe_ready.notify_all();
-            if self.is_chained {
-                // wait for the partname to be set by the next decompression thread in the chain
-                while !g.is_assigned {
-                    g = wait(&self.part_ready, g);
+            if let Some(pipe_file) = (self.fdopen)(pipe_r) {
+                g.pipe_r = pipe_r;
+                g.pipe_w = pipe_w;
+                // notify the decompression filter thread of the new pipe
+                g.ready_signal = true;
+                self.pipe_ready.notify_all();
+                if self.is_chained {
+                    // wait for the partname to be set by the next decompression thread in the chain
+                    while !g.is_assigned {
+                        g = wait(&self.part_ready, g);
+                    }
                 }
+                return Some(pipe_file);
             }
-            return Some(pipe_r);
+            zthread_sys::close(pipe_r);
+            zthread_sys::close(pipe_w);
         }
         drop(g);
 
-        self.host.warning(b"cannot create pipe to decompress", None);
+        self.pipe_warning(pathname);
 
         // notify the decompression thread of the closed pipe, and the receiver waiting on the partname
         let mut g = lock(&self.st);
@@ -459,6 +482,7 @@ impl Stage {
         g.pipe_w = NO_FD;
         g.ready_signal = true;
         g.is_assigned = true;
+        g.settling = true;
         drop(g);
         self.pipe_ready.notify_all();
         self.part_ready.notify_all();
@@ -524,6 +548,7 @@ impl Stage {
         let mut g = lock(&self.st);
         zthread_sys::close(g.pipe_w);
         g.pipe_w = NO_FD;
+        g.settling = false;
         self.pipe_close.notify_all();
         if !g.quit {
             g.is_waiting = true;
@@ -644,14 +669,7 @@ impl Stage {
                 job.zpipe_in = None;
 
                 // open pipe to the next file in an archive if there is a next file to extract
-                let next = chain.open_next().and_then(|fd| {
-                    let file = CFile::from_fd(fd);
-                    if file.is_none() {
-                        zthread_sys::close(fd);
-                    }
-                    file
-                });
-                let Some(file) = next else {
+                let Some(file) = chain.open_next(&self.own_part()) else {
                     break;
                 };
                 job.zs.open(&self.own_part(), file.as_ptr());
@@ -1103,22 +1121,28 @@ pub struct Zthread {
 impl Zthread {
     /// `ZthreadCpp::ZthreadCpp`: `is_chained` is true for a stage that feeds another stage; `Grep` passes false.
     pub fn new(host: Arc<dyn Host>, is_chained: bool) -> Zthread {
-        Zthread { stage: Stage::new(host, Sink::Host, is_chained) }
+        Zthread { stage: Stage::new(host, Sink::Host, is_chained, Arc::new(CFile::from_fd)) }
     }
 
-    /// Start the decompression thread if not running, open a new pipe: the read end, or [`Outcome::None`] on failure.
+    #[cfg(test)]
+    fn with_fdopen(host: Arc<dyn Host>, fdopen: Opener) -> Zthread {
+        Zthread { stage: Stage::new(host, Sink::Host, false, fdopen) }
+    }
+
+    /// Start the decompression thread if not running, open a new pipe: the read end as a `FILE*` that the caller
+    /// closes, or [`Outcome::None`] on failure.
     /// `file_in` is a `FILE*` that must stay open until the next `start` or `close`.
     pub fn start(&self, ztstage: usize, pathname: &[u8], file_in: FilePtr, find: Option<&[u8]>) -> Outcome {
         match self.stage.start(ztstage, pathname, file_in, find) {
-            Some(fd) => Outcome::Pipe(fd),
+            Some(file) => Outcome::Pipe(file.into_raw()),
             None => Outcome::None,
         }
     }
 
     /// Open the pipe to the next file or part in the archive, or [`Outcome::None`].
-    pub fn open_next(&self, _pathname: &[u8]) -> Outcome {
-        match self.stage.open_next() {
-            Some(fd) => Outcome::Pipe(fd),
+    pub fn open_next(&self, pathname: &[u8]) -> Outcome {
+        match self.stage.open_next(pathname) {
+            Some(file) => Outcome::Pipe(file.into_raw()),
             None => Outcome::None,
         }
     }
@@ -1143,6 +1167,7 @@ impl Drop for Zthread {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicUsize;
 
     #[derive(Default)]
     struct TestHost {
@@ -1177,25 +1202,34 @@ mod tests {
         CFile::from_fd(r).expect("fdopen")
     }
 
-    fn read_all(fd: i32) -> Vec<u8> {
+    fn read_all(file: CFile) -> Vec<u8> {
         let mut out = Vec::new();
         let mut buf = [0u8; 512];
         loop {
-            let n = zthread_sys::read(fd, &mut buf);
-            if n <= 0 {
+            let n = file.read(&mut buf);
+            if n == 0 {
                 break;
             }
-            out.extend_from_slice(&buf[..n as usize]);
+            out.extend_from_slice(&buf[..n]);
         }
-        zthread_sys::close(fd);
         out
     }
 
-    fn pipe_fd(outcome: Outcome) -> i32 {
-        match outcome {
-            Outcome::Pipe(fd) => fd,
-            Outcome::None => panic!("no pipe"),
-        }
+    fn pipe_file(outcome: Outcome) -> CFile {
+        CFile::from_outcome(outcome)
+    }
+
+    /// An `fdopen` that fails for the calls listed (counted from 1) and leaves the descriptor open, as the C library.
+    fn failing_fdopen(fail: &'static [usize]) -> Opener {
+        let calls = AtomicUsize::new(0);
+        Arc::new(move |fd| {
+            let n = calls.fetch_add(1, Ordering::SeqCst) + 1;
+            if fail.contains(&n) {
+                None
+            } else {
+                CFile::from_fd(fd)
+            }
+        })
     }
 
     fn tar_member(out: &mut Vec<u8>, name: &str, body: &[u8]) {
@@ -1211,13 +1245,21 @@ mod tests {
         out.resize(out.len().div_ceil(512) * 512, 0);
     }
 
+    fn tar_two_members() -> Vec<u8> {
+        let mut tar = Vec::new();
+        tar_member(&mut tar, "a.txt", b"hello\n");
+        tar_member(&mut tar, "b.txt", b"world\n");
+        tar.resize(tar.len() + 1024, 0);
+        tar
+    }
+
     #[test]
     fn plain_file_passes_through() {
         let host = Arc::new(TestHost::default());
         let mut z = Zthread::new(host.clone(), false);
         let file = input(b"hello\nworld\n");
-        let fd = pipe_fd(z.start(1, b"plain.txt", file.as_ptr(), None));
-        assert_eq!(read_all(fd), b"hello\nworld\n");
+        let pipe = pipe_file(z.start(1, b"plain.txt", file.as_ptr(), None));
+        assert_eq!(read_all(pipe), b"hello\nworld\n");
         assert_eq!(z.open_next(b"plain.txt"), Outcome::None);
         assert_eq!(*lock(&host.parts), vec![Vec::<u8>::new()]);
         z.close();
@@ -1225,18 +1267,15 @@ mod tests {
 
     #[test]
     fn tar_parts_are_opened_one_by_one() {
-        let mut tar = Vec::new();
-        tar_member(&mut tar, "a.txt", b"hello\n");
-        tar_member(&mut tar, "b.txt", b"world\n");
-        tar.resize(tar.len() + 1024, 0);
+        let tar = tar_two_members();
 
         let host = Arc::new(TestHost::default());
         let z = Zthread::new(host.clone(), false);
         let file = input(&tar);
-        let fd = pipe_fd(z.start(1, b"in.tar", file.as_ptr(), None));
-        assert_eq!(read_all(fd), b"hello\n");
-        let fd = pipe_fd(z.open_next(b"in.tar"));
-        assert_eq!(read_all(fd), b"world\n");
+        let pipe = pipe_file(z.start(1, b"in.tar", file.as_ptr(), None));
+        assert_eq!(read_all(pipe), b"hello\n");
+        let pipe = pipe_file(z.open_next(b"in.tar"));
+        assert_eq!(read_all(pipe), b"world\n");
         assert_eq!(z.open_next(b"in.tar"), Outcome::None);
         assert_eq!(*lock(&host.parts), vec![b"a.txt".to_vec(), b"b.txt".to_vec()]);
     }
@@ -1246,8 +1285,8 @@ mod tests {
         let host = Arc::new(TestHost::default());
         let z = Zthread::new(host.clone(), false);
         let file = input(b"nested\n");
-        let fd = pipe_fd(z.start(2, b"x.gz", file.as_ptr(), None));
-        assert_eq!(read_all(fd), b"nested\n");
+        let pipe = pipe_file(z.start(2, b"x.gz", file.as_ptr(), None));
+        assert_eq!(read_all(pipe), b"nested\n");
         assert_eq!(z.open_next(b"x.gz"), Outcome::None);
     }
 
@@ -1256,9 +1295,9 @@ mod tests {
         let host = Arc::new(TestHost::default());
         let mut z = Zthread::new(host, false);
         let file = input(b"cancelled\n");
-        let fd = pipe_fd(z.start(1, b"c.txt", file.as_ptr(), None));
+        let pipe = pipe_file(z.start(1, b"c.txt", file.as_ptr(), None));
         z.cancel();
-        let _ = read_all(fd);
+        let _ = read_all(pipe);
         z.close();
     }
 
@@ -1269,9 +1308,10 @@ mod tests {
         let mut first = None;
         for _ in 0..100 {
             let file = input(b"again\n");
-            let fd = pipe_fd(z.start(1, b"r.txt", file.as_ptr(), None));
+            let pipe = pipe_file(z.start(1, b"r.txt", file.as_ptr(), None));
+            let fd = pipe.fileno();
             first.get_or_insert(fd);
-            assert_eq!(read_all(fd), b"again\n");
+            assert_eq!(read_all(pipe), b"again\n");
             assert_eq!(z.open_next(b"r.txt"), Outcome::None);
             // the pipe and the input are closed again: the descriptor numbers do not grow
             assert!(fd < first.unwrap_or(0) + 64, "descriptors leak: {fd}");
@@ -1279,9 +1319,42 @@ mod tests {
     }
 
     #[test]
+    fn fdopen_failure_in_start_reports_and_the_next_file_runs() {
+        let host = Arc::new(TestHost::default());
+        let z = Zthread::with_fdopen(host.clone(), failing_fdopen(&[1]));
+        let file = input(b"lost\n");
+        assert_eq!(z.start(1, b"bad.txt", file.as_ptr(), None), Outcome::None);
+        assert_eq!(*lock(&host.warnings), vec![b"cannot create pipe to decompress".to_vec()]);
+        drop(file);
+
+        let file = input(b"second\n");
+        let pipe = pipe_file(z.start(1, b"ok.txt", file.as_ptr(), None));
+        assert_eq!(read_all(pipe), b"second\n");
+        assert_eq!(z.open_next(b"ok.txt"), Outcome::None);
+    }
+
+    #[test]
+    fn fdopen_failure_in_open_next_reports_and_the_next_file_runs() {
+        let host = Arc::new(TestHost::default());
+        let z = Zthread::with_fdopen(host.clone(), failing_fdopen(&[2]));
+        let file = input(&tar_two_members());
+        let pipe = pipe_file(z.start(1, b"in.tar", file.as_ptr(), None));
+        assert_eq!(read_all(pipe), b"hello\n");
+        assert_eq!(z.open_next(b"in.tar"), Outcome::None);
+        assert_eq!(*lock(&host.warnings), vec![b"cannot create pipe to decompress".to_vec()]);
+        drop(file);
+
+        // the thread gave up the archive and takes the next file instead of waiting for the lost pipe
+        let file = input(b"second\n");
+        let pipe = pipe_file(z.start(1, b"ok.txt", file.as_ptr(), None));
+        assert_eq!(read_all(pipe), b"second\n");
+        assert_eq!(z.open_next(b"ok.txt"), Outcome::None);
+    }
+
+    #[test]
     fn find_part_selects_one_member() {
         let host = TestHost::default();
-        let stage = Stage::new(Arc::new(host), Sink::Host, false);
+        let stage = Stage::new(Arc::new(host), Sink::Host, false, Arc::new(CFile::from_fd));
         assert!(!stage.select_matching(Some(b"b.txt"), Some(b"in.tar"), b"b.txt", b"", true));
         assert!(stage.select_matching(Some(b"in.tar:b.txt"), Some(b"in.tar"), b"b.txt", b"", true));
         assert!(!stage.select_matching(Some(b"in.tar:b.txt"), Some(b"in.tar"), b"a.txt", b"", true));

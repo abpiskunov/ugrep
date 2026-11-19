@@ -233,8 +233,9 @@ the pipe and `warning` callbacks. The Port may call `src_leaves` through `signat
 
 Strings are bytes (`&[u8]`, no NUL, no encoding assumed: file names are OS bytes, `partname` is built from names
 inside archives). On the C ABI they are NUL-terminated (`const char*`), `find` and `arg` may be NULL. Sizes are `size_t`.
-The pipe read end is a C `int` file descriptor (binary mode, `_O_BINARY` on Windows); the facade turns it into `FILE*`
-with `fdopen(fd, "rb")`. `FILE*` of the source file crosses as an opaque pointer, never dereferenced by the stub.
+The pipe read end crosses as an open `FILE*` (binary mode, `_O_BINARY` on Windows): Rust does the `fdopen(fd, "rb")` before it
+hands the job to the thread, so an `fdopen` failure is reported as no pipe and leaves no thread on a closed `FILE`.
+`FILE*` of the source file crosses as an opaque pointer, never dereferenced by the stub.
 
 ### Re-entrancy
 
@@ -268,7 +269,7 @@ search ended, as with the legacy destructor; `Zthread` is `Send + Sync` because 
 | Object | Owner | Crossing |
 |--------|-------|----------|
 | the handle (thread state, chain, `zstreambuf` or Rust zstream) | **Rust** from `new` to `close` | opaque `void*`; the facade closes it in `~Zthread` |
-| pipe read end | C++ after the call returns | descriptor, then `FILE*`, `fclose`d by `Grep::close_file`; if `fdopen` fails the facade `close`s it and Rust sees a broken pipe |
+| pipe read end | C++ after the call returns | open `FILE*` made by Rust with `fdopen` before the thread is told, `fclose`d by `Grep::close_file`; if `fdopen` fails Rust closes both pipe ends, warns and signals the thread as for a failed `pipe()` |
 | pipe write end | Rust | never crosses |
 | source `FILE*` (`file_in`) | C++ (opened by `open_file`) | borrowed until the next `start` or `close`; the legacy `zstreambuf` closes it at end of input |
 | `Grep::partname` | C++ | written through the callback; read by the Grep thread after data arrives on the pipe (ordering is the pipe) |

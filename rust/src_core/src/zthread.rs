@@ -19,8 +19,8 @@ pub const NO_FD: i32 = -1;
 /// What a crossing hands back instead of a `FILE*`: the legacy functions return NULL on failure.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Outcome {
-    /// The read end of a new pipe, a file descriptor that the caller owns from now on.
-    Pipe(i32),
+    /// The read end of a new pipe as an open `FILE*` that the caller owns from now on and closes with `fclose`.
+    Pipe(FilePtr),
     /// The legacy NULL: failure already reported through [`Host::warning`], or no next file in the archive.
     None,
 }
