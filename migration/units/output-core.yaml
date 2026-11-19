@@ -1,7 +1,7 @@
 schema: cpp-rust-unit/1
 unit: output-core
 component: src_core
-functions: [src_core.output_color, src_core.output_dump_line, src_core.output_header_line, src_core.output_header_file, src_core.output_header_tree, src_core.output_binary_file_matches, src_core.output_truncate_lines, src_core.output_sync]
+functions: [src_core.output_color, src_core.output_header_line, src_core.output_header_file, src_core.output_header_tree, src_core.output_binary_file_matches, src_core.output_sync]
 cpp_files: [src/output.cpp, src/output.hpp]
 rust_files: rust/src_core/src/output.rs rust/src_core/src/output_sync.rs rust/src_core/src/ffi/output.rs rust/src_core/src/ffi/output_sync.rs
 rust_crate_name: src_core

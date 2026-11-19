@@ -216,7 +216,7 @@ Switch: removed by the output-core and output-format Ports. Every ported member 
 `Output` API is the facade.
 
 Facade (members of `Output`, inline in `src/output_rust.hpp`; `src/output.cpp` is deleted): `color`, `header` x2, `binary_file_matches`, `format` x2,
-`format_invert`, `quote`, `cpp`, `csv`, `hex`, `json`, `xml`, `Dump::line`. Rust bridge: `output_*` in `rust/src_core/src/lib.rs`, bodies in
+`format_invert`, `quote`, `cpp`, `csv`, `hex`, `json`, `xml` (`Dump::line` is Rust too: `OutputBuf::dump_line`). Rust bridge: `output_*` in `rust/src_core/src/lib.rs`, bodies in
 `rust/src_core/src/output.rs` and `output_format.rs`. C++ conversions: `src/output_rust.hpp`.
 
 ### Decision: matcher handoff = plain-data snapshot (not a callback table)
