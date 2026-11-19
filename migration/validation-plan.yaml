@@ -30,6 +30,7 @@ components:
     cpp_headers: "src/glob.hpp src/zopen.h src/zstream.hpp src/flag.hpp src/zopen_facade.cpp src/zopen_seam.h src/zstream.cpp src/zstream_seam.h"   # seam facades: C++ the baseline must cover, not yet forbidden by linked-check
     rust_crate: rust/src_leaves
     harness_crate: rust/src_leaves-harness
+    build_config: Base-Release   # D-src_core-codec: the msvc configuration the gates build and judge
     switch_option: CPP_RUST_IMPL_SRC_LEAVES
     switch_files: [msvc/rust.props]
     switch_rust: '<CPP_RUST_IMPL_SRC_LEAVES[^>]*>rust<'
@@ -50,6 +51,7 @@ components:
     cpp_headers: "src/ugrep.hpp src/output.hpp src/stats.hpp src/cnf.hpp src/mmap.hpp src/flag.hpp"
     rust_crate: rust/src_core
     harness_crate: rust/src_core-harness
+    build_config: Base-Release   # D-src_core-codec: the msvc configuration the gates build and judge
     switch_option: CPP_RUST_IMPL_SRC_CORE
     switch_files: [msvc/rust.props]
     switch_rust: '<CPP_RUST_IMPL_SRC_CORE[^>]*>rust<'
@@ -63,12 +65,26 @@ components:
     retained_args: '--require "ugrep[.]obj" --require "query[.]obj" --require "screen[.]obj" --require "vkey[.]obj" --require "settings[.]obj"'   # Q-cleanup-1, amended by D-S1-supersede: the target end state is RE-flex/third-party only; each ugrep-owned object is removed here by the task that stops linking it. settings.obj holds only the std::string/container options until S2; output.obj removed by D-output-linked (Output is Rust; the only output.obj left in the map is the CRT's libucrt:output.obj)
     coverage_functions: 90   # D-src_core-coverage: 15 reasoned uncovered functions
     coverage_lines: 85
+  src_core_codec:
+    cleaned: true   # D-src_core-codec: the decompression paths (Zthread, -z through ugrep) exist only in a codec build
+    level: 2
+    rust_crate: rust/src_core
+    harness_crate: rust/src_core-harness
+    build_config: Pcre-Release   # codec libraries and PCRE2 from migration/harness/zstream/fetch-codecs.ps1
+    surface: cli
+    product_bin_cpp: msvc/bin/Pcre-Release-x64/ugrep.exe
+    product_bin_rust: msvc/bin/Pcre-Release-x64-rust/ugrep.exe
+    rust_archive: "rust_umbrella:src_core"
+    linked_args: '--forbid "_cpp@(CNF|Stats)@@"'
+    cleanup_map: msvc/bin/Pcre-Release-x64/ugrep.map
+    retained_args: '--require "ugrep[.]obj" --require "query[.]obj" --require "screen[.]obj" --require "vkey[.]obj" --require "settings[.]obj"'   # same end state as src_core (Q-cleanup-1, D-S1-supersede)
   src_tui:
     level: 2
     cpp_sources: "src/query.cpp src/screen.cpp src/vkey.cpp"
     cpp_headers: "src/query.hpp src/screen.hpp src/vkey.hpp"
     rust_crate: rust/src_tui
     harness_crate: rust/src_tui-harness
+    build_config: Base-Release   # D-src_core-codec: the msvc configuration the gates build and judge
     switch_option: CPP_RUST_IMPL_SRC_TUI
     switch_files: [msvc/rust.props]
     switch_rust: '<CPP_RUST_IMPL_SRC_TUI[^>]*>rust<'
@@ -87,6 +103,7 @@ components:
     cpp_headers: "src/zthread.hpp"
     rust_crate: rust/src_indexer
     harness_crate: rust/src_indexer-harness
+    build_config: Base-Release   # D-src_core-codec: the msvc configuration the gates build and judge
     switch_option: CPP_RUST_IMPL_SRC_INDEXER
     switch_files: [msvc/rust.props]
     switch_rust: '<CPP_RUST_IMPL_SRC_INDEXER[^>]*>rust<'
@@ -127,7 +144,7 @@ gates:
     scope: component
     checks:
       - name: build-cpp
-        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1 -Extra \"/p:{switch_option}=cpp\""
+        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1 -Configuration {build_config} -Extra \"/p:{switch_option}=cpp\""
       - name: version-runs
         run: "powershell -NoProfile -Command \"$ErrorActionPreference='Stop'; & '{product_bin_cpp}' --version; exit $LASTEXITCODE\""
       - name: surface-unchanged
@@ -144,7 +161,7 @@ gates:
     scope: component
     checks:
       - name: build-cpp
-        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1"
+        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1 -Configuration {build_config}"
       - name: harness-builds                  # the replay harness the unit gate's seam-replay runs
         run: "cargo build --profile harness --locked --manifest-path {harness_crate}/Cargo.toml"
       - name: catalog
@@ -159,7 +176,7 @@ gates:
     scope: component
     checks:
       - name: build-cpp
-        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1 -Extra \"/p:{switch_option}=cpp\""
+        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1 -Configuration {build_config} -Extra \"/p:{switch_option}=cpp\""
       - name: record-surface-twice
         run: >-
           {tools} run-cases --bin {product_bin_cpp} --impl cpp --repeat 3
@@ -209,7 +226,7 @@ gates:
         run: "cargo nextest run -p {rust_crate_name} --locked --manifest-path rust/Cargo.toml --profile ci"
         expect: [{junit: "rust/target/nextest/ci/junit.xml", max_failures: 0}]
       - name: cpp-build                      # the product still builds with the default switch
-        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1"
+        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1 -Configuration {build_config}"
       - name: policy
         run: >-
           {tools} policy-scan --base {base} --plan migration/validation-plan.yaml
@@ -220,7 +237,7 @@ gates:
     checks:
       - name: build-rust-variant
         run: >-
-          powershell -NoProfile -File migration/harness/build-cpp.ps1 -Extra "/p:{switch_option}=rust /p:CppRustOutSuffix=-rust"
+          powershell -NoProfile -File migration/harness/build-cpp.ps1 -Configuration {build_config} -Extra "/p:{switch_option}=rust /p:CppRustOutSuffix=-rust"
       - name: linked
         run: >-
           {tools} linked-check --map {link_map} {linked_args}
@@ -285,7 +302,7 @@ gates:
         run: "cargo nextest run -p {rust_crate_name} --locked --manifest-path rust/Cargo.toml --profile ci"
         expect: [{junit: "rust/target/nextest/ci/junit.xml", max_failures: 0}]
       - name: build-default
-        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1"
+        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1 -Configuration {build_config}"
       - name: surface
         run: >-
           {tools} run-cases --bin {product_bin_cpp} --impl rust
@@ -309,7 +326,7 @@ gates:
     scope: component
     checks:
       - name: build-default
-        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1"
+        run: "powershell -NoProfile -File migration/harness/build-cpp.ps1 -Configuration {build_config}"
       - name: linked
         run: >-
           {tools} linked-check --map {cleanup_map} {linked_args} {retained_args}

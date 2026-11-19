@@ -1,10 +1,10 @@
-"""Appends the zt-* cases to migration/corpus/src_core/cases.jsonl (replacing earlier zt-* lines): surface cases of the decompression thread of ugrep.cpp
+"""Writes migration/corpus/src_core_codec/cases.jsonl (D-src_core-codec: judged on Pcre-Release): surface cases of the decompression thread of ugrep.cpp
 (struct Zthread: -z, --zmax, zip/tar parts, cancellation, corrupt input). Inputs only; the expected
 observations are recorded by `cpp2rust-tools run-cases` against the codec-enabled C++ reference
-msvc/bin/CodecRef-x64/ugrep.exe (migration/harness/zstream/build-codec-ref.ps1).
+msvc/bin/Pcre-Release-x64/ugrep.exe (migration/harness/zstream/fetch-codecs.ps1, then build-cpp.ps1 -Configuration Pcre-Release).
 
 Every case is single-threaded (-J1) and sorted (--sort=name) so output order is deterministic.
-Run from the repository root:  python migration/harness/zthread/gen_cases.py
+Run from the repository root:  python migration/harness/src_core_codec/gen_cases.py
 """
 import bz2
 import gzip
@@ -16,7 +16,7 @@ import tarfile
 import zipfile
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-OUT = os.path.join(ROOT, "migration", "corpus", "src_core", "cases.jsonl")
+OUT = os.path.join(ROOT, "migration", "corpus", "src_core_codec", "cases.jsonl")
 PREFIX = "zt-"
 
 T1 = b"alpha foo one\nbeta two\nfoo gamma foo\ndelta\nlast foo line\n"
@@ -33,7 +33,13 @@ def lcg(lines, every):
     return b"".join(out)
 
 
-BIG = lcg(30000, 997)  # ~700 KB, crosses many pipe and decoder buffers
+def periodic(lines, period, every):
+    # repeated text: large once decoded, tiny once compressed (the corpus stays small)
+    return b"".join(("line %d bar baz%s\n" % (i % period, " foo" if i % every == 0 else "")).encode() for i in range(lines))
+
+
+BIG = periodic(30000, 500, 997) + b"final line marker\n"  # ~600 KB decoded, crosses many pipe and decoder buffers
+BIGS = periodic(5000, 500, 997)  # ~100 KB, for members stored uncompressed (tar)
 
 
 def gz(d):
@@ -130,7 +136,7 @@ case("tar-pax", ["-z", "--with-filename", "foo", "a.tar"], {"a.tar": tar(MEM, ta
 case("tar-gnu-longname", ["-z", "--with-filename", "foo", "a.tar"],
      {"a.tar": tar([("l" * 130 + ".txt", T1)], tarfile.GNU_FORMAT)})
 case("tar-include", ["-z", "--include=x*", "--with-filename", "foo", "a.tar"], {"a.tar": tar(MEM)})
-case("tar-big-member", ["-zc", "--with-filename", "foo", "a.tar"], {"a.tar": tar([("big.txt", BIG), ("s.txt", T1)])})
+case("tar-big-member", ["-zc", "--with-filename", "foo", "a.tar"], {"a.tar": tar([("big.txt", BIGS), ("s.txt", T1)])})
 case("tgz", ["-z", "--with-filename", "foo", "a.tgz"], {"a.tgz": gz(tar(MEM))})
 case("tar-gz-ext", ["-z", "--with-filename", "foo", "a.tar.gz"], {"a.tar.gz": gz(tar(MEM))})
 case("tbz", ["-z", "--with-filename", "foo", "a.tbz"], {"a.tbz": bz2.compress(tar(MEM))})
@@ -194,7 +200,7 @@ case("cancel-m1-zip-big-text", ["-z", "-m1", "--with-filename", "foo", "a.zip"],
 case("cancel-l-zip-big", ["-zl", "foo", "a.zip"], {"a.zip": BIGZIP})
 case("cancel-q-zip-big", ["-zq", "foo", "a.zip"], {"a.zip": BIGZIP})
 case("cancel-q-nomatch-zip", ["-zq", "zzz", "a.zip"], {"a.zip": BIGZIP})
-BIGTAR = tar([("a.txt", BIG), ("b.txt", BIG), ("c.txt", BIG)])
+BIGTAR = tar([("a.txt", BIGS), ("b.txt", BIGS), ("c.txt", BIGS)])
 case("cancel-m1-tar-big", ["-z", "-m1", "-c", "--with-filename", "foo", "a.tar"], {"a.tar": BIGTAR})
 case("cancel-l-tar-big", ["-zl", "foo", "a.tar"], {"a.tar": BIGTAR})
 case("cancel-q-tar-big", ["-zq", "foo", "a.tar"], {"a.tar": BIGTAR})
@@ -216,7 +222,7 @@ case("cancel-q-many-files", ["-zq", "foo", "1.gz", "2.zip", "3.tar"], {"1.gz": g
 case("cancel-recursive-l", ["-zrl", "foo", "."],
      {"d/1.gz": gz(BIG), "d/2.zip": BIGZIP, "e/3.tar": BIGTAR, "e/4.tgz": gz(BIGTAR)})
 case("cancel-max-files", ["-zr", "--max-files=1", "-c", "foo", "."], {"d/1.gz": gz(BIG), "d/2.zip": BIGZIP})
-case("cancel-late-match-l", ["-zl", "-e", "zzz", "-e", "line 29999", "big.gz"], {"big.gz": gz(BIG)})
+case("cancel-late-match-l", ["-zl", "-e", "zzz", "-e", "final line marker", "big.gz"], {"big.gz": gz(BIG)})
 
 # corrupt, truncated and unreadable inputs: warnings
 GZ1 = gz(T1)
@@ -225,7 +231,7 @@ case("corrupt-gz-truncated", ["-z", "foo", "a.gz"], {"a.gz": GZ1[: len(GZ1) // 2
 case("corrupt-gz-bad-crc", ["-z", "foo", "a.gz"], {"a.gz": GZ1[:-8] + b"\x00\x00\x00\x00" + GZ1[-4:]})
 case("corrupt-gz-bad-trailer-len", ["-z", "foo", "a.gz"], {"a.gz": GZ1[:-4] + b"\x01\x00\x00\x00"})
 case("corrupt-gz-bad-middle", ["-z", "foo", "a.gz"], {"a.gz": GZ1[:14] + bytes([GZ1[14] ^ 0xFF]) + GZ1[15:]})
-case("corrupt-gz-big-truncated", ["-zc", "foo", "big.gz"], {"big.gz": gz(BIG)[:40000]})
+case("corrupt-gz-big-truncated", ["-zc", "foo", "big.gz"], {"big.gz": gz(BIG)[: len(gz(BIG)) // 2]})
 case("corrupt-bz2-truncated", ["-z", "foo", "a.bz2"], {"a.bz2": bz2.compress(T1)[:20]})
 case("corrupt-bz2-garbage", ["-z", "foo", "a.bz2"], {"a.bz2": b"BZh9garbage garbage garbage"})
 case("corrupt-xz-truncated", ["-z", "foo", "a.xz"], {"a.xz": lzma.compress(T1)[:20]})
@@ -382,13 +388,54 @@ case("tzst", ["-z", "--with-filename", "foo", "a.tzst"], {"a.tzst": bytes.fromhe
 case("tzst-zmax2", ["-z", "--zmax=2", "--with-filename", "foo", "a.tzst"], {"a.tzst": bytes.fromhex("28b52ffd0458b50300c2441016a0a53a00dfae12bb9b35fadf97b2b689e4b75fbd2903bbca055b22b942d668681889ad77958f0d3d07b8f1a43cefebd19b7388490bf9ff6855fd8f2ff0825c011100fe7315901720ab6807d41b1820538802d420000a1c4819404090805148873539f80dd2800027c64cb382165c472760047d6526c4")})
 case("tlzma", ["-z", "--with-filename", "foo", "a.tlzma"], {"a.tlzma": bytes.fromhex("5d00008000ffffffffffffffff00368c41c78430166b02f614d36835dcbd863e5c9cbed0efe4dd06b2b39df7500784f7d65b004a25ae097e3c48abedec5ffa5c49132b2da6aee3db998add0e5516d091cb76b2a9f19cd20f9e0a64f9205eee87fa0c0f5e07325737600c24f6dc4ab906898219b85c8e21d32685c9cb40ad67fce59c82")})
 
-keep = []
-if os.path.exists(OUT):
-    with open(OUT, newline="") as f:
-        keep = [l for l in f.read().split("\n") if l and not l.startswith('{"id":"%s' % PREFIX)]
+# 7z and lz4: fixtures built once with py7zr and python-lz4 (fixtures.json holds their bytes, so a rerun needs neither)
+with open(os.path.join(os.path.dirname(__file__), "fixtures.json")) as _f:
+    FX = {k: bytes.fromhex(v) for k, v in json.load(_f).items()}
+SZ = FX["sz_mem"]
+case("7z", ["-z", "--with-filename", "foo", "a.7z"], {"a.7z": SZ})
+case("7z-count", ["-zc", "--with-filename", "foo", "a.7z"], {"a.7z": SZ})
+case("7z-l", ["-zl", "foo", "a.7z"], {"a.7z": SZ})
+case("7z-L", ["-zL", "foo", "a.7z"], {"a.7z": SZ})
+case("7z-no-z", ["foo", "a.7z"], {"a.7z": SZ})
+case("7z-lzma1", ["-z", "--with-filename", "foo", "a.7z"], {"a.7z": FX["sz_lzma1"]})
+case("7z-copy", ["-z", "--with-filename", "foo", "a.7z"], {"a.7z": FX["sz_copy"]})
+case("7z-include", ["-z", "--include=x*", "--with-filename", "foo", "a.7z"], {"a.7z": SZ})
+case("7z-big-member", ["-zc", "--with-filename", "foo", "a.7z"], {"a.7z": FX["sz_big"]})
+case("7z-multi-archives", ["-z", "-c", "--with-filename", "foo", "a.7z", "b.zip", "c.tar", "d.gz"],
+     {"a.7z": SZ, "b.zip": zipf(MEM), "c.tar": tar(MEM), "d.gz": gz(T1)})
+case("zmax1-7z-of-gz", ["-z", "--with-filename", "foo", "a.7z"], {"a.7z": FX["sz_nested"]})
+case("zmax2-7z-of-gz", ["-z", "--zmax=2", "--with-filename", "foo", "a.7z"], {"a.7z": FX["sz_nested"]})
+case("zmax3-7z-of-tgz", ["-z", "--zmax=3", "--with-filename", "foo", "a.7z"], {"a.7z": FX["sz_tgz"]})
+case("zmax2-zip-of-7z", ["-z", "--zmax=2", "--with-filename", "foo", "a.zip"], {"a.zip": zipf([("in.7z", SZ), ("p.txt", T3)])})
+case("cancel-m1-7z-big", ["-z", "-m1", "-c", "--with-filename", "foo", "a.7z"], {"a.7z": FX["sz_bigx3"]})
+case("cancel-l-7z-big", ["-zl", "foo", "a.7z"], {"a.7z": FX["sz_bigx3"]})
+case("cancel-q-7z-big", ["-zq", "foo", "a.7z"], {"a.7z": FX["sz_bigx3"]})
+case("corrupt-7z-truncated", ["-z", "--with-filename", "foo", "a.7z"], {"a.7z": SZ[: len(SZ) // 2]})
+case("corrupt-7z-garbage", ["-z", "--with-filename", "foo", "a.7z"], {"a.7z": b"7z\xbc\xaf\x27\x1cgarbage garbage garbage garbage"})
+case("corrupt-7z-bad-header-crc", ["-z", "--with-filename", "foo", "a.7z"], {"a.7z": SZ[:8] + b"\x00\x00\x00\x00" + SZ[12:]})
+case("corrupt-7z-damaged-data", ["-z", "--with-filename", "foo", "a.7z"], {"a.7z": SZ[:34] + bytes([SZ[34] ^ 0xFF]) + SZ[35:]})
+case("lz4", ["-z", "foo", "a.lz4"], {"a.lz4": FX["lz4_t1"]})
+case("lz4-no-z", ["foo", "a.lz4"], {"a.lz4": FX["lz4_t1"]})
+case("lz4-count", ["-zc", "foo", "a.lz4"], {"a.lz4": FX["lz4_t1"]})
+case("lz4-concatenated", ["-z", "foo", "a.lz4"], {"a.lz4": FX["lz4_t1"] + FX["lz4_t2"]})
+case("lz4-big", ["-zc", "foo", "big.lz4"], {"big.lz4": FX["lz4_big"]})
+case("lz4-big-checksum-64k", ["-zc", "foo", "big.lz4"], {"big.lz4": FX["lz4_big_chk"]})
+case("lz4-multi-files", ["-z", "--with-filename", "foo", "a.lz4", "b.gz", "c.xz", "plain.txt"],
+     {"a.lz4": FX["lz4_t1"], "b.gz": gz(T2), "c.xz": lzma.compress(T1), "plain.txt": T2})
+case("tar-lz4", ["-z", "--with-filename", "foo", "a.tar.lz4"], {"a.tar.lz4": FX["lz4_tar"]})
+case("tlz4", ["-z", "--with-filename", "foo", "a.tlz4"], {"a.tlz4": FX["lz4_tar"]})
+case("zmax2-lz4-of-gz", ["-z", "--zmax=2", "foo", "a.lz4"], {"a.lz4": FX["lz4_of_gz"]})
+case("zmax1-lz4-of-gz", ["-z", "foo", "a.lz4"], {"a.lz4": FX["lz4_of_gz"]})
+case("cancel-m1-lz4-big", ["-z", "-m1", "foo", "big.lz4"], {"big.lz4": FX["lz4_big"]})
+case("cancel-l-lz4-big", ["-zl", "foo", "big.lz4"], {"big.lz4": FX["lz4_big"]})
+case("cancel-q-lz4-big", ["-zq", "foo", "big.lz4"], {"big.lz4": FX["lz4_big"]})
+case("cancel-l-tlz4-big", ["-zl", "foo", "a.tlz4"], {"a.tlz4": FX["lz4_bigtar"]})
+case("corrupt-lz4-truncated", ["-z", "foo", "a.lz4"], {"a.lz4": FX["lz4_t1"][:40]})
+case("corrupt-lz4-garbage", ["-z", "foo", "a.lz4"], {"a.lz4": b"\x04\x22\x4d\x18garbage garbage garbage garbage"})
+case("corrupt-lz4-bad-magic", ["-z", "foo", "a.lz4"], {"a.lz4": b"\x00" + FX["lz4_t1"][1:]})
+case("corrupt-lz4-big-truncated", ["-zc", "foo", "big.lz4"], {"big.lz4": FX["lz4_big"][: len(FX["lz4_big"]) // 2]})
+
 with open(OUT, "w", newline="\n") as f:
-    for l in keep:
-        f.write(l + "\n")
     for c in cases:
         f.write(json.dumps(c, separators=(",", ":")) + "\n")
 print(len(cases), "cases ->", OUT)
