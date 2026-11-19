@@ -1,15 +1,16 @@
-//! Types and signatures of the Zthread seam (the decompression thread of src/ugrep.cpp, `struct ZthreadCpp`),
-//! fixed by the Prepare seam task. The bodies are stubs that report `Outcome::NotPorted`; the Port task replaces
-//! them and never edits a signature. Declared from `signatures.rs` with `#[path]`, so the replay harness that
-//! includes `signatures.rs` alone builds it; it names no `cxx` type and uses no crate path.
+//! Types of the Zthread seam (the decompression thread of src/ugrep.cpp), fixed by the Prepare seam task: the
+//! caller-side view (`Outcome`, `FilePtr`) and what stays in C++ and is called back (`Host`). Declared from
+//! `signatures.rs` with `#[path]`, so the replay harness that includes `signatures.rs` alone builds it; it names no
+//! `cxx` type and uses no crate path. The decompression thread itself is `zthread_core.rs`, which needs the zstream
+//! core of `src_leaves`, so it is declared from `lib.rs` and not from here.
 //!
 //! The notes (encoding, re-entrancy, thread affinity, owner side, error kinds) are in `SEAM.md`, "Zthread seam".
+//! Port changes to the Prepare seam signatures (decision D-zthread-signature): `Host` gained `cannot_decompress`,
+//! `archive_found` and `zstream_config`, and the `Zthread` struct moved to `zthread_core.rs`.
 
 use std::ffi::c_void;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
-/// A C `FILE*`, borrowed from the caller. Opaque here; `ffi/zthread.rs` and `ffi/cfile`-style wrappers read it.
+/// A C `FILE*`, borrowed from the caller. Opaque here; `ffi/zthread_sys.rs` reads it.
 pub type FilePtr = *mut c_void;
 
 /// The "no descriptor" value.
@@ -18,12 +19,19 @@ pub const NO_FD: i32 = -1;
 /// What a crossing hands back instead of a `FILE*`: the legacy functions return NULL on failure.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Outcome {
-    /// The read end of a new pipe, a file descriptor that the caller owns from now on.
-    Pipe(i32),
+    /// The read end of a new pipe as an open `FILE*` that the caller owns from now on and closes with `fclose`.
+    Pipe(FilePtr),
     /// The legacy NULL: failure already reported through [`Host::warning`], or no next file in the archive.
     None,
-    /// The stub: nothing was done.
-    NotPorted,
+}
+
+/// What the C++ build of the zstream (`HAVE_LIB*`, `WITH_ZIP_CRC32`, `WITH_MAX_7ZIP_SIZE`) decides, as `src_leaves`
+/// `Config`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ZstreamSettings {
+    pub codecs: u32,
+    pub zip_crc32: bool,
+    pub max_7zip_size: u64,
 }
 
 /// What stays in C++ and is called back; the facade of src/ugrep.cpp implements it. Bytes carry no NUL and no
@@ -33,80 +41,12 @@ pub trait Host: Send + Sync {
     fn set_partname(&self, name: &[u8]);
     /// `warning(message, arg)` of ugrep.hpp, `arg` is NULL when `None`.
     fn warning(&self, message: &[u8], arg: Option<&[u8]>);
+    /// `cannot_decompress(pathname, message)` of ugrep.cpp.
+    fn cannot_decompress(&self, pathname: &[u8], message: &[u8]);
+    /// An archive was detected (zip, tar, cpio): `if (!flag_no_filename) flag_no_header = false`.
+    fn archive_found(&self);
     /// The flags part of `select_matching()`: hidden files, `--exclude`/`--include` globs, `-M` magic bytes.
     fn select_by_flags(&self, path: &[u8], head: &[u8]) -> bool;
-}
-
-/// The decompression thread state of one `Grep` (and, inside Rust, of each stage of a `--zmax>1` chain).
-///
-/// Thread contract: `cancel` may run on any thread at the same time as `start`/`open_next` of the search
-/// thread (the query UI thread cancels while the search is inside `search`/`open_file`/`close_file`), so every method
-/// but `close` takes `&self` and the shared state is atomic or behind a `Mutex`. The Port keeps all mutable state of
-/// a stage in a `Mutex` (with `Condvar`s) and never forms a `&mut` to a live `Zthread`.
-/// `cancel` never overlaps `close`: `close` runs from `~Grep` after the grep handle is cleared, so no canceller can
-/// reach the handle any more.
-pub struct Zthread {
-    pub host: Arc<dyn Host>,
-    pub is_chained: bool,
-    cancelled: AtomicBool,
-}
-
-impl Zthread {
-    /// `ZthreadCpp::ZthreadCpp(is_chained, partname)`; the partname lives behind [`Host::set_partname`].
-    pub fn new(host: Arc<dyn Host>, is_chained: bool) -> Zthread {
-        Zthread { host, is_chained, cancelled: AtomicBool::new(false) }
-    }
-
-    /// `ZthreadCpp::start`: start the decompression thread if it is not running and open a new pipe.
-    /// `ztstage` is `flag_zmax`; `find` selects a part of a (nested) archive. `file_in` is borrowed until the next
-    /// `start` or `close`.
-    pub fn start(&self, _ztstage: usize, _pathname: &[u8], _file_in: FilePtr, _find: Option<&[u8]>) -> Outcome {
-        Outcome::NotPorted
-    }
-
-    /// `ZthreadCpp::open_next`: open the pipe to the next file or part of the archive.
-    pub fn open_next(&self, _pathname: &[u8]) -> Outcome {
-        Outcome::NotPorted
-    }
-
-    /// `ZthreadCpp::cancel`: stop decompressing gracefully, recursively down the chain.
-    pub fn cancel(&self) {
-        self.cancelled.store(true, Ordering::SeqCst);
-    }
-
-    /// Whether `cancel` was called.
-    pub fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::SeqCst)
-    }
-
-    /// `ZthreadCpp::join` and the destructor: join all stages and release the stream. Safe to call again.
-    pub fn close(&mut self) {}
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    struct NoHost;
-
-    impl Host for NoHost {
-        fn set_partname(&self, _name: &[u8]) {}
-        fn warning(&self, _message: &[u8], _arg: Option<&[u8]>) {}
-        fn select_by_flags(&self, _path: &[u8], _head: &[u8]) -> bool {
-            false
-        }
-    }
-
-    #[test]
-    fn stub_reports_not_ported() {
-        let mut z = Zthread::new(Arc::new(NoHost), false);
-        assert_eq!(z.start(1, b"a.gz", std::ptr::null_mut(), None), Outcome::NotPorted);
-        assert_eq!(z.open_next(b"a.gz"), Outcome::NotPorted);
-        assert!(!z.is_cancelled());
-        z.cancel();
-        assert!(z.is_cancelled());
-        z.close();
-        z.close();
-        assert!(!z.is_chained);
-    }
+    /// The zstream build configuration of this C++ build.
+    fn zstream_config(&self) -> ZstreamSettings;
 }

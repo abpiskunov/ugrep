@@ -288,8 +288,7 @@
    "cycle_with": [],
    "depends_on": [
     "glob",
-    "zstream",
-    "zthread"
+    "zstream"
    ],
    "files": [
     "src/ugrep-indexer.cpp"
@@ -337,17 +336,6 @@
    ],
    "level": 1,
    "loc": 2295
-  },
-  "zthread": {
-   "cycle_with": [],
-   "depends_on": [
-    "zstream"
-   ],
-   "files": [
-    "src/zthread.hpp"
-   ],
-   "level": 2,
-   "loc": 772
   }
  },
  "cycles": [
@@ -431,17 +419,11 @@
   "ugrep_indexer -> zstream": [
    "include src/ugrep-indexer.cpp -> src/zstream.hpp"
   ],
-  "ugrep_indexer -> zthread": [
-   "include src/ugrep-indexer.cpp -> src/zthread.hpp"
-  ],
   "vkey -> ugrep": [
    "include src/vkey.hpp -> src/ugrep.hpp"
   ],
   "zstream -> zopen": [
    "include src/zstream.hpp -> src/zopen.h"
-  ],
-  "zthread -> zstream": [
-   "include src/zthread.hpp -> src/zstream.hpp"
   ]
  },
  "edges_from": [
@@ -466,7 +448,6 @@
   "output",
   "query",
   "screen",
-  "zthread",
   "ugrep_indexer"
  ],
  "root": "C:\\DevAgentE2E\\ugrep\\sb\\w7j6keksy8bj\\abpiskunov-ugrep",

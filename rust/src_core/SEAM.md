@@ -176,6 +176,11 @@ The ugrep.cpp ~228-757 and ~4456-4670 range (flag globals, Static members, table
 
 ## ugrep.cpp Zthread seam (Prepare seam: Zthread)
 
+**Port status: ported.** `ZthreadCpp`, the `CPP_RUST_IMPL_ZTHREAD` switch and `src/zthread.hpp` are deleted; the default build
+runs the Rust thread (`src/zthread_core.rs`, unsafe only in `src/ffi/zthread_sys.rs`). The notes below describe the seam as
+prepared; where they mention `ZthreadCpp`, the stub or the switch they are historical. Changes of the Port are in
+D-zthread-signature and D-zthread-races of `migration/decisions.md`.
+
 D-src_core-zthread-retained was superseded by D-S1-supersede. Prepared here; the body is still C++ (`ZthreadCpp`), the Rust
 side is a stub. Behavior is unchanged: `CPP_RUST_IMPL_ZTHREAD` defaults to `cpp`; the facade then calls `ZthreadCpp`
 (the old `struct Zthread`, body unchanged apart from the rename of the type and its `new`/`&Zthread::decompress`
@@ -228,8 +233,9 @@ the pipe and `warning` callbacks. The Port may call `src_leaves` through `signat
 
 Strings are bytes (`&[u8]`, no NUL, no encoding assumed: file names are OS bytes, `partname` is built from names
 inside archives). On the C ABI they are NUL-terminated (`const char*`), `find` and `arg` may be NULL. Sizes are `size_t`.
-The pipe read end is a C `int` file descriptor (binary mode, `_O_BINARY` on Windows); the facade turns it into `FILE*`
-with `fdopen(fd, "rb")`. `FILE*` of the source file crosses as an opaque pointer, never dereferenced by the stub.
+The pipe read end crosses as an open `FILE*` (binary mode, `_O_BINARY` on Windows): Rust does the `fdopen(fd, "rb")` before it
+hands the job to the thread, so an `fdopen` failure is reported as no pipe and leaves no thread on a closed `FILE`.
+`FILE*` of the source file crosses as an opaque pointer, never dereferenced by the stub.
 
 ### Re-entrancy
 
@@ -263,7 +269,7 @@ search ended, as with the legacy destructor; `Zthread` is `Send + Sync` because 
 | Object | Owner | Crossing |
 |--------|-------|----------|
 | the handle (thread state, chain, `zstreambuf` or Rust zstream) | **Rust** from `new` to `close` | opaque `void*`; the facade closes it in `~Zthread` |
-| pipe read end | C++ after the call returns | descriptor, then `FILE*`, `fclose`d by `Grep::close_file`; if `fdopen` fails the facade `close`s it and Rust sees a broken pipe |
+| pipe read end | C++ after the call returns | open `FILE*` made by Rust with `fdopen` before the thread is told, `fclose`d by `Grep::close_file`; if `fdopen` fails Rust closes both pipe ends, warns and signals the thread as for a failed `pipe()` |
 | pipe write end | Rust | never crosses |
 | source `FILE*` (`file_in`) | C++ (opened by `open_file`) | borrowed until the next `start` or `close`; the legacy `zstreambuf` closes it at end of input |
 | `Grep::partname` | C++ | written through the callback; read by the Grep thread after data arrives on the pipe (ordering is the pipe) |
@@ -291,7 +297,7 @@ search ended, as with the legacy destructor; `Zthread` is `Send + Sync` because 
 
 `ZthreadCpp` stays the product code until the Port; `select_matching` is called through a never-started `ZthreadCpp`
 member of the rust facade (`selector`, `findpart` NULL) until the Port splits the findpart logic from the flags part.
-`src/zthread.hpp` (an older, ugrep-indexer copy of the same struct) is **kept**: no source includes it any more
+At Prepare seam, `src/zthread.hpp` (an older, ugrep-indexer copy of the same struct) was **kept** (the Port deleted it, Q-zthread-header): no source includes it any more
 (`src/ugrep-indexer.cpp` is the Rust entry stub), so it is not compiled, but `msvc/ugrep-indexer.vcxproj:101` lists it as
 a `ClInclude` and `src/Makefile.am:67,95` distribute it. Removing it changes the project and the distribution lists,
 which is not a seam-preparation move; it goes with the Cleanup that deletes `ZthreadCpp`.
@@ -311,7 +317,7 @@ every `ClCompile`, so the facade calls `ugrep_core_zthread_*` of the always-link
 ### Text for the migration records (to be appended by a task that may write `migration/`)
 
 `decisions.md`: `D-zthread-seam` | scope | the Zthread port is back in scope (D-S1-supersede); Prepare seam done; Rust Zthread lives
-in `rust/src_core` with a dependency on `rust/src_leaves` (acyclic); `src/zthread.hpp` kept, listed only (reason above) |
+in `rust/src_core` with a dependency on `rust/src_leaves` (acyclic); `src/zthread.hpp` kept, listed only (reason above; deleted by the Port, Q-zthread-header) |
 `rust/src_core/SEAM.md`. `units/zthread.yaml`: `unit: zthread`, `component: src_core`, `functions: [src_core.zthread_start,
 src_core.zthread_open_next, src_core.zthread_cancel, src_core.zthread_close]`, `cpp_files: [src/ugrep.cpp, src/zthread.hpp]`,
 `rust_files: rust/src_core/src/zthread.rs rust/src_core/src/ffi/zthread.rs`, `depends_on: [zstream_core]`, `status: planned`.
