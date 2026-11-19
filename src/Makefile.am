@@ -64,7 +64,6 @@ ugrep_SOURCES = \
 	ugrep.hpp \
 	zstream.hpp \
 	zstream_seam.h \
-	zthread.hpp \
 	zthread_seam.h \
 	zopen.h \
 	zopen_facade.cpp \
@@ -92,8 +91,7 @@ ugrep_indexer_SOURCES  = \
 	zopen_facade.cpp \
 	zopen_seam.h \
 	zstream.hpp \
-	zstream_seam.h \
-	zthread.hpp
+	zstream_seam.h
 ugrep_indexer_LDADD = \
 	$(RUST_UMBRELLA) \
 	$(PTHREAD_LIBS) -ldl -lm

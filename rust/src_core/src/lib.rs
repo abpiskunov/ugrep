@@ -46,8 +46,12 @@ pub mod output_buf;
 pub mod output_buf_ffi;
 #[path = "ffi/output_sync.rs"]
 pub mod output_sync_ffi;
-// the Zthread seam (decompression thread of src/ugrep.cpp): types and signatures in `zthread.rs` (declared from
-// `signatures.rs`), C-ABI entries of src/zthread_seam.h; stubs until the Port task
+// the Zthread seam (decompression thread of src/ugrep.cpp): types in `zthread.rs` (declared from `signatures.rs`), the
+// thread itself in `zthread_core.rs` on the zstream core of src_leaves, the C runtime calls (the `unsafe` of the unit)
+// in `ffi/zthread_sys.rs` and the C-ABI entries of src/zthread_seam.h in `ffi/zthread.rs`
+#[path = "ffi/zthread_sys.rs"]
+pub mod zthread_sys;
+pub mod zthread_core;
 #[path = "ffi/zthread.rs"]
 pub mod zthread_ffi;
 

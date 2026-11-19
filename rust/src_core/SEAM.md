@@ -176,6 +176,11 @@ The ugrep.cpp ~228-757 and ~4456-4670 range (flag globals, Static members, table
 
 ## ugrep.cpp Zthread seam (Prepare seam: Zthread)
 
+**Port status: ported.** `ZthreadCpp`, the `CPP_RUST_IMPL_ZTHREAD` switch and `src/zthread.hpp` are deleted; the default build
+runs the Rust thread (`src/zthread_core.rs`, unsafe only in `src/ffi/zthread_sys.rs`). The notes below describe the seam as
+prepared; where they mention `ZthreadCpp`, the stub or the switch they are historical. Changes of the Port are in
+D-zthread-signature and D-zthread-races of `migration/decisions.md`.
+
 D-src_core-zthread-retained was superseded by D-S1-supersede. Prepared here; the body is still C++ (`ZthreadCpp`), the Rust
 side is a stub. Behavior is unchanged: `CPP_RUST_IMPL_ZTHREAD` defaults to `cpp`; the facade then calls `ZthreadCpp`
 (the old `struct Zthread`, body unchanged apart from the rename of the type and its `new`/`&Zthread::decompress`

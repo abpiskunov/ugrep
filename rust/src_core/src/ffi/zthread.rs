@@ -1,16 +1,16 @@
 //! C-ABI entries of the Zthread seam for src/ugrep.cpp (declared in src/zthread_seam.h): an opaque handle owned by
-//! Rust, a table of C callbacks for what stays in C++ (`Grep::partname`, `warning()`, the flags part of
-//! `select_matching()`), and the pipe read end handed back as a file descriptor. The `unsafe` of the Zthread
-//! unit is here. The bodies behind the entries are the stubs of `zthread.rs` until the Port task.
+//! Rust, a table of C callbacks for what stays in C++ (`Grep::partname`, `warning()`, `cannot_decompress()`, the flags
+//! part of `select_matching()`), and the pipe read end handed back as a file descriptor. The decompression thread is
+//! `zthread_core.rs`; the C runtime calls it makes are in `zthread_sys.rs`.
 
-use crate::signatures::zthread::{Host, Outcome, Zthread, NO_FD};
+use crate::signatures::zthread::{Host, Outcome, ZstreamSettings, NO_FD};
+use crate::zthread_core::Zthread;
 use std::ffi::{c_char, c_int, c_void, CStr};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 
 const ZTHREAD_OK: c_int = 0;
 const ZTHREAD_NONE: c_int = 1;
-const ZTHREAD_NOT_PORTED: c_int = -1;
 
 /// Mirrors `struct ugrep_core_zthread_env` of src/zthread_seam.h.
 #[repr(C)]
@@ -19,7 +19,12 @@ pub struct ZthreadEnv {
     pub ctx: *mut c_void,
     pub set_partname: extern "C" fn(*mut c_void, *const c_char, usize),
     pub warning: extern "C" fn(*mut c_void, *const c_char, *const c_char),
+    pub cannot_decompress: extern "C" fn(*mut c_void, *const c_char, *const c_char),
+    pub archive_found: extern "C" fn(*mut c_void),
     pub select_by_flags: extern "C" fn(*mut c_void, *const c_char, *const u8, usize) -> c_int,
+    pub zs_codecs: u32,
+    pub zs_zip_crc32: c_int,
+    pub zs_max_7zip_size: u64,
 }
 
 /// The C++ facade behind the callbacks table.
@@ -51,9 +56,23 @@ impl Host for CHost {
         (self.0.warning)(self.0.ctx, message.as_ptr().cast(), arg_ptr);
     }
 
+    fn cannot_decompress(&self, pathname: &[u8], message: &[u8]) {
+        let pathname = c_string(pathname);
+        let message = c_string(message);
+        (self.0.cannot_decompress)(self.0.ctx, pathname.as_ptr().cast(), message.as_ptr().cast());
+    }
+
+    fn archive_found(&self) {
+        (self.0.archive_found)(self.0.ctx);
+    }
+
     fn select_by_flags(&self, path: &[u8], head: &[u8]) -> bool {
         let path = c_string(path);
         (self.0.select_by_flags)(self.0.ctx, path.as_ptr().cast(), head.as_ptr(), head.len()) != 0
+    }
+
+    fn zstream_config(&self) -> ZstreamSettings {
+        ZstreamSettings { codecs: self.0.zs_codecs, zip_crc32: self.0.zs_zip_crc32 != 0, max_7zip_size: self.0.zs_max_7zip_size }
     }
 }
 
@@ -78,7 +97,6 @@ unsafe fn report(outcome: Outcome, fd: *mut c_int) -> c_int {
     let (status, value) = match outcome {
         Outcome::Pipe(read_end) => (ZTHREAD_OK, read_end),
         Outcome::None => (ZTHREAD_NONE, NO_FD),
-        Outcome::NotPorted => (ZTHREAD_NOT_PORTED, NO_FD),
     };
     // SAFETY: see above.
     unsafe { *fd = value };
@@ -180,21 +198,36 @@ mod tests {
 
     extern "C" fn set_partname(_ctx: *mut c_void, _name: *const c_char, _len: usize) {}
     extern "C" fn warning(_ctx: *mut c_void, _message: *const c_char, _arg: *const c_char) {}
+    extern "C" fn cannot_decompress(_ctx: *mut c_void, _pathname: *const c_char, _message: *const c_char) {}
+    extern "C" fn archive_found(_ctx: *mut c_void) {}
     extern "C" fn select_by_flags(_ctx: *mut c_void, _path: *const c_char, _buf: *const u8, _len: usize) -> c_int {
-        0
+        1
     }
 
     #[test]
-    fn stub_handle_round_trip() {
-        let env = ZthreadEnv { ctx: std::ptr::null_mut(), set_partname, warning, select_by_flags };
+    fn handle_round_trip() {
+        let env = ZthreadEnv {
+            ctx: std::ptr::null_mut(),
+            set_partname,
+            warning,
+            cannot_decompress,
+            archive_found,
+            select_by_flags,
+            zs_codecs: 1,
+            zs_zip_crc32: 0,
+            zs_max_7zip_size: 0,
+        };
         // SAFETY: the table is valid, the handle is used by this thread only and closed once; the strings are
-        // NUL-terminated and `fd` is a local.
+        // NUL-terminated and `fd` is a local. There is no input file, so the thread has nothing to write.
         unsafe {
             let handle = ugrep_core_zthread_new(&env, 0);
             let mut fd = 7;
-            assert_eq!(ugrep_core_zthread_start(handle, 1, c"a.gz".as_ptr(), std::ptr::null_mut(), std::ptr::null(), &mut fd), ZTHREAD_NOT_PORTED);
+            assert_eq!(ugrep_core_zthread_start(handle, 1, c"a.gz".as_ptr(), std::ptr::null_mut(), std::ptr::null(), &mut fd), ZTHREAD_OK);
+            let mut buf = [0u8; 8];
+            assert_eq!(crate::zthread_sys::read(fd, &mut buf), 0);
+            crate::zthread_sys::close(fd);
+            assert_eq!(ugrep_core_zthread_open_next(handle, c"a.gz".as_ptr(), &mut fd), ZTHREAD_NONE);
             assert_eq!(fd, NO_FD);
-            assert_eq!(ugrep_core_zthread_open_next(handle, c"a.gz".as_ptr(), &mut fd), ZTHREAD_NOT_PORTED);
             ugrep_core_zthread_cancel(handle);
             ugrep_core_zthread_close(handle);
             ugrep_core_zthread_close(std::ptr::null_mut());

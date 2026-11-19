@@ -98,7 +98,6 @@
     <ClInclude Include="..\src\zopen.h" />
     <ClInclude Include="..\src\zstream.hpp" />
     <ClInclude Include="..\src\zstream_seam.h" />
-    <ClInclude Include="..\src\zthread.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\lib\input.cpp" />

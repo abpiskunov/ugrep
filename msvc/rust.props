@@ -16,8 +16,6 @@
     <CPP_RUST_IMPL_SRC_CORE Condition="'$(CPP_RUST_IMPL_SRC_CORE)'==''">rust</CPP_RUST_IMPL_SRC_CORE>
     <CPP_RUST_IMPL_SRC_TUI Condition="'$(CPP_RUST_IMPL_SRC_TUI)'==''">cpp</CPP_RUST_IMPL_SRC_TUI>
     <CPP_RUST_IMPL_SRC_INDEXER Condition="'$(CPP_RUST_IMPL_SRC_INDEXER)'==''">rust</CPP_RUST_IMPL_SRC_INDEXER>
-    <!-- Zthread (decompression thread of src/ugrep.cpp): cpp = legacy ZthreadCpp (default), rust = bridge to rust/src_core (stub) -->
-    <CPP_RUST_IMPL_ZTHREAD Condition="'$(CPP_RUST_IMPL_ZTHREAD)'==''">cpp</CPP_RUST_IMPL_ZTHREAD>
     <RustRoot>$(MSBuildThisFileDirectory)..\rust\</RustRoot>
     <RustTargetDir>$(MSBuildThisFileDirectory)..\build\cargo\$(MSBuildProjectName)</RustTargetDir>
     <RustUmbrellaLib>$(RustTargetDir)\release\rust_umbrella.lib</RustUmbrellaLib>

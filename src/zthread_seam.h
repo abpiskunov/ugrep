@@ -1,6 +1,5 @@
 // Seam declarations for the Zthread decompression thread (component src_core, src/ugrep.cpp), C linkage.
-// Used by the struct Zthread facade of src/ugrep.cpp only when CPP_RUST_IMPL_ZTHREAD=rust (msvc/rust.targets defines
-// CPP_RUST_IMPL_ZTHREAD_RUST). The Rust side is rust/src_core/src/ffi/zthread.rs; the notes are in
+// Used by the struct Zthread facade of src/ugrep.cpp. The Rust side is rust/src_core/src/ffi/zthread.rs; the notes are in
 // rust/src_core/SEAM.md ("Zthread seam").
 //
 // Ownership: ugrep_core_zthread_new returns a handle owned by Rust until ugrep_core_zthread_close. The env struct is
@@ -29,7 +28,6 @@ extern "C" {
 
 #define ZTHREAD_OK          0   // *fd is the read end of a new pipe
 #define ZTHREAD_NONE        1   // no pipe: the legacy functions return NULL (failure already reported, or no next file)
-#define ZTHREAD_NOT_PORTED -1   // the stub: nothing was done
 
 // what stays in C++ and is called back by Rust
 typedef struct ugrep_core_zthread_env {
@@ -38,8 +36,17 @@ typedef struct ugrep_core_zthread_env {
   void (*set_partname)(void *ctx, const char *name, size_t len);
   // warning(message, arg) of ugrep.hpp, arg may be NULL; errno is that of the calling thread
   void (*warning)(void *ctx, const char *message, const char *arg);
-  // the flags part of select_matching(): hidden files, --exclude/--include globs and -M magic bytes, non-zero if selected
+  // cannot_decompress(pathname, message) of ugrep.cpp
+  void (*cannot_decompress)(void *ctx, const char *pathname, const char *message);
+  // an archive (zip, tar, cpio) was detected: if (!flag_no_filename) flag_no_header = false
+  void (*archive_found)(void *ctx);
+  // the flags part of select_matching(): hidden files, --exclude/--include globs and -M magic bytes, non-zero if selected;
+  // buf[len] is readable (the -M matcher scans len + 1 bytes)
   int (*select_by_flags)(void *ctx, const char *path, const unsigned char *buf, size_t len);
+  // the build configuration of the zstream (zstream.cpp zs_config()): ZS_CODEC_* bits, WITH_ZIP_CRC32, WITH_MAX_7ZIP_SIZE
+  unsigned int zs_codecs;
+  int zs_zip_crc32;
+  unsigned long long zs_max_7zip_size;
 } ugrep_core_zthread_env;
 
 void *ugrep_core_zthread_new(const ugrep_core_zthread_env *env, int is_chained);
