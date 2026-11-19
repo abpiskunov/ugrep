@@ -522,6 +522,7 @@
     <ClInclude Include="..\src\zopen.h" />
     <ClInclude Include="..\src\zstream.hpp" />
     <ClInclude Include="..\src\zstream_seam.h" />
+    <ClInclude Include="..\src\zthread_seam.h" />
     <ClInclude Include="include_ugrep\config.h" />
     <ClInclude Include="include_ugrep\pcre2.h" />
   </ItemGroup>

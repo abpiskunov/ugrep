@@ -395,6 +395,7 @@ dependencies = [
  "cxx",
  "cxx-build",
  "loom",
+ "src_leaves",
 ]
 
 [[package]]

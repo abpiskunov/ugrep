@@ -18,6 +18,9 @@ mod cfmt;
 mod cnf_impl;
 #[path = "stats_impl.rs"]
 mod stats_impl;
+// the Zthread seam: types and stub signatures (no cxx type), the C-ABI entries are in ffi/zthread.rs
+#[path = "zthread.rs"]
+pub mod zthread;
 
 /// A pattern in the CNF: `None` is the undefined (NULL smart pointer) pattern, `Some` a possibly empty string.
 pub type Pattern = Option<Bytes>;

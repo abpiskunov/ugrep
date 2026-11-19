@@ -1,0 +1,18 @@
+schema: cpp-rust-unit/1
+unit: zthread
+component: src_core
+functions: [src_core.zthread_start, src_core.zthread_open_next, src_core.zthread_cancel, src_core.zthread_close]
+cpp_files: [src/ugrep.cpp, src/zthread.hpp]
+rust_files: rust/src_core/src/zthread.rs rust/src_core/src/ffi/zthread.rs
+rust_crate_name: src_core
+harness_crate_name: src_core-harness
+depends_on: [zstream_core]
+status: planned
+notes:
+  - 'Prepare seam: struct Zthread renamed ZthreadCpp (body unchanged); facade Zthread (start/open_next/cancel/close) in src/ugrep.cpp; switch CPP_RUST_IMPL_ZTHREAD=cpp|rust (default cpp) in msvc/rust.props and rust.targets; stubs return NotPorted (no todo!).'
+  - 'Bridge: C ABI src/zthread_seam.h <-> rust/src_core/src/ffi/zthread.rs with callback table (warning() through C++); types in rust/src_core/src/zthread.rs; no tap in the product tree (src_core is cleaned; reference build outside the product).'
+  - 'Threads: cancel() may come from the query UI thread concurrently with start/open_next/close_file; Rust uses &self + atomics/Mutex, never &mut on the handle. The Port must delete ZthreadCpp and the CPP_RUST_IMPL_ZTHREAD switch (the gate judges the default build).'
+  - 'Placement: Rust Zthread lives in src_core, which depends on src_leaves (default-features=false) for the zstream core; acyclic. See D-zthread-placement.'
+  - 'src/zthread.hpp kept: no source includes it, but it is listed in msvc/ugrep-indexer.vcxproj:101 and src/Makefile.am:67,95. Delete with ZthreadCpp in Port/Switch. See D-zthread-header.'
+  - 'Unknown ownership (for Behavior/Port): who closes file_in when start() returns NULL; who closes the pipe read end when open_next() fails after opening it.'
+  - 'Seam notes: rust/src_core/SEAM.md, section "ugrep.cpp Zthread seam". No seam gate in the plan; baseline src_core PASS (5034 surface cases, 0 divergent).'
