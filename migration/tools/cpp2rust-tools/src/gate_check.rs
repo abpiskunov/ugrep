@@ -507,6 +507,12 @@ pub fn changed_targets(base: &str, plan: &Value, mig: &Path, cwd: &Path) -> R<Ve
                 .collect();
             if names.iter().any(|n| match_any_case(n, &globs)) {
                 todo.push(("baseline".into(), comp.clone()));
+                // A cleaned component's product is its default build, and only cleanup holds
+                // that build to the cleaned state: deleted C++ still unlinked, Rust linked, no tap
+                // in the sources. aseline alone let a seam add tap macros to src/ unnoticed.
+                if get(cdef, "cleaned").and_then(Value::as_bool) == Some(true) {
+                    todo.push(("cleanup".into(), comp.clone()));
+                }
             }
             // The file that holds the build switch decides what ships. A change to it re-runs
             // the switch gate of every component that ships as Rust: one with a `switched` or
@@ -686,6 +692,37 @@ mod tests {
                           "gates": {"baseline": {}}});
         let due = changed_targets("base", &plan, &d.path().join("migration"), d.path()).unwrap();
         assert_eq!(due, vec![("baseline".to_string(), "leaves".to_string())]);
+    }
+
+    /// A C++ change in a cleaned component also runs cleanup, the gate whose policy forbids taps.
+    #[test]
+    fn a_cpp_change_in_a_cleaned_component_is_due_for_cleanup_too() {
+        let d = TempDir::new("gcleanup");
+        let git = |args: &[&str]| {
+            let ok = std::process::Command::new("git").args(args).current_dir(d.path()).output().unwrap();
+            assert!(ok.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&ok.stderr));
+        };
+        let commit = |m: &str| git(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", m]);
+        git(&["init", "-q"]);
+        d.write("src/core.cpp", "a\n");
+        d.write("src/tui.cpp", "a\n");
+        git(&["add", "-A"]);
+        commit("base");
+        git(&["branch", "base"]);
+        d.write("src/core.cpp", "b\n");
+        d.write("src/tui.cpp", "b\n");
+        git(&["add", "-A"]);
+        commit("seam");
+        let plan = json!({"components": {"core": {"cleaned": true, "cpp_sources": "src/core.cpp"},
+                                         "tui": {"cpp_sources": "src/tui.cpp"}},
+                          "gates": {"baseline": {}, "cleanup": {}}});
+        let mut due = changed_targets("base", &plan, &d.path().join("migration"), d.path()).unwrap();
+        due.sort();
+        assert_eq!(due, vec![
+            ("baseline".to_string(), "core".to_string()),
+            ("baseline".to_string(), "tui".to_string()),
+            ("cleanup".to_string(), "core".to_string()),
+        ]);
     }
 
     /// A cleaned component has no C++ seam or coverage left; its catalog goes to the cleaned gate.
