@@ -3039,6 +3039,24 @@ struct Grep {
       return static_cast<FILE*>(file);
     }
 
+    // the C++ cancels the decompression threads when the output is blocked (out.eof) before it opens the next file; an
+    // unconditional cancel would stop the threads that the next archive reuses
+    void cancel_zthread_if_blocked()
+    {
+#if defined(HAVE_LIBZ) && defined(WITH_DECOMPRESSION_THREAD)
+      if (flag_decompress && grep.out.eof)
+        grep.zthread.cancel();
+#endif
+    }
+
+    // no matcher of the facade keeps reading a stream that is about to be closed: its input is cleared
+    void detach_matchers(FILE *file)
+    {
+      for (auto& i : matcher_ctxs)
+        if (i.matcher->in.file() == file)
+          i.matcher->in.clear();
+    }
+
     // the C++ caller of the bridge calls this after every call: rethrow the stored exception, once
     void rethrow()
     {
@@ -3801,9 +3819,9 @@ struct Grep {
       // the slots are never NULL: without the decompression thread they are stubs (the Rust side only calls them when
       // flag_decompress is set, which needs HAVE_LIBZ)
 #if defined(HAVE_LIBZ) && defined(WITH_DECOMPRESSION_THREAD)
-      env->zthread_start = [](void *c, size_t ztstage, const char *path, void *file, const char *find) -> void*
+      env->zthread_start = [](void *c, size_t ztstage, const char *path, const char *find) -> void*
       {
-        return G(c, [&]() -> void* { return F(c).grep.zthread.start(ztstage, path, stream(file, "zthread_start: NULL file"), find); });
+        return G(c, [&]() -> void* { return F(c).grep.zthread.start(ztstage, path, stream(F(c).grep.file_in, "zthread_start: NULL file_in"), find); });
       };
       env->zthread_open_next = [](void *c, const char *path) -> void*
       {
@@ -3811,7 +3829,7 @@ struct Grep {
       };
       env->zthread_cancel = [](void *c) { G(c, [&]() { F(c).grep.zthread.cancel(); }); };
 #else
-      env->zthread_start = [](void *, size_t, const char *, void *, const char *) -> void* { return NULL; };
+      env->zthread_start = [](void *, size_t, const char *, const char *) -> void* { return NULL; };
       env->zthread_open_next = [](void *, const char *) -> void* { return NULL; };
       env->zthread_cancel = [](void *) { };
 #endif
@@ -3984,6 +4002,39 @@ struct Grep {
       env->is_binary = [](void *c, const unsigned char *bytes, size_t len) -> int
       {
         return G(c, [&]() -> int { return is_binary(reinterpret_cast<const char*>(bytes), len); });
+      };
+      // the close of close_file(): the stream stays in C++, Rust never holds it
+      env->close_input_file = [](void *c)
+      {
+        G(c, [&]()
+        {
+          SeamFacade& f = F(c);
+          FILE *file = f.grep.input.file();
+          if (file != NULL)
+          {
+            f.detach_matchers(file);
+            fclose(file);
+          }
+          f.grep.input.clear();
+          f.cancel_zthread_if_blocked();
+        });
+      };
+      env->close_file_in = [](void *c)
+      {
+        G(c, [&]()
+        {
+          SeamFacade& f = F(c);
+          FILE *file = f.grep.file_in;
+          if (file != NULL)
+          {
+            f.cancel_zthread_if_blocked();
+            f.detach_matchers(file);
+            if (file != stdin && file != Static::source)
+              fclose(file);
+            f.grep.file_in = NULL;
+          }
+          f.grep.input.clear();
+        });
       };
     }
 

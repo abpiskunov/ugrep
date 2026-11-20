@@ -193,7 +193,7 @@ pub struct GrepEnv {
     pub warning: extern "C" fn(*mut c_void, *const c_char, *const c_char),
     /// The zthread slots are `Option`: a facade built without `HAVE_LIBZ` may leave them NULL (the facade fills stubs,
     /// but a NULL must never be UB).
-    pub zthread_start: Option<extern "C" fn(*mut c_void, usize, *const c_char, *mut c_void, *const c_char) -> *mut c_void>,
+    pub zthread_start: Option<extern "C" fn(*mut c_void, usize, *const c_char, *const c_char) -> *mut c_void>,
     pub zthread_open_next: Option<extern "C" fn(*mut c_void, *const c_char) -> *mut c_void>,
     pub zthread_cancel: Option<extern "C" fn(*mut c_void)>,
     pub cnf_alts: extern "C" fn(*mut c_void, usize) -> usize,
@@ -219,6 +219,10 @@ pub struct GrepEnv {
     /// Returns 0 when the pipe could not be created; else 1 and the reading end (maybe NULL) through the last pointer.
     pub filter_spawn: extern "C" fn(*mut c_void, *mut c_void, *const c_char, *const c_char, *mut *mut c_void) -> c_int,
     pub is_binary: extern "C" fn(*mut c_void, *const u8, usize) -> c_int,
+    /// `close_file` of the pipe in `Grep::input`, and of `Grep::file_in`: cancel an active zthread on the stream, fclose
+    /// unless stdin or `Static::source`, clear `Grep::input` and detach the matchers that read the stream.
+    pub close_input_file: extern "C" fn(*mut c_void),
+    pub close_file_in: extern "C" fn(*mut c_void),
 }
 
 /// The C++ facade behind the callbacks table.
@@ -436,19 +440,11 @@ impl GrepHost for CHost {
         let ptr = self.source_ptr(file);
         (self.0.set_file_in)(self.0.ctx, ptr)
     }
-    fn take_file_in(&mut self) -> Option<FileSource> {
-        let ptr = (self.0.file_in)(self.0.ctx);
-        (self.0.set_file_in)(self.0.ctx, std::ptr::null_mut());
-        if ptr.is_null() {
-            None
-        } else if ptr == (self.0.stdin_file)(self.0.ctx) {
-            Some(FileSource::Stdin)
-        } else if ptr == (self.0.source)(self.0.ctx) {
-            Some(FileSource::Source)
-        } else {
-            // SAFETY: `ptr` was `Grep::file_in`, now cleared, so the caller is the only owner of the open stream.
-            unsafe { raw::owned_file(ptr) }.map(FileSource::Owned)
-        }
+    fn close_input_file(&mut self) {
+        (self.0.close_input_file)(self.0.ctx)
+    }
+    fn close_file_in(&mut self) {
+        (self.0.close_file_in)(self.0.ctx)
     }
     fn input(&self) -> InputHandle {
         // SAFETY: the facade returns the address of `Grep::input`, which lives as long as the `Grep`.
@@ -547,14 +543,13 @@ impl GrepHost for CHost {
     fn is_binary(&self, bytes: &[u8]) -> bool {
         (self.0.is_binary)(self.0.ctx, bytes.as_ptr(), bytes.len()) != 0
     }
-    fn zthread_start(&self, ztstage: usize, pathname: &[u8], file_in: &FileRef<'_>, find: Option<&[u8]>) -> Option<OwnedFile> {
+    fn zthread_start(&self, ztstage: usize, pathname: &[u8], find: Option<&[u8]>) -> Option<OwnedFile> {
         let start = self.0.zthread_start?;
         let pathname = c_string(pathname);
         let find = find.map(c_string);
         let find_ptr = find.as_ref().map_or(std::ptr::null(), |f| f.as_ptr());
-        let file_in = raw::file_ptr(file_in);
         // SAFETY: the facade returns the `FILE*` of the decompression pipe (or NULL), which the caller has to close.
-        unsafe { raw::owned_file(start(self.0.ctx, ztstage, pathname.as_ptr(), file_in, find_ptr)) }
+        unsafe { raw::owned_file(start(self.0.ctx, ztstage, pathname.as_ptr(), find_ptr)) }
     }
     fn zthread_open_next(&self, pathname: &[u8]) -> Option<OwnedFile> {
         let open_next = self.0.zthread_open_next?;
@@ -817,11 +812,13 @@ mod tests {
             offset_of!(GrepEnv, stdin_drain_check),
             offset_of!(GrepEnv, filter_spawn),
             offset_of!(GrepEnv, is_binary),
+            offset_of!(GrepEnv, close_input_file),
+            offset_of!(GrepEnv, close_file_in),
         ];
         for (i, o) in offsets.iter().enumerate() {
             assert_eq!(*o, i * w, "field {i}");
         }
-        assert_eq!(offsets.len(), 66);
+        assert_eq!(offsets.len(), 68);
         assert_eq!(size_of::<GrepEnv>(), offsets.len() * w);
         // an Option of a fn pointer is a pointer: the zthread slots may be NULL
         assert_eq!(size_of::<Option<extern "C" fn(*mut c_void)>>(), w);

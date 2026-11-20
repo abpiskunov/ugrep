@@ -255,9 +255,10 @@ typedef struct ugrep_core_search_env {
   size_t (*filter_magic_scan)(void *ctx, void *file);
   // warning(message, arg), the process-wide C++ warning
   void (*warning)(void *ctx, const char *message, const char *arg);
-  // Grep::zthread.start / open_next / cancel (WITH_DECOMPRESSION_THREAD): the pipe FILE* or NULL; find may be NULL.
+  // Grep::zthread.start(ztstage, pathname, Grep::file_in, find) / open_next / cancel (WITH_DECOMPRESSION_THREAD): the pipe
+  // FILE* or NULL; find may be NULL; a NULL file_in is an error of the exception channel.
   // Without HAVE_LIBZ the facade fills stubs (NULL / no-op), never NULL slots; the Rust side takes Option as well
-  void *(*zthread_start)(void *ctx, size_t ztstage, const char *pathname, void *file_in, const char *find);
+  void *(*zthread_start)(void *ctx, size_t ztstage, const char *pathname, const char *find);
   void *(*zthread_open_next)(void *ctx, const char *pathname);
   void (*zthread_cancel)(void *ctx);
   // the CNF of Grep::matchers (a list of lists of matchers, an element may be NULL): number of alternatives of term
@@ -300,6 +301,12 @@ typedef struct ugrep_core_search_env {
   int (*filter_spawn)(void *ctx, void *file, const char *pathname, const char *command, void **out);
   // is_binary(bytes, len) of ugrep.cpp
   int (*is_binary)(void *ctx, const unsigned char *bytes, size_t len);
+  // close_file of Grep: both cancel a zthread that reads the stream, fclose it (never stdin or Static::source), clear
+  // Grep::input and detach the matchers of the facade that read the stream (their input is cleared). close_input_file acts
+  // on Grep::input.file() (the decompression pipe); close_file_in on Grep::file_in, which is NULL afterwards. Rust never
+  // gets the stream, so it cannot close it twice or use it after the close
+  void (*close_input_file)(void *ctx);
+  void (*close_file_in)(void *ctx);
 } ugrep_core_search_env;
 
 // layout pins: the Rust tests pin the same numbers (search.rs, ffi/search_host.rs)
@@ -340,7 +347,8 @@ UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, restline_set) == 51 * sizeof(s
 UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, flag_filter) == 54 * sizeof(size_t));
 UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, filter_spawn) == 64 * sizeof(size_t));
 UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, is_binary) == 65 * sizeof(size_t));
-UGREP_CORE_ASSERT(sizeof(ugrep_core_search_env) == 66 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, close_file_in) == 67 * sizeof(size_t));
+UGREP_CORE_ASSERT(sizeof(ugrep_core_search_env) == 68 * sizeof(size_t));
 UGREP_CORE_ASSERT(UGREP_CORE_CNF_EXIT == UGREP_CORE_STEP_EXIT);
 UGREP_CORE_ASSERT(UGREP_CORE_INPUT_HANDLER_STDIN == 2);
 UGREP_CORE_ASSERT(UGREP_CORE_CNF_NOTMATCHING == 1);

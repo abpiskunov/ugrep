@@ -730,16 +730,22 @@ pub trait GrepHost {
     /// `Grep::interactive`.
     fn interactive(&self) -> bool;
     fn set_interactive(&self, interactive: bool);
-    /// `Grep::file_in`, borrowed: `None` when NULL. It stays owned by C++; [`GrepHost::take_file_in`] takes it over.
+    /// `Grep::file_in`, borrowed: `None` when NULL. It stays owned by C++ and is closed only by
+    /// [`GrepHost::close_file_in`], which needs `&mut self`, so no borrow is alive when it is closed.
     fn file_in(&self) -> Option<FileRef<'_>>;
-    /// `Grep::file_in = file` (NULL for `None`); C++ owns it from then on, as it fcloses it in `close_file`. It overwrites
-    /// the previous value without closing it: take that over first ([`GrepHost::take_file_in`]).
+    /// `Grep::file_in = file` (NULL for `None`); C++ owns it from then on. It overwrites the previous value without
+    /// closing it: close that first ([`GrepHost::close_file_in`]).
     /// `&mut self`: no [`FileRef`] from [`GrepHost::file_in`] or [`GrepHost::input_file`] can be alive across the call.
     fn set_file_in(&mut self, file: Option<FileSource>);
-    /// Take `Grep::file_in` over and clear it: `Stdin` or `Source` when it was that stream, `None` when it was NULL.
-    /// `&mut self`, so no [`FileRef`] of the stream is alive. `Grep::input` may still read it until the caller clears or
-    /// resets it ([`GrepHost::input_clear`]); a closed stream that `input` reads is C++ behavior kept for S4c-2b to avoid.
-    fn take_file_in(&mut self) -> Option<FileSource>;
+    /// The close of `close_file` for the decompressed pipe: `if (input.file() != NULL) { fclose(input.file()); input.clear(); }`.
+    /// The host cancels an active zthread that reads the stream, fcloses it (never `stdin` or `Static::source`), clears
+    /// `Grep::input` and detaches every matcher that reads the stream, so none keeps a dangling `FILE*`.
+    /// `&mut self`: no [`FileRef`] is alive. Nothing is returned: the stream is never handed to Rust.
+    fn close_input_file(&mut self);
+    /// The close of `close_file` for the opened file: `if (file_in != NULL && file_in != stdin && file_in != Static::source)
+    /// { fclose(file_in); file_in = NULL; } input.clear();`. Same effects and guarantees as [`GrepHost::close_input_file`],
+    /// and `Grep::file_in` is NULL afterwards, also when it was `stdin` or `Static::source` (those are not closed).
+    fn close_file_in(&mut self);
     /// `&Grep::input`, for [`MatcherHandle::input`].
     fn input(&self) -> InputHandle;
     /// `Grep::input.file()`.
@@ -795,9 +801,10 @@ pub trait GrepHost {
     fn filter_spawn(&self, file: FileSource, pathname: &[u8], command: &[u8]) -> Option<OwnedFile>;
     /// `is_binary(bytes, len)` of ugrep.cpp (`flag_encoding_type`, `-a`, `-U`, `-W`, `reflex::isutf8`).
     fn is_binary(&self, bytes: &[u8]) -> bool;
-    /// `Grep::zthread.start(ztstage, pathname, file_in, find)`: the pipe, or NULL. `file_in` stays owned by the caller
-    /// (C++ `close_file` closes it); the thread only reads it.
-    fn zthread_start(&self, ztstage: usize, pathname: &[u8], file_in: &FileRef<'_>, find: Option<&[u8]>) -> Option<OwnedFile>;
+    /// `Grep::zthread.start(ztstage, pathname, Grep::file_in, find)`: the pipe, or NULL. The thread reads `Grep::file_in`,
+    /// which stays owned by the host (it is closed by [`GrepHost::close_file_in`]); a NULL `file_in` is an error of the
+    /// exception channel.
+    fn zthread_start(&self, ztstage: usize, pathname: &[u8], find: Option<&[u8]>) -> Option<OwnedFile>;
     /// `Grep::zthread.open_next(pathname)`: the next pipe, or NULL.
     fn zthread_open_next(&self, pathname: &[u8]) -> Option<OwnedFile>;
     /// `Grep::zthread.cancel()`.
@@ -893,6 +900,20 @@ impl SearchContext {
         match self.host.borrow().as_deref() {
             Some(host) => f(host),
             None => panic!("Grep seam: no GrepHost attached to the SearchContext"),
+        }
+    }
+
+    /// Run `f` with exclusive access to the host, for the `&mut self` methods ([`GrepHost::set_file_in`],
+    /// [`GrepHost::close_input_file`], [`GrepHost::close_file_in`], [`GrepHost::input_set_file`]): they cannot be called
+    /// while a [`FileRef`] of the host is alive. Panics when no host is attached or the host is already borrowed (from
+    /// inside `with_host` or a handler that runs under it): the file members never nest.
+    pub fn with_host_mut<R>(&self, f: impl FnOnce(&mut dyn GrepHost) -> R) -> R {
+        match self.host.try_borrow_mut() {
+            Ok(mut guard) => match guard.as_deref_mut() {
+                Some(host) => f(host),
+                None => panic!("Grep seam: no GrepHost attached to the SearchContext"),
+            },
+            Err(_) => panic!("Grep seam: the GrepHost is already borrowed"),
         }
     }
 
