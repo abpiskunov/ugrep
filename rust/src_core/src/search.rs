@@ -2170,7 +2170,13 @@ pub mod branch {
             h.set_restline_last(0);
         });
 
-        while matcher.find() {
+        loop {
+            // the GREP shift handler that find() may run compares Grep::lineno with the matcher's line: keep the host
+            // current, as the C++ member was
+            ctx.with_host(|h| h.set_lineno(s.counters.lineno));
+            if !matcher.find() {
+                break;
+            }
             let current_lineno = matcher.lineno();
 
             if s.counters.lineno != current_lineno || f.ungroup {
@@ -2358,6 +2364,8 @@ pub mod branch {
                 }
 
                 // no -u, no --hexdump and no colors: if the match does not span more than one line, then skip to end of the line
+                // (skip() may shift the buffer and run the GREP handler, which reads Grep::lineno)
+                ctx.with_host(|h| h.set_lineno(s.counters.lineno));
                 if !f.ungroup && !colorize && !(s.binary && hex_context) && !f.multiline && !matcher.at_bol() && !matcher.skip(b'\n') {
                     break;
                 }
@@ -2502,9 +2510,11 @@ pub mod branch {
             // --hexdump with ABC context: if binary then show hex context
             if s.binary && hex_context {
                 let aft = matcher.aft((f.hex_after + f.hex_before) * columns);
+                // aft() may shift the buffer: take eol and end from the matcher again
+                eol = matcher.eol(true);
+                end = matcher.end();
                 if aft > eol {
                     eol = aft;
-                    end = matcher.end(); // warning: end() position may have shifted with aft()
                 }
             }
 
@@ -2516,9 +2526,11 @@ pub mod branch {
             // --hexdump with ABC context: if binary then show hex context
             if s.binary && hex_context {
                 let aft = matcher.aft((f.hex_after + f.hex_before) * columns);
+                // aft() may shift the buffer: take eol and end from the matcher again
+                eol = matcher.eol(true);
+                end = matcher.end();
                 if aft > eol {
                     eol = aft;
-                    end = matcher.end(); // warning: end() position may have shifted with aft()
                 }
             }
 

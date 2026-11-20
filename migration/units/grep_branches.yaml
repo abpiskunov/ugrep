@@ -16,3 +16,4 @@ notes:
   - 'Additive GrepFlags field color_se (signature change request, as S4c-2b did for color_sl): count uses it for -c --color. Filled in ffi/search_host.rs flags_from_settings.'
   - 'Forwarders bind ctx.pathname into the facade path_slot (RAII, unbound on return) so out_header_file/out_format and the format handlers see the pathname; before this nothing bound it.'
   - 'No per-line bridge allocation: Rust reads flags once, counters live in locals and are written back on every exit; the facade out_format and out_format_count callbacks pass the global --format/--format-open/--format-close text without a std::string copy (known_format).'
+  - 'S4c-5 operator fixes (D-grep-branches-plain-sync): branch::plain syncs the host lineno before find()/skip() for the GREP shift handler; the same-line hex path re-reads eol/end after aft(). invert and any_line keep their state in the host.'
