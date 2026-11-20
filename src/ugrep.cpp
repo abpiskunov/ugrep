@@ -2533,6 +2533,17 @@ struct Grep {
       return result != UGREP_CORE_CNF_NO;
     }
 
+    // the NUL-terminated global --format, --format-open or --format-close text equal to the given bytes, NULL if none: the
+    // per-match format callbacks then pass it on without copying it into a std::string
+    static const char *known_format(const char *format, size_t len)
+    {
+      const char *const candidates[] = { flag_format, flag_format_open, flag_format_close };
+      for (const char *candidate : candidates)
+        if (candidate != NULL && strlen(candidate) == len && memcmp(candidate, format, len) == 0)
+          return candidate;
+      return NULL;
+    }
+
     // the pathname of the search the handlers refer to by reference: they refer to the slot, which can be set (again) at
     // any time, also after the handlers were made
     void bind(const char *search_pathname)
@@ -3324,6 +3335,12 @@ struct Grep {
       {
         G(c, [&]()
         {
+          const char *known = known_format(reinterpret_cast<const char*>(format), len);
+          if (known != NULL)
+          {
+            F(c).grep.out.format(known, matches);
+            return;
+          }
           std::string text(reinterpret_cast<const char*>(format), len);
           F(c).grep.out.format(text.c_str(), matches);
         });
@@ -3333,6 +3350,9 @@ struct Grep {
         return G(c, [&]() -> int
         {
           SeamFacade& f = F(c);
+          const char *known = known_format(reinterpret_cast<const char*>(format), len);
+          if (known != NULL)
+            return f.grep.out.format(known, f.current_pathname(), f.grep.partname, matches, matching, f.grep.matcher, f.grep.heading, body != 0, next != 0);
           std::string text(reinterpret_cast<const char*>(format), len);
           return f.grep.out.format(text.c_str(), f.current_pathname(), f.grep.partname, matches, matching, f.grep.matcher, f.grep.heading, body != 0, next != 0);
         });
@@ -8204,487 +8224,50 @@ exit_search:
     Stats::found_file();
 }
 
-// search branch setup: --files resets the matching bitmasks, called before the branch is chosen
+// the Rust branches see the pathname of the search through the facade slot, unbound again when the branch returns
+struct SearchBranchBind
+{
+  SearchBranchBind(Grep::SeamFacade& f, const char *pathname) : facade(f) { facade.bind(pathname); }
+  ~SearchBranchBind() { facade.bind(NULL); }
+  Grep::SeamFacade& facade;
+};
+
+// search branch setup: --files resets the matching bitmasks, ported to Rust
 void Grep::search_setup(SearchContext& ctx)
 {
-  // --files: reset the matching[] bitmask used in cnf_matching() for each matcher in matchers
-  if (flag_files && matchers != NULL)
-  {
-    // hold the output
-    out.hold();
-
-    // reset the bit corresponding to each matcher in matchers
-    size_t n = matchers->size();
-    matching.resize(0);
-    matching.resize(n);
-
-    // reset the bit corresponding to the OR NOT terms of each matcher in matchers
-    notmatching.resize(n);
-    size_t j = 0;
-    for (auto& i : *matchers)
-    {
-      notmatching[j].resize(0);
-      notmatching[j].resize(i.size() > 0 ? i.size() - 1 : 0);
-      ++j;
-    }
-  }
+  SeamFacade& f = seam_facade();
+  ugrep_rust::search_setup(*f.ctx);
+  f.rethrow();
 }
 
-// search branch -q, -l, -L (the branch bodies keep the indentation they had inside search(), so the diff reads as a move)
+// search branch -q, -l, -L, ported to Rust
 Grep::SearchStep Grep::search_quiet_list(SearchContext& ctx)
 {
-  const char *& pathname = ctx.pathname;
-
-      {
-        // option -q, -l, or -L
-
-        // --format with open/close or --max-files: we must out.acquire() lock before Stats::found_part()
-        bool acquire = (flag_format != NULL && (flag_format_open != NULL || flag_format_close != NULL)) || (!flag_quiet && flag_max_files > 0);
-
-        // skip accurate line number counting, only count matching lines
-        if (!flag_multiline && flag_max_line == 0 && flag_stats == NULL)
-          matcher->lineno_skip(true);
-
-        while (matcher->find())
-        {
-          size_t current_lineno = matcher->lineno();
-
-          // --range: max line exceeded?
-          if (flag_max_line > 0 && current_lineno > flag_max_line)
-            break;
-
-          if (matchers != NULL)
-          {
-            const char *eol = matcher->eol(true); // warning: call eol() before bol() and end()
-            const char *bol = matcher->bol();
-
-            // check CNF AND/OR/NOT matching
-            if (!cnf_matching(bol, eol, acquire) || out.holding())
-              continue;
-          }
-
-          if (flag_min_count == 0 || flag_ungroup || flag_only_matching || lineno != current_lineno)
-            ++matches;
-
-          // --min-count: require at least min-count matches, otherwise stop searching
-          if (flag_min_count == 0 || matches >= flag_min_count)
-            break;
-
-          lineno = current_lineno;
-        }
-
-        // --min-count: require at least min-count matches
-        if (flag_min_count > 0 && matches < flag_min_count)
-          matches = 0;
-
-        // --files: if we are still holding the output and CNF is finally satisfyable then a match was made
-        if (flag_files && matchers != NULL)
-        {
-          if (!cnf_satisfied(acquire))
-            goto exit_search;
-
-          matches = 1;
-        }
-
-        // -v: invert
-        if (flag_invert_match)
-          matches = (matches == 0);
-
-        if (matches > 0)
-        {
-          // --format with open/close or --max-files: we must out.acquire() lock before Stats::found_part()
-          if (acquire)
-            out.acquire();
-
-          if (!flag_files || matchers == NULL)
-          {
-            // --max-files: max reached?
-            if (!Stats::found_part())
-              goto exit_search;
-          }
-
-          // -l or -L
-          if (flag_files_with_matches)
-          {
-            if (flag_format != NULL)
-            {
-              if (flag_format_open != NULL)
-                out.format(flag_format_open, pathname, partname, Stats::found_parts(), NULL, matcher, heading, false, Stats::found_parts() > 1);
-              out.format(flag_format, pathname, partname, 1, NULL, matcher, heading, false, false);
-              if (flag_format_close != NULL)
-                out.format(flag_format_close, pathname, partname, Stats::found_parts(), NULL, matcher, heading, false, Stats::found_parts() > 1);
-            }
-            else
-            {
-              out.header(pathname, partname);
-
-              if (flag_null)
-                out.chr('\0');
-              else
-                out.nl();
-            }
-          }
-        }
-      }
-
-  return SearchStep::DONE;
-
-exit_search:
-  return SearchStep::EXIT;
+  SeamFacade& f = seam_facade();
+  SearchBranchBind bound(f, ctx.pathname);
+  uint8_t result = ugrep_rust::search_quiet_list(*f.ctx, f.matcher_handle());
+  f.rethrow();
+  return static_cast<SearchStep>(result);
 }
 
-// search branch -c
+// search branch -c, -co, -cu, ported to Rust
 Grep::SearchStep Grep::search_count(SearchContext& ctx)
 {
-  const char *& pathname = ctx.pathname;
-
-      {
-        // option -c
-
-        // --format with open/close or --max-files: we must out.acquire() lock before Stats::found_part()
-        bool acquire = (flag_format != NULL && (flag_format_open != NULL || flag_format_close != NULL)) || flag_max_files > 0;
-
-        // not --match to match all or not -v
-        if (!flag_match || !flag_invert_match)
-        {
-          if (flag_ungroup || flag_only_matching)
-          {
-            // -co or -cu: count the number of patterns matched
-
-            // skip accurate line number counting, only count matching lines
-            if (!flag_multiline && flag_max_line == 0 && flag_stats == NULL)
-              matcher->lineno_skip(true);
-
-            while (matcher->find())
-            {
-              // --range: max line exceeded?
-              if (flag_max_line > 0 && matcher->lineno() > flag_max_line)
-                break;
-
-              if (matchers != NULL)
-              {
-                const char *eol = matcher->eol(true); // warning: call eol() before bol() and end()
-                const char *bol = matcher->bol();
-
-                // check CNF AND/OR/NOT matching, with --files acquire lock before Stats::found_part()
-                if (!cnf_matching(bol, eol, acquire))
-                  continue;
-              }
-
-              ++matches;
-
-              // -m: max number of matches reached?
-              if (flag_max_count > 0 && matches >= flag_max_count)
-                break;
-            }
-          }
-          else if (!flag_multiline && !flag_invert_match && flag_max_line == 0 && matchers == NULL && flag_stats == NULL)
-          {
-            // -c without -o/-u/-v/-K/-%: count the number of matching lines
-
-            // skip accurate line number counting, only count matching lines
-            matcher->lineno_skip(true);
-
-            while (matcher->find())
-            {
-              ++matches;
-
-              // -m: max number of matches reached?
-              if (flag_max_count > 0 && matches >= flag_max_count)
-                break;
-
-              // if the match does not span more than one line, then skip to end of the line (we count matching lines)
-              if (!matcher->at_bol())
-                matcher->skip('\n');
-            }
-          }
-          else
-          {
-            // -c without -o/-u: count the number of matching lines
-
-            while (matcher->find())
-            {
-              size_t current_lineno = matcher->lineno();
-
-              if (lineno != current_lineno)
-              {
-                // --range: max line exceeded?
-                if (flag_max_line > 0 && current_lineno > flag_max_line)
-                  break;
-
-                if (matchers != NULL)
-                {
-                  const char *eol = matcher->eol(true); // warning: call eol() before bol() and end()
-                  const char *bol = matcher->bol();
-
-                  // check CNF AND/OR/NOT matching, with --files acquire lock before Stats::found_part()
-                  if (!cnf_matching(bol, eol, acquire))
-                    continue;
-                }
-
-                ++matches;
-
-                // -m: max number of matches reached?
-                if (flag_max_count > 0 && matches >= flag_max_count)
-                  break;
-
-                lineno = current_lineno;
-
-                // if the match does not span more than one line, then skip to end of the line (we count matching lines)
-                if (!flag_multiline && !matcher->at_bol())
-                  matcher->skip('\n');
-              }
-            }
-
-            // -c with -v: count non-matching lines
-            if (flag_invert_match)
-            {
-              matches = matcher->lineno() - matches;
-              if (matches > 0)
-                --matches;
-            }
-          }
-        }
-
-        // --min-count: require at least min-count matches
-        if (flag_min_count > 0 && matches < flag_min_count)
-          goto exit_search;
-
-        // --files: if we are still holding the output and CNF is not satisfyable then no global matches were made
-        if (flag_files && matchers != NULL)
-        {
-          if (!cnf_satisfied(acquire))
-            goto exit_search; // we cannot report 0 matches and ensure accurate output
-        }
-        else
-        {
-          // --format with open/close or --max-files: we must out.acquire() lock before Stats::found_part()
-          if (acquire)
-            out.acquire();
-
-          // --max-files: max reached?
-          // unfortunately, allowing 'acquire' below produces "x matching + y in archives"
-          // but without this we cannot produce correct format-open and format-close outputs
-          if (matches > 0 || acquire)
-            if (!Stats::found_part())
-              goto exit_search;
-        }
-
-        if (flag_format != NULL)
-        {
-          if (flag_format_open != NULL)
-            out.format(flag_format_open, pathname, partname, Stats::found_parts(), NULL, matcher, heading, false, Stats::found_parts() > 1);
-          out.format(flag_format, pathname, partname, matches, NULL, matcher, heading, false, false);
-          if (flag_format_close != NULL)
-            out.format(flag_format_close, pathname, partname, Stats::found_parts(), NULL, matcher, heading, false, Stats::found_parts() > 1);
-        }
-        else
-        {
-          if (flag_with_filename || !partname.empty())
-          {
-            out.header(pathname, partname);
-
-            if (flag_null)
-            {
-              out.chr('\0');
-            }
-            else
-            {
-              out.str(color_se);
-              out.str(flag_separator);
-              out.str(color_off);
-            }
-          }
-          out.num(matches);
-          out.nl();
-        }
-      }
-
-  return SearchStep::DONE;
-
-exit_search:
-  return SearchStep::EXIT;
+  SeamFacade& f = seam_facade();
+  SearchBranchBind bound(f, ctx.pathname);
+  uint8_t result = ugrep_rust::search_count(*f.ctx, f.matcher_handle());
+  f.rethrow();
+  return static_cast<SearchStep>(result);
 }
 
-// search branch --format
+// search branch --format, ported to Rust
 Grep::SearchStep Grep::search_format(SearchContext& ctx)
 {
-  const char *& pathname = ctx.pathname;
-
-      {
-        // option --format
-
-        // --format with open/close: we must out.acquire() lock before Stats::found_part()
-        bool acquire = flag_format_open != NULL || flag_format_close != NULL;
-
-        if (flag_invert_match)
-        {
-          // construct event handler functor with captured *this and some of the locals
-          FormatInvertMatchGrepHandler invert_match_handler(*this, pathname);
-
-          // register the event handler to output non-matching lines, matcher resets to NULL when a new input source is assigned
-          matcher->set_handler(&invert_match_handler);
-
-          // to get the context from the invert_match handler explicitly
-          reflex::AbstractMatcher::Context context;
-
-          while (matcher->find())
-          {
-            size_t current_lineno = matcher->lineno();
-
-            if (lineno != current_lineno)
-            {
-              if (matchers != NULL)
-              {
-                const char *eol = matcher->eol(true); // warning: call eol() before bol() and end()
-                const char *bol = matcher->bol();
-
-                // check CNF AND/OR/NOT matching
-                if (!cnf_matching(bol, eol))
-                  continue;
-              }
-
-              // get the lines before the matched line
-              context = matcher->before();
-
-              // output non-matching lines up to this line
-              if (context.len > 0)
-                invert_match_handler(*matcher, context.buf, context.len, context.num);
-
-              // --range: max line exceeded?
-              if (flag_max_line > 0 && current_lineno > flag_max_line)
-                goto done_search;
-
-              // --max-files: max reached?
-              if (stop)
-                goto exit_search;
-
-              // -m: max number of matches reached?
-              if (flag_max_count > 0 && matches >= flag_max_count)
-                goto done_search;
-
-              // output blocked?
-              if (out.eof)
-                goto exit_search;
-            }
-
-            lineno = current_lineno + matcher->lines() - 1;
-          }
-
-          // get the remaining context after the last match to output
-          context = matcher->after();
-
-          if (context.len > 0)
-            invert_match_handler(*matcher, context.buf, context.len, context.num);
-        }
-        else
-        {
-          // counter for format field %m matches
-          size_t format_matching = 0;
-
-          while (matcher->find())
-          {
-            size_t current_lineno = matcher->lineno();
-
-            // --range: max line exceeded?
-            if (flag_max_line > 0 && current_lineno > flag_max_line)
-              break;
-
-            if (matchers != NULL)
-            {
-              const char *eol = matcher->eol(true); // warning: call eol() before bol() and end()
-              const char *bol = matcher->bol();
-
-              // check CNF AND/OR/NOT matching
-              if (!cnf_matching(bol, eol, acquire))
-                continue;
-            }
-
-            if (current_lineno != lineno || flag_ungroup)
-            {
-              ++matches;
-
-              // --min-count: require at least min-count matches
-              if (flag_min_count > 0 && matches < flag_min_count)
-              {
-                lineno = current_lineno;
-                continue;
-              }
-
-              // output --format-open=FORMAT for the first (or --min-count) match found
-              if (matches == flag_min_count + (flag_min_count == 0))
-              {
-                if (flag_files && matchers != NULL)
-                {
-                  // --format-open: we must acquire lock early before Stats::found_part()
-                  if (acquire && out.holding())
-                  {
-                    out.acquire();
-
-                    // --max-files: max reached?
-                    if (!Stats::found_part())
-                      goto exit_search;
-                  }
-                }
-                else
-                {
-                  // --format-open: we must acquire lock early before Stats::found_part()
-                  if (acquire)
-                    out.acquire();
-
-                  // --max-files: max reached?
-                  if (!Stats::found_part())
-                    goto exit_search;
-                }
-
-                if (flag_format_open != NULL)
-                {
-                  // output --format-open=FORMAT
-                  out.format(flag_format_open, pathname, partname, Stats::found_parts(), NULL, matcher, heading, false, Stats::found_parts() > 1);
-
-                  // --files: undo files count
-                  if (flag_files && matchers != NULL && out.holding())
-                    Stats::undo_found_part();
-                }
-              }
-            }
-
-            // output --format=FORMAT
-            // if the match does not span more than one line, then skip to end of the line
-            if (!out.format(flag_format, pathname, partname, matches, &format_matching, matcher, heading, matches > 1 || current_lineno == lineno, matches > 1))
-              if (!flag_multiline && !matcher->at_bol())
-                if (!matcher->skip('\n'))
-                  break;
-
-            // --max-count: max number of matches reached?
-            if (flag_max_count > 0 && matches >= flag_max_count)
-              break;
-
-            out.check_flush();
-
-            lineno = current_lineno;
-          }
-        }
-
-        // --min-count: require at least min-count matches
-        if (flag_min_count > 0 && matches < flag_min_count)
-          goto exit_search;
-
-        // --files: if we are still holding the output and CNF is not satisfyable then no global matches were made
-        if (flag_files && matchers != NULL)
-          if (!cnf_satisfied(true))
-            goto exit_search;
-
-        // output --format-close=FORMAT
-        if (matches > 0 && flag_format_close != NULL)
-          out.format(flag_format_close, pathname, partname, Stats::found_parts(), NULL, matcher, heading, false, Stats::found_parts() > 1);
-      }
-
-done_search:
-  return SearchStep::DONE;
-
-exit_search:
-  return SearchStep::EXIT;
+  SeamFacade& f = seam_facade();
+  SearchBranchBind bound(f, ctx.pathname);
+  uint8_t result = ugrep_rust::search_format(*f.ctx, f.matcher_handle());
+  f.rethrow();
+  return static_cast<SearchStep>(result);
 }
 
 // search branch -o without -ABC

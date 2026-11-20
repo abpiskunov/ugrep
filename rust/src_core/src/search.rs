@@ -645,7 +645,8 @@ pub struct GrepFlags {
     pub zmax: usize,
     /// `flag_max_mmap` (`--max-mmap`), 0 disables the mmap of `init_read`.
     pub max_mmap: usize,
-    /// `color_sl`, `color_cx` and `color_off`, NUL-free copies.
+    /// `color_sl`, `color_cx`, `color_se` and `color_off`, NUL-free copies.
+    pub color_se: Bytes,
     pub color_sl: Bytes,
     pub color_cx: Bytes,
     pub color_off: Bytes,
@@ -941,26 +942,549 @@ impl SearchContext {
 /// `any_line`) and S4c-6 (`context`, `context_invert`, `epilogue`); see SEAM.md. They
 /// take the context and the matcher handle; what they need of the C++ `Grep` is reached through [`GrepHost`] of `ctx`.
 pub mod branch {
-    use super::{MatcherHandle, SearchContext, SearchStep};
+    use super::{file, CnfResult, GrepHost, HandlerKind, MatcherHandle, SearchContext, SearchStep};
+
+    /// `Grep::matches` and `Grep::lineno` of a branch that does not register a shift handler: the branch counts in locals
+    /// (no host call per match) and stores them back on every way out, so the members hold what the C++ left in them.
+    struct Counters {
+        matches: usize,
+        lineno: usize,
+    }
+
+    impl Counters {
+        fn load(ctx: &SearchContext) -> Counters {
+            ctx.with_host(|h| Counters { matches: h.matches(), lineno: h.lineno() })
+        }
+
+        fn store(&self, ctx: &SearchContext) {
+            ctx.with_host(|h| {
+                h.set_matches(self.matches);
+                h.set_lineno(self.lineno);
+            });
+        }
+    }
+
+    /// `matchers != NULL`: the CNF of AND/OR/NOT matchers is active.
+    fn has_cnf(ctx: &SearchContext) -> bool {
+        ctx.with_host(|h| h.matchers_len().is_some())
+    }
+
+    /// `cnf_matching(bol, eol, acquire)` of the line of the current match: `matcher->eol(true)` first, then `bol()`.
+    /// `Some(step)` is a `throw EXIT_SEARCH`, `None` continues with the verdict in `matched`.
+    fn cnf_line(ctx: &SearchContext, matcher: &MatcherHandle, acquire: bool, matched: &mut bool) -> Option<SearchStep> {
+        let eol = matcher.eol(true);
+        let bol = matcher.bol();
+        let result = file::cnf_matching(ctx, matcher, bol, eol, acquire);
+        if result == CnfResult::EXIT {
+            return Some(SearchStep::EXIT);
+        }
+        *matched = result == CnfResult::YES;
+        None
+    }
+
+    /// `--format-open` / `--format-close` of a file: `out.format(format, ..., Stats::found_parts(), NULL, ..., false,
+    /// Stats::found_parts() > 1)`.
+    fn out_format_part(h: &dyn GrepHost, format: &[u8]) {
+        let parts = h.stats_found_parts();
+        h.out_format(format, parts, None, false, parts > 1);
+    }
 
     /// `Grep::search_setup`: `--files` resets the matching bitmasks.
-    pub fn setup(_ctx: &SearchContext) {
-        panic!("Grep seam: branch::setup is not ported")
+    pub fn setup(ctx: &SearchContext) {
+        if !ctx.flags().files {
+            return;
+        }
+        ctx.with_host(|h| {
+            // matchers != NULL: hold the output and reset the bit of each matcher and of its OR NOT terms
+            if h.matchers_len().is_some() {
+                h.out_hold();
+                h.matchers_reset();
+            }
+        });
     }
 
     /// `Grep::search_quiet_list`: `-q`, `-l`, `-L`.
-    pub fn quiet_list(_ctx: &SearchContext, _matcher: &MatcherHandle) -> SearchStep {
-        panic!("Grep seam: branch::quiet_list is not ported")
+    pub fn quiet_list(ctx: &SearchContext, matcher: &MatcherHandle) -> SearchStep {
+        let mut counters = Counters::load(ctx);
+        let step = quiet_list_scan(ctx, matcher, &mut counters);
+        counters.store(ctx);
+        step
+    }
+
+    fn quiet_list_scan(ctx: &SearchContext, matcher: &MatcherHandle, c: &mut Counters) -> SearchStep {
+        let f = ctx.flags();
+        let cnf = has_cnf(ctx);
+
+        // --format with open/close or --max-files: we must out.acquire() lock before Stats::found_part()
+        let acquire = (f.format.is_some() && (f.format_open.is_some() || f.format_close.is_some())) || (!f.quiet && f.max_files > 0);
+
+        // skip accurate line number counting, only count matching lines
+        if !f.multiline && f.max_line == 0 && f.stats.is_none() {
+            matcher.lineno_skip(true);
+        }
+
+        while matcher.find() {
+            let current_lineno = matcher.lineno();
+
+            // --range: max line exceeded?
+            if f.max_line > 0 && current_lineno > f.max_line {
+                break;
+            }
+
+            if cnf {
+                // check CNF AND/OR/NOT matching
+                let mut matched = false;
+                if let Some(step) = cnf_line(ctx, matcher, acquire, &mut matched) {
+                    return step;
+                }
+                if !matched || ctx.with_host(|h| h.out_holding()) {
+                    continue;
+                }
+            }
+
+            if f.min_count == 0 || f.ungroup || f.only_matching || c.lineno != current_lineno {
+                c.matches += 1;
+            }
+
+            // --min-count: require at least min-count matches, otherwise stop searching
+            if f.min_count == 0 || c.matches >= f.min_count {
+                break;
+            }
+
+            c.lineno = current_lineno;
+        }
+
+        // --min-count: require at least min-count matches
+        if f.min_count > 0 && c.matches < f.min_count {
+            c.matches = 0;
+        }
+
+        // --files: if we are still holding the output and CNF is finally satisfyable then a match was made
+        if f.files && cnf {
+            if file::cnf_satisfied(ctx, acquire) != CnfResult::YES {
+                return SearchStep::EXIT;
+            }
+            c.matches = 1;
+        }
+
+        // -v: invert
+        if f.invert_match {
+            c.matches = usize::from(c.matches == 0);
+        }
+
+        if c.matches > 0 {
+            return ctx.with_host(|h| {
+                // --format with open/close or --max-files: we must out.acquire() lock before Stats::found_part()
+                if acquire {
+                    h.out_acquire();
+                }
+
+                // --max-files: max reached?
+                if (!f.files || !cnf) && !h.stats_found_part() {
+                    return SearchStep::EXIT;
+                }
+
+                // -l or -L
+                if f.files_with_matches {
+                    if let Some(format) = f.format.as_deref() {
+                        if let Some(open) = f.format_open.as_deref() {
+                            out_format_part(h, open);
+                        }
+                        h.out_format(format, 1, None, false, false);
+                        if let Some(close) = f.format_close.as_deref() {
+                            out_format_part(h, close);
+                        }
+                    } else {
+                        h.out_header_file();
+                        if f.null {
+                            h.out_chr(0);
+                        } else {
+                            h.out_nl(false);
+                        }
+                    }
+                }
+                SearchStep::DONE
+            });
+        }
+
+        SearchStep::DONE
     }
 
     /// `Grep::search_count`: `-c`.
-    pub fn count(_ctx: &SearchContext, _matcher: &MatcherHandle) -> SearchStep {
-        panic!("Grep seam: branch::count is not ported")
+    pub fn count(ctx: &SearchContext, matcher: &MatcherHandle) -> SearchStep {
+        let mut counters = Counters::load(ctx);
+        let step = count_scan(ctx, matcher, &mut counters);
+        counters.store(ctx);
+        step
+    }
+
+    fn count_scan(ctx: &SearchContext, matcher: &MatcherHandle, c: &mut Counters) -> SearchStep {
+        let f = ctx.flags();
+        let cnf = has_cnf(ctx);
+
+        // --format with open/close or --max-files: we must out.acquire() lock before Stats::found_part()
+        let acquire = (f.format.is_some() && (f.format_open.is_some() || f.format_close.is_some())) || f.max_files > 0;
+
+        // not --match to match all or not -v
+        if !f.match_ || !f.invert_match {
+            if f.ungroup || f.only_matching {
+                // -co or -cu: count the number of patterns matched
+
+                // skip accurate line number counting, only count matching lines
+                if !f.multiline && f.max_line == 0 && f.stats.is_none() {
+                    matcher.lineno_skip(true);
+                }
+
+                while matcher.find() {
+                    // --range: max line exceeded?
+                    if f.max_line > 0 && matcher.lineno() > f.max_line {
+                        break;
+                    }
+
+                    if cnf {
+                        // check CNF AND/OR/NOT matching, with --files acquire lock before Stats::found_part()
+                        let mut matched = false;
+                        if let Some(step) = cnf_line(ctx, matcher, acquire, &mut matched) {
+                            return step;
+                        }
+                        if !matched {
+                            continue;
+                        }
+                    }
+
+                    c.matches += 1;
+
+                    // -m: max number of matches reached?
+                    if f.max_count > 0 && c.matches >= f.max_count {
+                        break;
+                    }
+                }
+            } else if !f.multiline && !f.invert_match && f.max_line == 0 && !cnf && f.stats.is_none() {
+                // -c without -o/-u/-v/-K/-%: count the number of matching lines
+
+                // skip accurate line number counting, only count matching lines
+                matcher.lineno_skip(true);
+
+                let mut found = matcher.find();
+                while found {
+                    c.matches += 1;
+
+                    // -m: max number of matches reached?
+                    if f.max_count > 0 && c.matches >= f.max_count {
+                        break;
+                    }
+
+                    // if the match does not span more than one line, then skip to end of the line (we count matching lines)
+                    found = matcher.next_match(!matcher.at_bol());
+                }
+            } else {
+                // -c without -o/-u: count the number of matching lines
+
+                while matcher.find() {
+                    let current_lineno = matcher.lineno();
+
+                    if c.lineno != current_lineno {
+                        // --range: max line exceeded?
+                        if f.max_line > 0 && current_lineno > f.max_line {
+                            break;
+                        }
+
+                        if cnf {
+                            // check CNF AND/OR/NOT matching, with --files acquire lock before Stats::found_part()
+                            let mut matched = false;
+                            if let Some(step) = cnf_line(ctx, matcher, acquire, &mut matched) {
+                                return step;
+                            }
+                            if !matched {
+                                continue;
+                            }
+                        }
+
+                        c.matches += 1;
+
+                        // -m: max number of matches reached?
+                        if f.max_count > 0 && c.matches >= f.max_count {
+                            break;
+                        }
+
+                        c.lineno = current_lineno;
+
+                        // if the match does not span more than one line, then skip to end of the line (we count matching lines)
+                        if !f.multiline && !matcher.at_bol() {
+                            matcher.skip(b'\n');
+                        }
+                    }
+                }
+
+                // -c with -v: count non-matching lines
+                if f.invert_match {
+                    c.matches = matcher.lineno().wrapping_sub(c.matches);
+                    if c.matches > 0 {
+                        c.matches -= 1;
+                    }
+                }
+            }
+        }
+
+        // --min-count: require at least min-count matches
+        if f.min_count > 0 && c.matches < f.min_count {
+            return SearchStep::EXIT;
+        }
+
+        // --files: if we are still holding the output and CNF is not satisfyable then no global matches were made
+        if f.files && cnf {
+            // we cannot report 0 matches and ensure accurate output
+            if file::cnf_satisfied(ctx, acquire) != CnfResult::YES {
+                return SearchStep::EXIT;
+            }
+        } else {
+            let exit = ctx.with_host(|h| {
+                // --format with open/close or --max-files: we must out.acquire() lock before Stats::found_part()
+                if acquire {
+                    h.out_acquire();
+                }
+
+                // --max-files: max reached?
+                // unfortunately, allowing 'acquire' below produces "x matching + y in archives"
+                // but without this we cannot produce correct format-open and format-close outputs
+                (c.matches > 0 || acquire) && !h.stats_found_part()
+            });
+            if exit {
+                return SearchStep::EXIT;
+            }
+        }
+
+        ctx.with_host(|h| {
+            if let Some(format) = f.format.as_deref() {
+                if let Some(open) = f.format_open.as_deref() {
+                    out_format_part(h, open);
+                }
+                h.out_format(format, c.matches, None, false, false);
+                if let Some(close) = f.format_close.as_deref() {
+                    out_format_part(h, close);
+                }
+            } else {
+                if f.with_filename || !h.partname().is_empty() {
+                    h.out_header_file();
+
+                    if f.null {
+                        h.out_chr(0);
+                    } else {
+                        h.out_str(&f.color_se);
+                        h.out_str(f.separator.as_deref().unwrap_or_default());
+                        h.out_str(&f.color_off);
+                    }
+                }
+                h.out_num(c.matches, 0);
+                h.out_nl(false);
+            }
+        });
+
+        SearchStep::DONE
     }
 
     /// `Grep::search_format`: `--format`.
-    pub fn format(_ctx: &SearchContext, _matcher: &MatcherHandle) -> SearchStep {
-        panic!("Grep seam: branch::format is not ported")
+    pub fn format(ctx: &SearchContext, matcher: &MatcherHandle) -> SearchStep {
+        if ctx.flags().invert_match {
+            // the registered handler works on the members, they stay in the host
+            return format_invert(ctx, matcher);
+        }
+        let mut counters = Counters::load(ctx);
+        let step = format_scan(ctx, matcher, &mut counters);
+        counters.store(ctx);
+        step
+    }
+
+    /// What follows the loops of `search_format`: `--min-count`, `--files` and `--format-close`.
+    fn format_finish(ctx: &SearchContext, matches: usize, cnf: bool) -> SearchStep {
+        let f = ctx.flags();
+
+        // --min-count: require at least min-count matches
+        if f.min_count > 0 && matches < f.min_count {
+            return SearchStep::EXIT;
+        }
+
+        // --files: if we are still holding the output and CNF is not satisfyable then no global matches were made
+        if f.files && cnf && file::cnf_satisfied(ctx, true) != CnfResult::YES {
+            return SearchStep::EXIT;
+        }
+
+        // output --format-close=FORMAT
+        if matches > 0 {
+            if let Some(close) = f.format_close.as_deref() {
+                ctx.with_host(|h| out_format_part(h, close));
+            }
+        }
+        SearchStep::DONE
+    }
+
+    /// `--format` with `-v`: the `FormatInvertMatchGrepHandler` of the host outputs the non-matching lines, and reads and
+    /// writes `matches`, `lineno` and `stop` itself, so they are not cached here.
+    fn format_invert(ctx: &SearchContext, matcher: &MatcherHandle) -> SearchStep {
+        let f = ctx.flags();
+        let cnf = has_cnf(ctx);
+
+        // register the event handler to output non-matching lines, the matcher resets it when a new input source is assigned
+        matcher.set_shift_handler(HandlerKind::FORMAT_INVERT_MATCH);
+
+        while matcher.find() {
+            let current_lineno = matcher.lineno();
+
+            if ctx.with_host(|h| h.lineno()) != current_lineno {
+                if cnf {
+                    // check CNF AND/OR/NOT matching
+                    let mut matched = false;
+                    if let Some(step) = cnf_line(ctx, matcher, false, &mut matched) {
+                        return step;
+                    }
+                    if !matched {
+                        continue;
+                    }
+                }
+
+                // get the lines before the matched line and output the non-matching lines up to this line
+                let context = matcher.before();
+                if context.len > 0 {
+                    matcher.invoke_handler(context);
+                }
+
+                // --range: max line exceeded?
+                if f.max_line > 0 && current_lineno > f.max_line {
+                    return SearchStep::DONE;
+                }
+
+                // --max-files: max reached?
+                if ctx.with_host(|h| h.stop()) {
+                    return SearchStep::EXIT;
+                }
+
+                // -m: max number of matches reached?
+                if f.max_count > 0 && ctx.with_host(|h| h.matches()) >= f.max_count {
+                    return SearchStep::DONE;
+                }
+
+                // output blocked?
+                if ctx.with_host(|h| h.out_eof()) {
+                    return SearchStep::EXIT;
+                }
+            }
+
+            let lines = matcher.lines();
+            ctx.with_host(|h| h.set_lineno(current_lineno + lines - 1));
+        }
+
+        // get the remaining context after the last match to output
+        let context = matcher.after();
+        if context.len > 0 {
+            matcher.invoke_handler(context);
+        }
+
+        let matches = ctx.with_host(|h| h.matches());
+        format_finish(ctx, matches, cnf)
+    }
+
+    fn format_scan(ctx: &SearchContext, matcher: &MatcherHandle, c: &mut Counters) -> SearchStep {
+        let f = ctx.flags();
+        let cnf = has_cnf(ctx);
+        let format = f.format.as_deref().unwrap_or_default();
+        let format_open = f.format_open.as_deref();
+
+        // --format with open/close: we must out.acquire() lock before Stats::found_part()
+        let acquire = format_open.is_some() || f.format_close.is_some();
+
+        // counter for format field %m matches
+        let mut format_matching = 0usize;
+
+        while matcher.find() {
+            let current_lineno = matcher.lineno();
+
+            // --range: max line exceeded?
+            if f.max_line > 0 && current_lineno > f.max_line {
+                break;
+            }
+
+            if cnf {
+                // check CNF AND/OR/NOT matching
+                let mut matched = false;
+                if let Some(step) = cnf_line(ctx, matcher, acquire, &mut matched) {
+                    return step;
+                }
+                if !matched {
+                    continue;
+                }
+            }
+
+            if current_lineno != c.lineno || f.ungroup {
+                c.matches += 1;
+
+                // --min-count: require at least min-count matches
+                if f.min_count > 0 && c.matches < f.min_count {
+                    c.lineno = current_lineno;
+                    continue;
+                }
+
+                // output --format-open=FORMAT for the first (or --min-count) match found
+                if c.matches == f.min_count + usize::from(f.min_count == 0) {
+                    let exit = ctx.with_host(|h| {
+                        if f.files && cnf {
+                            // --format-open: we must acquire lock early before Stats::found_part()
+                            if acquire && h.out_holding() {
+                                h.out_acquire();
+
+                                // --max-files: max reached?
+                                if !h.stats_found_part() {
+                                    return true;
+                                }
+                            }
+                        } else {
+                            // --format-open: we must acquire lock early before Stats::found_part()
+                            if acquire {
+                                h.out_acquire();
+                            }
+
+                            // --max-files: max reached?
+                            if !h.stats_found_part() {
+                                return true;
+                            }
+                        }
+
+                        if let Some(open) = format_open {
+                            // output --format-open=FORMAT
+                            out_format_part(h, open);
+
+                            // --files: undo files count
+                            if f.files && cnf && h.out_holding() {
+                                h.stats_undo_found_part();
+                            }
+                        }
+                        false
+                    });
+                    if exit {
+                        return SearchStep::EXIT;
+                    }
+                }
+            }
+
+            // output --format=FORMAT
+            // if the match does not span more than one line, then skip to end of the line
+            let body = c.matches > 1 || current_lineno == c.lineno;
+            let next = c.matches > 1;
+            let output = ctx.with_host(|h| h.out_format(format, c.matches, Some(&mut format_matching), body, next));
+            if !output && !f.multiline && !matcher.at_bol() && !matcher.skip(b'\n') {
+                break;
+            }
+
+            // --max-count: max number of matches reached?
+            if f.max_count > 0 && c.matches >= f.max_count {
+                break;
+            }
+
+            ctx.with_host(|h| h.out_check_flush());
+
+            c.lineno = current_lineno;
+        }
+
+        format_finish(ctx, c.matches, cnf)
     }
 
     /// `Grep::search_only_matching`: `-o` without `-A`, `-B`, `-C`.
