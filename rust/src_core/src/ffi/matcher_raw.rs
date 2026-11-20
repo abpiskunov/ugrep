@@ -225,7 +225,15 @@ pub unsafe fn set_mapping(state: &GrepState, mapping: Option<(usize, usize)>) {
 /// (`--max-mmap`, 0 disables) or a system call fails. On success the buffer is the file followed by the terminating NUL
 /// (`size + 1`), valid until the next call on this state or until the state is dropped.
 pub fn map_input(state: &GrepState, file: &FileRef<'_>, max_mmap: usize) -> Option<BufferPtr> {
-    let (base, size) = sys::map_file(state.mapping(), file.ptr.as_ptr(), max_mmap)?;
+    let mut lost = false;
+    let mapped = sys::map_file(state.mapping(), file.ptr.as_ptr(), max_mmap, &mut lost);
+    if lost {
+        // MAP_FIXED failed over the reserved region: the kernel may have unmapped it already, so the state forgets it (a
+        // leak if it is still mapped) and never maps over or unmaps it again, as `MMap::file` does
+        // SAFETY: `None` is always a valid mapping record.
+        unsafe { set_mapping(state, None) };
+    }
+    let (base, size) = mapped?;
     // SAFETY: `map_file` returns the live mapping it made at `base.0` of `base.1` bytes, which only this state unmaps
     // (on the next mapping, which replaces it with MAP_FIXED, or when it is dropped).
     unsafe { set_mapping(state, Some(base)) };
@@ -270,8 +278,14 @@ mod sys {
         unsafe { munmap(base as *mut c_void, size) };
     }
 
-    /// Returns the mapping `((base, mapped size), file size)`.
-    pub(super) fn map_file(current: Option<(usize, usize)>, file: *mut c_void, max_mmap: usize) -> Option<((usize, usize), usize)> {
+    /// Returns the mapping `((base, mapped size), file size)`; sets `lost` when the MAP_FIXED over an existing region
+    /// failed, so the caller forgets that region.
+    pub(super) fn map_file(
+        current: Option<(usize, usize)>,
+        file: *mut c_void,
+        max_mmap: usize,
+        lost: &mut bool,
+    ) -> Option<((usize, usize), usize)> {
         // SAFETY: `file` is a live `FILE*` (a `FileRef`).
         let fd = unsafe { fileno(file) };
         if fd < 0 {
@@ -303,12 +317,22 @@ mod sys {
                 (p as usize, mapped)
             }
         };
+        // the buffer is the file plus its terminating NUL, which must lie inside the region (a later max_mmap does not
+        // grow a region made for a smaller one)
+        if size >= mapped {
+            if current.is_none() {
+                unmap(base, mapped);
+            }
+            return None;
+        }
         // mmap the (next) file over the fixed region
         // SAFETY: MAP_FIXED over the region this state reserved (or just made) and owns.
         let p = unsafe { mmap(base as *mut c_void, mapped, PROT_READ, MAP_FIXED | MAP_PRIVATE, fd, 0) };
         if failed(p) {
             if current.is_none() {
                 unmap(base, mapped);
+            } else {
+                *lost = true;
             }
             return None;
         }
@@ -327,7 +351,12 @@ mod sys {
 
     pub(super) fn unmap(_base: usize, _size: usize) {}
 
-    pub(super) fn map_file(_current: Option<(usize, usize)>, _file: *mut c_void, _max_mmap: usize) -> Option<((usize, usize), usize)> {
+    pub(super) fn map_file(
+        _current: Option<(usize, usize)>,
+        _file: *mut c_void,
+        _max_mmap: usize,
+        _lost: &mut bool,
+    ) -> Option<((usize, usize), usize)> {
         None
     }
 }
