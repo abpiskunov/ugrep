@@ -3088,6 +3088,7 @@ struct Grep {
     // Grep::input takes over the pipe of zthread start/open_next: the pipe stays in C++ and is closed by close_input_file
     int install_pipe(FILE *pipe, int encoding)
     {
+      // the caller has closed the previously held input (close_held_input), so nothing is overwritten unclosed
       zthread_active = pipe != NULL;
       if (pipe == NULL)
         return 0;
@@ -3842,11 +3843,15 @@ struct Grep {
         G(c, [&]()
         {
           SeamFacade& f = F(c);
-          f.grep.input = reflex::Input(stream(file, "input_set_file: NULL file"), static_cast<reflex::Input::file_encoding_type>(encoding));
+          FILE *next = stream(file, "input_set_file: NULL file");
+          // the owned pipe that Grep::input holds is closed first, as close_file does before input changes
+          if (next != f.grep.input.file())
+            f.close_held_input();
+          f.grep.input = reflex::Input(next, static_cast<reflex::Input::file_encoding_type>(encoding));
           f.input_owned = owned != 0;
         });
       };
-      env->input_clear = [](void *c) { G(c, [&]() { SeamFacade& f = F(c); f.grep.input.clear(); f.input_owned = false; }); };
+      env->input_clear = [](void *c) { G(c, [&]() { F(c).close_held_input(); }); };
       env->input_get = [](void *c, unsigned char *buf, size_t len) -> size_t
       {
         return G(c, [&]() -> size_t { return F(c).grep.input.get(reinterpret_cast<char*>(buf), len); });
@@ -3873,7 +3878,11 @@ struct Grep {
         return G(c, [&]() -> int
         {
           SeamFacade& f = F(c);
-          FILE *pipe = f.grep.zthread.start(ztstage, path, stream(f.grep.file_in, "zthread_start: NULL file_in"), find);
+          FILE *in = stream(f.grep.file_in, "zthread_start: NULL file_in");
+          // a job still running is drained (its pipe closed) before a new one starts, and the held input is closed
+          f.drain_zthread();
+          f.close_held_input();
+          FILE *pipe = f.grep.zthread.start(ztstage, path, in, find);
           return f.install_pipe(pipe, encoding);
         });
       };

@@ -466,7 +466,7 @@ impl GrepHost for CHost {
         let ptr = (self.0.file_in)(self.0.ctx);
         (self.0.input_set_file)(self.0.ctx, ptr, encoding, 0)
     }
-    fn input_clear(&self) {
+    fn input_clear(&mut self) {
         (self.0.input_clear)(self.0.ctx)
     }
     fn input_get(&self, buf: &mut [u8]) -> usize {

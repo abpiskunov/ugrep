@@ -753,13 +753,15 @@ pub trait GrepHost {
     /// `Grep::input.file_encoding()`, which `mmap.file(input, ...)` checks.
     fn input_encoding(&self) -> i32;
     /// `Grep::input = reflex::Input(file, encoding)` (`encoding` is `flag_encoding_type`) for a pipe or stream that the
-    /// host takes over: it keeps `file` open for `Grep::input`, so the caller cannot close it or use it afterwards.
+    /// host takes over: it keeps `file` open for `Grep::input`, so the caller cannot close it or use it afterwards. A
+    /// decompression pipe that `Grep::input` held before is closed first, as `close_file` does before the input changes.
     fn input_set_file(&mut self, file: FileSource, encoding: i32);
     /// `Grep::input = reflex::Input(Grep::file_in, encoding)`: the stream stays owned by `Grep::file_in`. A NULL `file_in` is
     /// an error on the exception channel.
     fn input_set_file_in(&mut self, encoding: i32);
-    /// `Grep::input.clear()`.
-    fn input_clear(&self);
+    /// `Grep::input.clear()`, closing first the decompression pipe that it held (never `file_in`, stdin or the TUI pipe).
+    /// `&mut self`: no [`FileRef`] of `input_file` is alive when that pipe is closed.
+    fn input_clear(&mut self);
     /// `Grep::input.get(buf, buf.len())`: the number of bytes read.
     fn input_get(&self, buf: &mut [u8]) -> usize;
     /// `Static::source`, and `stdin`.
@@ -805,7 +807,7 @@ pub trait GrepHost {
     /// (`reflex::Input(pipe, encoding)`, owned: closed by [`GrepHost::close_input_file`]) and returns true, else false.
     /// The pipe never reaches Rust. The thread reads `Grep::file_in`, which stays owned by the host (closed by
     /// [`GrepHost::close_file_in`]); a NULL `file_in` is an error of the exception channel. `&mut self`: no [`FileRef`]
-    /// of `input_file` is alive.
+    /// of `input_file` is alive. A job still running is drained and the held input closed before the new one starts.
     fn zthread_start(&mut self, ztstage: usize, pathname: &[u8], find: Option<&[u8]>, encoding: i32) -> bool;
     /// `Grep::zthread.open_next(pathname)`: as `zthread_start`, true when the next pipe is now `Grep::input`. The host
     /// first closes the previous part's pipe that `Grep::input` holds (as `close_file` does before `open_next`), so the
