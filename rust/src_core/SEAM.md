@@ -478,7 +478,7 @@ Other state read by branches (not in the context; stays in `Grep` members, reach
 | epilogue | `search_epilogue` | after any non-EXIT branch | `matched` (set true), `pathname` unused | lineno; host: `cnf_satisfied`, `matches`, `out.nl`, `Stats::score_matches` |
 
 Matcher-handle API: `find`, `next_match(skip_line)`, `bol`, `eol(inclusive)`, `begin`, `end`, `text_bounds` (begin/end/first/last/size/bol/eol/lineno/lines
-snapshot), `bytes(offset, len)` (the buffer bytes), `before()`/`after()` returning `BufContext {offset, len, num}`, `bef(len)`/`aft(len)` returning an offset,
+snapshot), `with_bytes(offset, len, |b| ..)` / `bytes_to_vec(offset, len)` (the buffer bytes; there is no method returning a borrowed slice), `before()`/`after()` returning `BufContext {offset, len, num}`, `bef(len)`/`aft(len)` returning an offset,
 `lineno_skip`, `reset`. `lineno()` and `lines()` are handle calls (hot loop), also snapshotted in `text_bounds`.
 Buffer-shift event: `set_shift_handler(HandlerKind)` registers one of the C++ handler classes (GREP, ONLY_MATCHING_CONTEXT, INVERT_MATCH,
 FORMAT_INVERT_MATCH, ANY_LINE, CONTEXT, INVERT_CONTEXT; `NONE` unregisters) as the matcher's event handler, or `set_rust_handler(Box<dyn ShiftHandler>)`
@@ -501,7 +501,7 @@ without editing the trait or the table. It carries:
 - CNF and matchers: `cnf_matching(bol, eol, acquire)`, `cnf_satisfied(acquire)`, `matchers_len` (`None` = NULL), `matchers_matcher(i)` (a handle of any
   kind), `matchers_reset` (the `--files` bitmask reset of `search_setup`).
 - `out` (`Output`): `eof`, `hold`, `holding`, `acquire`, `release`, `check_flush`, `chr`, `str`, `utf8strn`, `num`, `nl`, `header` (both forms),
-  `binary_file_matches`, `format` (both forms; the in/out `matching` counter is `Option<&mut usize>`, `None` for --format-open/-close), `dump.hex`, `dump.next`, `dump.done`.
+  `binary_file_matches`, `format` (both forms; the in/out `matching` counter is `Option<&mut usize>`, `None` for --format-open/-close), `dump.hex` (modes `HEX_MATCH` 0, `HEX_LINE` 1, `HEX_CONTEXT_MATCH` 2, `HEX_CONTEXT_LINE` 3, exported in `search.rs` and `search_seam.h`), `dump.next`, `dump.done`.
 - `Stats`: `found_file`, `found_part`, `undo_found_part`, `found_parts`, `score_matches`.
 - Flags are not callbacks: `GrepFlags` is read from `settings.rs` (`UGREP_SETTINGS`) directly.
 - The C ABI is mirrored by `src/search_seam.h` (`struct ugrep_core_search_env`); Rust tests pin enum discriminants and field offsets.
@@ -535,11 +535,32 @@ All stay in C++ in this stage; the branch functions read them through `this`.
   Therefore every handle method takes `&self`, branches take `&SearchContext`, `matched` is a `Cell`; no `&mut` is held across a call into C++.
 - **Thread affinity:** a `SearchContext` and `MatcherHandle` are created and used on the one worker thread running `Grep::search`; they are not
   `Send`/`Sync`-shared. `cancel()` from the TUI thread touches `Grep` members only, never the handle.
-- **Owner side:** `SearchContext` owned by Rust (boxed, created and freed by the shell); matcher object owned by C++ (the handle is a borrowed token);
+- **Owner side:** `SearchContext` owned by Rust (boxed, created and freed by the shell); matcher object owned by C++ (the handle borrows it through its `MatcherTable`);
   pathname memory owned by the caller of `search`.
 - **Error kinds:** the stubs `panic!` (`panic = "abort"` in the profile); the ported branches report I/O failure as C++ does today (exceptions
   `EXIT_SEARCH`/`std::exception` caught in the shell), result is a `SearchStep` (`u8`: CONTINUE 0, DONE 1, EXIT 2), not an error.
 
+### Matcher callback table (how Rust calls the C++ matcher)
+`MatcherHandle` carries a `MatcherTable` (`search.rs`, mirrored by `struct ugrep_core_matcher_table` in `src/search_seam.h`): a `ctx` (the facade's
+handle of the matcher), the `kind`, and one `extern "C"` function pointer per handle method: `find`, `next_match`, `bol`, `eol`, `begin`, `end`,
+`text_bounds`, `first`, `last`, `size`, `lineno`, `lines`, `columno`, `at_bol`, `hit_end`, `skip`, `border`, `before`, `after`, `bef`, `aft`, `bytes`,
+`set_reserve`, `fuzzy_distance`, `fuzzy_edits`, `lineno_skip`, `set_shift_handler` (handler construction by `HandlerKind`), `set_rust_handler`
+(trampoline registration) and `invoke_handler`, plus `reset`: 32 words. The facade fills one table per matcher; `GrepEnv.matchers_matcher(index)` fills
+it for `matchers->at(index)`, and the cxx `matcher_handle_new(table_address)` copies it for `Grep::matcher`. Rust tests pin the layout and run the
+handle against a fake matcher through the table; the header pins enum last values, `offsetof` and `sizeof` with `static_assert`.
+- **Buffer bytes:** `MatcherHandle` has no method returning `&[u8]`. `bytes_to_vec` returns an owned copy (a cost for the performance task on the hot
+  path), and `with_bytes(offset, len, |b| ..)` lends the slice zero-copy: while the closure runs, every other call on the handle panics, so no call can
+  shift the buffer under the slice. The host (`out_str` and the like) does not touch the matcher and may be called from the closure.
+- **Handler lifetime:** the C++ handler object (`GrepHandler` and its derived classes, or the trampoline of a Rust handler) is owned by the facade. It
+  lives until the next `set_shift_handler`/`set_rust_handler`, `reset` or the destruction of the facade, whichever comes first, and the facade never
+  leaves the matcher pointing at a destroyed handler. `reset()` destroys the registered handler (RE-flex forgets it as well), so a branch registers
+  its handler again after `reset` and after each new input source (once per file). A Rust handler lives in the handle: `reset` and the next
+  registration drop it after C++ replaced the trampoline, and dropping the handle first unregisters the trampoline. Handler classes are registered only
+  by `set_shift_handler`; `HandlerKind::RUST` is registered by `set_rust_handler` alone.
+- **unsafe:** the raw-pointer reads (ytes, deref, ead) are in fi/matcher_raw.rs, declared from search.rs, so policy-scan sees them in fi/ and the signatures-only harness still builds.
+- **Re-entrancy:** a shift event arrives inside `find`, `next_match` or `eol(true)` through the trampoline into `dispatch_shift`, which only borrows the
+  handler slot; a handler that replaces itself while running is skipped, not aliased.
+
 ### Unknown ownership
-- How matcher-handle calls reach the C++ matcher (`token` is a placeholder; the matcher calls are not in `GrepEnv` yet, since the handle is the interface for them).
-- Lifetime of the handler registered by `set_shift_handler`/`set_rust_handler` relative to `reset`.
+- None for the matcher calls: they go through the table above. Open for the Port that fills the facade: the concrete C++ functions behind each table
+  entry (S4c-2 fills them with the first switched branch).

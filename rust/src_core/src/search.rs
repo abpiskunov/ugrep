@@ -22,6 +22,12 @@
 //! The notes (encoding, re-entrancy, thread affinity, owner side, error kinds) are in `SEAM.md`, "Grep seam".
 
 use std::cell::{Cell, RefCell};
+use std::ffi::c_void;
+use std::os::raw::c_int;
+
+// the raw-pointer reads, in `ffi/` where `unsafe` is allowed
+#[path = "ffi/matcher_raw.rs"]
+pub mod raw;
 
 use super::Bytes;
 
@@ -121,200 +127,354 @@ pub trait ShiftHandler {
     fn on_shift(&self, event: ShiftEvent, buf: &[u8]);
 }
 
-/// Handle of a matcher of any kind that stays owned by C++ (`Grep::matcher`, one element of `Grep::matchers`). The handle borrows it:
-/// it never frees it, and it must not outlive the `Grep::search` call it was made for. The Port decides how the calls
-/// reach the C++ matcher (SEAM.md, "Grep seam", unknown ownership).
-#[derive(Debug)]
+/// The callback that the registered Rust handler receives its events through: `user` is the handler slot of the handle,
+/// `buf` and `len` the text about to leave the buffer, `num` its number of lines. Mirrors `ugrep_core_shift_fn`.
+pub type ShiftFn = extern "C" fn(user: *mut c_void, len: usize, num: usize, buf: *const u8);
+
+/// The matcher callback table: how Rust calls the C++ matcher. Mirrors `struct ugrep_core_matcher_table` of
+/// `src/search_seam.h` field for field (every field is one word; the layout is pinned by tests there and here). The C++
+/// facade fills one per matcher: `ctx` is its handle of the matcher and the first argument of every function. A table is
+/// plain data and is copied into the [`MatcherHandle`]; `ctx` must stay valid for the lifetime of the handle (C++ owns
+/// the matcher and the facade, the handle only borrows).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct MatcherTable {
+    pub ctx: *mut c_void,
+    /// `MatcherKind` value of the matcher.
+    pub kind: usize,
+    pub find: extern "C" fn(*mut c_void) -> c_int,
+    pub next_match: extern "C" fn(*mut c_void, c_int) -> c_int,
+    pub bol: extern "C" fn(*mut c_void) -> usize,
+    pub eol: extern "C" fn(*mut c_void, c_int) -> usize,
+    pub begin: extern "C" fn(*mut c_void) -> usize,
+    pub end: extern "C" fn(*mut c_void) -> usize,
+    pub text_bounds: extern "C" fn(*mut c_void, *mut TextBounds),
+    pub first: extern "C" fn(*mut c_void) -> usize,
+    pub last: extern "C" fn(*mut c_void) -> usize,
+    pub size: extern "C" fn(*mut c_void) -> usize,
+    pub lineno: extern "C" fn(*mut c_void) -> usize,
+    pub lines: extern "C" fn(*mut c_void) -> usize,
+    pub columno: extern "C" fn(*mut c_void) -> usize,
+    pub at_bol: extern "C" fn(*mut c_void) -> c_int,
+    pub hit_end: extern "C" fn(*mut c_void) -> c_int,
+    pub skip: extern "C" fn(*mut c_void, c_int) -> c_int,
+    pub border: extern "C" fn(*mut c_void) -> usize,
+    pub before: extern "C" fn(*mut c_void, *mut BufContext),
+    pub after: extern "C" fn(*mut c_void, *mut BufContext),
+    pub bef: extern "C" fn(*mut c_void, usize) -> usize,
+    pub aft: extern "C" fn(*mut c_void, usize) -> usize,
+    /// `buf_ + offset`: `len` readable bytes, valid until the next call into the matcher.
+    pub bytes: extern "C" fn(*mut c_void, usize, usize) -> *const u8,
+    pub set_reserve: extern "C" fn(*mut c_void, usize),
+    pub fuzzy_distance: extern "C" fn(*mut c_void, u16),
+    pub fuzzy_edits: extern "C" fn(*mut c_void) -> u16,
+    pub lineno_skip: extern "C" fn(*mut c_void, c_int),
+    /// Construct the C++ handler class `HandlerKind` for the current input and register it; the previous handler is
+    /// destroyed first. `HandlerKind::NONE` only unregisters.
+    pub set_shift_handler: extern "C" fn(*mut c_void, c_int),
+    /// Register a trampoline handler that calls `ShiftFn(user, ..)` for every shift event (`HandlerKind::RUST`).
+    pub set_rust_handler: extern "C" fn(*mut c_void, *mut c_void, ShiftFn),
+    /// `handler(*matcher, context.buf, context.len, context.num)` on the registered handler.
+    pub invoke_handler: extern "C" fn(*mut c_void, *const BufContext),
+    pub reset: extern "C" fn(*mut c_void),
+}
+
+/// Where the Rust shift handler of a handle lives. Boxed so that its address, which C++ holds as `user`, is stable.
+type HandlerSlot = RefCell<Option<Box<dyn ShiftHandler>>>;
+
+fn dispatch_shift(slot: &HandlerSlot, event: ShiftEvent, buf: &[u8]) {
+    // a handler that is being replaced while it runs is skipped rather than aliased
+    if let Ok(slot) = slot.try_borrow() {
+        if let Some(handler) = slot.as_ref() {
+            handler.on_shift(event, buf);
+        }
+    }
+}
+
+extern "C" fn rust_shift_trampoline(user: *mut c_void, len: usize, num: usize, buf: *const u8) {
+    // `user` is the address of the boxed `HandlerSlot` of a live `MatcherHandle`, which unregisters it from the matcher
+    // before the slot is dropped; the matcher passes `len` readable bytes that stay valid for this call.
+    let slot: &HandlerSlot = raw::deref(user);
+    dispatch_shift(slot, ShiftEvent { len, num }, raw::bytes(buf, len));
+}
+
+/// Handle of a matcher of any kind that stays owned by C++ (`Grep::matcher`, one element of `Grep::matchers`). The handle
+/// borrows it through its [`MatcherTable`]: it never frees the matcher, and it must not outlive the `Grep::search` call it
+/// was made for. Every method is one table entry; handler lifetime and `reset` are specified in SEAM.md ("Grep seam",
+/// "Matcher callback table").
 pub struct MatcherHandle {
-    pub(crate) kind: MatcherKind,
-    /// Opaque token of the C++ matcher (never dereferenced here).
-    pub(crate) token: usize,
+    table: MatcherTable,
+    handler: Box<HandlerSlot>,
+    /// Set while `with_bytes` lends the buffer out: any other call on the handle would shift it.
+    lent: Cell<bool>,
+}
+
+impl std::fmt::Debug for MatcherHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MatcherHandle").field("kind", &self.kind()).finish_non_exhaustive()
+    }
+}
+
+impl Drop for MatcherHandle {
+    fn drop(&mut self) {
+        // the matcher must not keep a pointer to the slot that is about to be freed
+        if self.handler.get_mut().take().is_some() {
+            (self.table.set_shift_handler)(self.table.ctx, HandlerKind::NONE.0 as c_int);
+        }
+    }
 }
 
 impl MatcherHandle {
-    /// A handle for the C++ matcher `token` of the given kind.
-    pub fn new(kind: MatcherKind, token: usize) -> MatcherHandle {
-        MatcherHandle { kind, token }
+    /// A handle that calls the C++ matcher through `table`.
+    pub fn new(table: MatcherTable) -> MatcherHandle {
+        MatcherHandle { table, handler: Box::new(RefCell::new(None)), lent: Cell::new(false) }
+    }
+
+    fn t(&self) -> &MatcherTable {
+        assert!(!self.lent.get(), "Grep seam: matcher called while its buffer is lent by with_bytes");
+        &self.table
     }
 
     /// The kind of the matcher.
     pub fn kind(&self) -> MatcherKind {
-        self.kind
-    }
-
-    /// The opaque token of the C++ matcher this handle borrows.
-    pub fn token(&self) -> usize {
-        self.token
+        MatcherKind(self.table.kind as u8)
     }
 
     /// `matcher->find()`: search for the next match from the current position; false when there is none. May fire
     /// shift events before it returns.
     pub fn find(&self) -> bool {
-        panic!("Grep seam: MatcherHandle::find is not ported")
+        let t = self.t();
+        (t.find)(t.ctx) != 0
     }
 
     /// The match after the current one: `matcher->find()` resumes where the previous match ended, so this is the loop
     /// step of `while (matcher->find())`; with `skip_line` set the rest of the current line is skipped first
     /// (`matcher->skip('\n')`). May fire shift events.
-    pub fn next_match(&self, _skip_line: bool) -> bool {
-        panic!("Grep seam: MatcherHandle::next_match is not ported")
+    pub fn next_match(&self, skip_line: bool) -> bool {
+        let t = self.t();
+        (t.next_match)(t.ctx, skip_line as c_int) != 0
     }
 
     /// `matcher->bol()`: offset of the start of the line of the match. Call `eol` first, as the C++ does.
     pub fn bol(&self) -> usize {
-        panic!("Grep seam: MatcherHandle::bol is not ported")
+        let t = self.t();
+        (t.bol)(t.ctx)
     }
 
     /// `matcher->eol(inclusive)`: offset of the end of the line of the match; `inclusive` is the `eol(true)` form that
     /// reads on until the whole line is in the buffer (and may shift it, firing shift events).
-    pub fn eol(&self, _inclusive: bool) -> usize {
-        panic!("Grep seam: MatcherHandle::eol is not ported")
+    pub fn eol(&self, inclusive: bool) -> usize {
+        let t = self.t();
+        (t.eol)(t.ctx, inclusive as c_int)
     }
 
     /// `matcher->begin()`: offset of the first byte of the match.
     pub fn begin(&self) -> usize {
-        panic!("Grep seam: MatcherHandle::begin is not ported")
+        let t = self.t();
+        (t.begin)(t.ctx)
     }
 
     /// `matcher->end()`: offset one past the match.
     pub fn end(&self) -> usize {
-        panic!("Grep seam: MatcherHandle::end is not ported")
+        let t = self.t();
+        (t.end)(t.ctx)
     }
 
     /// All the positions of the current match at once.
     pub fn text_bounds(&self) -> TextBounds {
-        panic!("Grep seam: MatcherHandle::text_bounds is not ported")
+        let t = self.t();
+        let mut bounds = TextBounds::default();
+        (t.text_bounds)(t.ctx, &mut bounds);
+        bounds
     }
 
     /// `matcher->first()`: offset of the match in the input.
     pub fn first(&self) -> usize {
-        panic!("Grep seam: MatcherHandle::first is not ported")
+        let t = self.t();
+        (t.first)(t.ctx)
     }
 
     /// `matcher->last()`: offset one past the match in the input.
     pub fn last(&self) -> usize {
-        panic!("Grep seam: MatcherHandle::last is not ported")
+        let t = self.t();
+        (t.last)(t.ctx)
     }
 
     /// `matcher->size()`.
     pub fn size(&self) -> usize {
-        panic!("Grep seam: MatcherHandle::size is not ported")
+        let t = self.t();
+        (t.size)(t.ctx)
     }
 
     /// `matcher->lineno()`.
     pub fn lineno(&self) -> usize {
-        panic!("Grep seam: MatcherHandle::lineno is not ported")
+        let t = self.t();
+        (t.lineno)(t.ctx)
     }
 
     /// `matcher->lines()`: number of lines the match spans.
     pub fn lines(&self) -> usize {
-        panic!("Grep seam: MatcherHandle::lines is not ported")
+        let t = self.t();
+        (t.lines)(t.ctx)
     }
 
     /// `matcher->columno()`.
     pub fn columno(&self) -> usize {
-        panic!("Grep seam: MatcherHandle::columno is not ported")
+        let t = self.t();
+        (t.columno)(t.ctx)
     }
 
     /// `matcher->at_bol()`.
     pub fn at_bol(&self) -> bool {
-        panic!("Grep seam: MatcherHandle::at_bol is not ported")
+        let t = self.t();
+        (t.at_bol)(t.ctx) != 0
     }
 
     /// `matcher->hit_end()`.
     pub fn hit_end(&self) -> bool {
-        panic!("Grep seam: MatcherHandle::hit_end is not ported")
+        let t = self.t();
+        (t.hit_end)(t.ctx) != 0
     }
 
     /// `matcher->skip(c)`: skip input up to and including the byte `c`; false at the end of the input.
-    pub fn skip(&self, _c: u8) -> bool {
-        panic!("Grep seam: MatcherHandle::skip is not ported")
+    pub fn skip(&self, c: u8) -> bool {
+        let t = self.t();
+        (t.skip)(t.ctx, c as c_int) != 0
     }
 
     /// `matcher->border()`: the border offset of the match.
     pub fn border(&self) -> usize {
-        panic!("Grep seam: MatcherHandle::border is not ported")
+        let t = self.t();
+        (t.border)(t.ctx)
     }
 
     /// `matcher->before()`: the buffered text before the matching line as `{offset, len, num}`, which goes straight to
     /// the handler (`invoke_handler`).
     pub fn before(&self) -> BufContext {
-        panic!("Grep seam: MatcherHandle::before is not ported")
+        let t = self.t();
+        let mut context = BufContext::default();
+        (t.before)(t.ctx, &mut context);
+        context
     }
 
     /// `matcher->after()`: the buffered text after EOF is reached as `{offset, len, num}`.
     pub fn after(&self) -> BufContext {
-        panic!("Grep seam: MatcherHandle::after is not ported")
+        let t = self.t();
+        let mut context = BufContext::default();
+        (t.after)(t.ctx, &mut context);
+        context
     }
 
     /// `matcher->bef(len)`: the offset of the begin of the match minus `len`, or 0 at the begin of the buffer.
-    pub fn bef(&self, _len: usize) -> usize {
-        panic!("Grep seam: MatcherHandle::bef is not ported")
+    pub fn bef(&self, len: usize) -> usize {
+        let t = self.t();
+        (t.bef)(t.ctx, len)
     }
 
     /// `matcher->aft(len)`: the offset of the end of the match plus `len`, or of the end of the input. It fetches
-    /// input, so it invalidates earlier offsets and slices, as the C++ pointers.
-    pub fn aft(&self, _len: usize) -> usize {
-        panic!("Grep seam: MatcherHandle::aft is not ported")
+    /// input, so it invalidates earlier offsets, as the C++ pointers.
+    pub fn aft(&self, len: usize) -> usize {
+        let t = self.t();
+        (t.aft)(t.ctx, len)
     }
 
-    /// The bytes `buf_[offset..offset + len]` of the matcher buffer, for `out_str`, `check_binary`, `memchr`,
-    /// `utf8nlen` and the like. Borrowed: valid until the next call on this handle (any call can shift the buffer).
-    pub fn bytes(&self, _offset: usize, _len: usize) -> &[u8] {
-        panic!("Grep seam: MatcherHandle::bytes is not ported")
+    /// Copy of the bytes `buf_[offset..offset + len]` of the matcher buffer. Owned, so a later `find` cannot invalidate
+    /// it; the copy is the cost of soundness on the hot path, [`MatcherHandle::with_bytes`] is the zero-copy form.
+    pub fn bytes_to_vec(&self, offset: usize, len: usize) -> Bytes {
+        self.with_bytes(offset, len, |b| b.to_vec())
+    }
+
+    /// Zero-copy view of the bytes `buf_[offset..offset + len]` of the matcher buffer, for `out_str`, `check_binary`,
+    /// `memchr`, `utf8nlen` and the like. The slice lives only inside `f`, and while `f` runs every other call on this
+    /// handle panics (any of them could shift the buffer), so the slice cannot be used after the buffer moved. `f` may
+    /// call the host (`out_str` and the like), which does not touch the matcher.
+    pub fn with_bytes<R>(&self, offset: usize, len: usize, f: impl FnOnce(&[u8]) -> R) -> R {
+        struct Lent<'a>(&'a Cell<bool>);
+        impl Drop for Lent<'_> {
+            fn drop(&mut self) {
+                self.0.set(false);
+            }
+        }
+        let t = self.t();
+        let ptr = (t.bytes)(t.ctx, offset, len);
+        self.lent.set(true);
+        let _lent = Lent(&self.lent);
+        // the callback returned `len` readable bytes; they stay valid until the next call into the matcher, and `lent`
+        // makes every such call through this handle panic until `f` returns
+        let slice = raw::bytes(ptr, len);
+        f(slice)
     }
 
     /// `matcher->set_reserve(size)`: reserve buffer space for a line kept across a buffer shift.
-    pub fn set_reserve(&self, _size: usize) {
-        panic!("Grep seam: MatcherHandle::set_reserve is not ported")
+    pub fn set_reserve(&self, size: usize) {
+        let t = self.t();
+        (t.set_reserve)(t.ctx, size)
     }
 
     /// `FuzzyMatcher::distance(max)`, the `-Zbest` call: `max` is the cost in the lower byte and the INS, DEL, SUB and
     /// BIN flags in the upper byte. Only for [`MatcherKind::FUZZY`].
-    pub fn fuzzy_distance(&self, _max: u16) {
-        panic!("Grep seam: MatcherHandle::fuzzy_distance is not ported")
+    pub fn fuzzy_distance(&self, max: u16) {
+        assert_eq!(self.kind(), MatcherKind::FUZZY, "Grep seam: fuzzy_distance on a matcher that is not fuzzy");
+        let t = self.t();
+        (t.fuzzy_distance)(t.ctx, max)
     }
 
     /// `FuzzyMatcher::edits()`, the `-Zbest` call of `compute_cost`: edit distance of the current match. Only for
     /// [`MatcherKind::FUZZY`].
     pub fn fuzzy_edits(&self) -> u16 {
-        panic!("Grep seam: MatcherHandle::fuzzy_edits is not ported")
+        assert_eq!(self.kind(), MatcherKind::FUZZY, "Grep seam: fuzzy_edits on a matcher that is not fuzzy");
+        let t = self.t();
+        (t.fuzzy_edits)(t.ctx)
     }
 
     /// `matcher->lineno_skip(on)`: count only matching lines (cheaper) when on.
-    pub fn lineno_skip(&self, _on: bool) {
-        panic!("Grep seam: MatcherHandle::lineno_skip is not ported")
+    pub fn lineno_skip(&self, on: bool) {
+        let t = self.t();
+        (t.lineno_skip)(t.ctx, on as c_int)
     }
 
     /// Register the buffer-shift handler of the given kind (`matcher->set_handler`), or clear it with
     /// [`HandlerKind::NONE`]. C++ constructs the handler (`GrepHandler` or a class derived from it, with `*this` and the
-    /// pathname) and the kind picks the class. The matcher forgets the handler when a new input source is assigned, so
-    /// this is called once per file. A handler class ported to Rust registers as [`HandlerKind::RUST`] after
-    /// [`MatcherHandle::set_rust_handler`].
-    pub fn set_shift_handler(&self, _kind: HandlerKind) {
-        panic!("Grep seam: MatcherHandle::set_shift_handler is not ported")
+    /// pathname) and owns it; the previous one is destroyed. The matcher forgets the handler when it is reset or a new
+    /// input source is assigned, so this is called once per file. [`HandlerKind::RUST`] is registered by
+    /// [`MatcherHandle::set_rust_handler`], not here.
+    pub fn set_shift_handler(&self, kind: HandlerKind) {
+        assert_ne!(kind, HandlerKind::RUST, "Grep seam: register a Rust handler with set_rust_handler");
+        let t = self.t();
+        (t.set_shift_handler)(t.ctx, kind.0 as c_int);
+        // C++ has replaced the trampoline, so the Rust handler can go
+        self.handler.borrow_mut().take();
     }
 
-    /// Install the Rust [`ShiftHandler`] that the C trampoline of [`HandlerKind::RUST`] forwards the events to.
-    pub fn set_rust_handler(&self, _handler: Box<dyn ShiftHandler>) {
-        panic!("Grep seam: MatcherHandle::set_rust_handler is not ported")
+    /// Install the Rust [`ShiftHandler`] and register the C trampoline that forwards the matcher's shift events to it,
+    /// replacing any handler. The handler lives in the handle: it is dropped by `reset`, by the next
+    /// `set_shift_handler` or `set_rust_handler`, and when the handle is dropped (which first unregisters the trampoline).
+    pub fn set_rust_handler(&self, handler: Box<dyn ShiftHandler>) {
+        let t = self.t();
+        *self.handler.borrow_mut() = Some(handler);
+        let user = &*self.handler as *const HandlerSlot as *mut c_void;
+        (t.set_rust_handler)(t.ctx, user, rust_shift_trampoline);
     }
 
-    /// The buffer-shift event, forwarded by the C++ trampoline to the Rust handler. Runs inside `find`, `next_match` or
-    /// `eol`; `buf` is the text about to leave the buffer.
-    pub fn shift_event(&self, _event: ShiftEvent, _buf: &[u8]) {
-        panic!("Grep seam: MatcherHandle::shift_event is not ported")
+    /// The buffer-shift event, as the C++ trampoline delivers it to the Rust handler. Runs inside `find`, `next_match` or
+    /// `eol`; `buf` is the text about to leave the buffer. Does nothing when no Rust handler is registered.
+    pub fn shift_event(&self, event: ShiftEvent, buf: &[u8]) {
+        dispatch_shift(&self.handler, event, buf);
     }
 
     /// Call the registered handler explicitly, as the branches do with `handler(*matcher, context.buf, context.len,
     /// context.num)` after `before()` or `after()`.
-    pub fn invoke_handler(&self, _context: BufContext) {
-        panic!("Grep seam: MatcherHandle::invoke_handler is not ported")
+    pub fn invoke_handler(&self, context: BufContext) {
+        let t = self.t();
+        (t.invoke_handler)(t.ctx, &context);
     }
 
-    /// `matcher->reset()`: back to the start of the input, drops the shift listener and the match.
+    /// `matcher->reset()`: back to the start of the input, drops the match and the registered handler (C++ destroys
+    /// its handler object, and the Rust handler is dropped here). Register a handler again afterwards.
     pub fn reset(&self) {
-        panic!("Grep seam: MatcherHandle::reset is not ported")
+        let t = self.t();
+        (t.reset)(t.ctx);
+        self.handler.borrow_mut().take();
     }
 }
 
@@ -328,6 +488,12 @@ impl SearchStep {
     pub const DONE: SearchStep = SearchStep(1);
     pub const EXIT: SearchStep = SearchStep(2);
 }
+
+/// The hex dump modes of `Output::Dump` (`output.hpp`), the `mode` of `out_dump_hex`.
+pub const HEX_MATCH: i16 = 0;
+pub const HEX_LINE: i16 = 1;
+pub const HEX_CONTEXT_MATCH: i16 = 2;
+pub const HEX_CONTEXT_LINE: i16 = 3;
 
 /// Where `Grep::restline_data` points.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -631,5 +797,270 @@ mod tests {
             ],
             [0, 1, 2, 3, 4, 5, 6, 7, 255]
         );
+        assert_eq!([HEX_MATCH, HEX_LINE, HEX_CONTEXT_MATCH, HEX_CONTEXT_LINE], [0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn struct_layouts_match_the_header() {
+        use std::mem::{offset_of, size_of};
+        let w = size_of::<usize>();
+        assert_eq!(size_of::<TextBounds>(), 9 * w);
+        assert_eq!(
+            [
+                offset_of!(TextBounds, begin),
+                offset_of!(TextBounds, end),
+                offset_of!(TextBounds, first),
+                offset_of!(TextBounds, last),
+                offset_of!(TextBounds, size),
+                offset_of!(TextBounds, bol),
+                offset_of!(TextBounds, eol),
+                offset_of!(TextBounds, lineno),
+                offset_of!(TextBounds, lines),
+            ],
+            [0, w, 2 * w, 3 * w, 4 * w, 5 * w, 6 * w, 7 * w, 8 * w]
+        );
+        assert_eq!(size_of::<BufContext>(), 3 * w);
+        assert_eq!([offset_of!(BufContext, offset), offset_of!(BufContext, len), offset_of!(BufContext, num)], [0, w, 2 * w]);
+    }
+
+    #[test]
+    fn matcher_table_layout_matches_the_header() {
+        use std::mem::{offset_of, size_of};
+        let w = size_of::<usize>();
+        let offsets = [
+            offset_of!(MatcherTable, ctx),
+            offset_of!(MatcherTable, kind),
+            offset_of!(MatcherTable, find),
+            offset_of!(MatcherTable, next_match),
+            offset_of!(MatcherTable, bol),
+            offset_of!(MatcherTable, eol),
+            offset_of!(MatcherTable, begin),
+            offset_of!(MatcherTable, end),
+            offset_of!(MatcherTable, text_bounds),
+            offset_of!(MatcherTable, first),
+            offset_of!(MatcherTable, last),
+            offset_of!(MatcherTable, size),
+            offset_of!(MatcherTable, lineno),
+            offset_of!(MatcherTable, lines),
+            offset_of!(MatcherTable, columno),
+            offset_of!(MatcherTable, at_bol),
+            offset_of!(MatcherTable, hit_end),
+            offset_of!(MatcherTable, skip),
+            offset_of!(MatcherTable, border),
+            offset_of!(MatcherTable, before),
+            offset_of!(MatcherTable, after),
+            offset_of!(MatcherTable, bef),
+            offset_of!(MatcherTable, aft),
+            offset_of!(MatcherTable, bytes),
+            offset_of!(MatcherTable, set_reserve),
+            offset_of!(MatcherTable, fuzzy_distance),
+            offset_of!(MatcherTable, fuzzy_edits),
+            offset_of!(MatcherTable, lineno_skip),
+            offset_of!(MatcherTable, set_shift_handler),
+            offset_of!(MatcherTable, set_rust_handler),
+            offset_of!(MatcherTable, invoke_handler),
+            offset_of!(MatcherTable, reset),
+        ];
+        for (i, o) in offsets.iter().enumerate() {
+            assert_eq!(*o, i * w, "field {i}");
+        }
+        assert_eq!(size_of::<MatcherTable>(), 32 * w);
+    }
+
+    // a fake C++ matcher over a byte buffer, to run the handle through the table
+    mod fake {
+        use super::super::*;
+        use std::cell::RefCell;
+
+        pub struct Fake {
+            pub buf: Vec<u8>,
+            pub pos: Cell<usize>,
+            pub calls: RefCell<Vec<&'static str>>,
+            pub user: Cell<*mut c_void>,
+            pub shift: Cell<Option<ShiftFn>>,
+        }
+
+        fn f<'a>(ctx: *mut c_void) -> &'a Fake {
+            raw::deref(ctx)
+        }
+
+        extern "C" fn find(ctx: *mut c_void) -> c_int {
+            let m = f(ctx);
+            m.calls.borrow_mut().push("find");
+            if let Some(shift) = m.shift.get() {
+                shift(m.user.get(), m.buf.len(), 2, m.buf.as_ptr());
+            }
+            m.pos.set(m.pos.get() + 1);
+            (m.pos.get() < 3) as c_int
+        }
+        extern "C" fn next_match(_: *mut c_void, _: c_int) -> c_int {
+            0
+        }
+        extern "C" fn one(_: *mut c_void) -> usize {
+            1
+        }
+        extern "C" fn eol(_: *mut c_void, _: c_int) -> usize {
+            2
+        }
+        extern "C" fn bounds(_: *mut c_void, out: *mut TextBounds) {
+            raw::write(out, TextBounds { begin: 7, ..TextBounds::default() });
+        }
+        extern "C" fn flag(_: *mut c_void) -> c_int {
+            1
+        }
+        extern "C" fn skip(_: *mut c_void, c: c_int) -> c_int {
+            (c == 10) as c_int
+        }
+        extern "C" fn ctx_out(_: *mut c_void, out: *mut BufContext) {
+            raw::write(out, BufContext { offset: 1, len: 2, num: 3 });
+        }
+        extern "C" fn plus(_: *mut c_void, n: usize) -> usize {
+            n + 10
+        }
+        extern "C" fn bytes(ctx: *mut c_void, offset: usize, _len: usize) -> *const u8 {
+            f(ctx).buf[offset..].as_ptr()
+        }
+        extern "C" fn set_usize(_: *mut c_void, _: usize) {}
+        extern "C" fn fuzzy_distance(_: *mut c_void, _: u16) {}
+        extern "C" fn fuzzy_edits(_: *mut c_void) -> u16 {
+            3
+        }
+        extern "C" fn lineno_skip(_: *mut c_void, _: c_int) {}
+        extern "C" fn set_shift_handler(ctx: *mut c_void, kind: c_int) {
+            let m = f(ctx);
+            m.calls.borrow_mut().push(if kind == 0 { "unset" } else { "set" });
+            m.shift.set(None);
+        }
+        extern "C" fn set_rust_handler(ctx: *mut c_void, user: *mut c_void, shift: ShiftFn) {
+            let m = f(ctx);
+            m.user.set(user);
+            m.shift.set(Some(shift));
+        }
+        extern "C" fn invoke_handler(ctx: *mut c_void, context: *const BufContext) {
+            let m = f(ctx);
+            let c = raw::read(context);
+            if let Some(shift) = m.shift.get() {
+                shift(m.user.get(), c.len, c.num, m.buf.as_ptr());
+            }
+        }
+        extern "C" fn reset(ctx: *mut c_void) {
+            let m = f(ctx);
+            m.pos.set(0);
+            m.shift.set(None);
+            m.calls.borrow_mut().push("reset");
+        }
+
+        pub fn table(m: &Fake, kind: MatcherKind) -> MatcherTable {
+            MatcherTable {
+                ctx: m as *const Fake as *mut c_void,
+                kind: kind.0 as usize,
+                find,
+                next_match,
+                bol: one,
+                eol,
+                begin: one,
+                end: one,
+                text_bounds: bounds,
+                first: one,
+                last: one,
+                size: one,
+                lineno: one,
+                lines: one,
+                columno: one,
+                at_bol: flag,
+                hit_end: flag,
+                skip,
+                border: one,
+                before: ctx_out,
+                after: ctx_out,
+                bef: plus,
+                aft: plus,
+                bytes,
+                set_reserve: set_usize,
+                fuzzy_distance,
+                fuzzy_edits,
+                lineno_skip,
+                set_shift_handler,
+                set_rust_handler,
+                invoke_handler,
+                reset,
+            }
+        }
+    }
+
+    fn fake() -> Box<fake::Fake> {
+        Box::new(fake::Fake {
+            buf: b"abc\n".to_vec(),
+            pos: Cell::new(0),
+            calls: RefCell::new(Vec::new()),
+            user: Cell::new(std::ptr::null_mut()),
+            shift: Cell::new(None),
+        })
+    }
+
+    #[test]
+    fn handle_calls_through_the_table() {
+        let m = fake();
+        let h = MatcherHandle::new(fake::table(&m, MatcherKind::FUZZY));
+        assert_eq!(h.kind(), MatcherKind::FUZZY);
+        assert!(h.find());
+        assert!(h.find());
+        assert!(!h.find());
+        assert!(!h.next_match(true));
+        assert_eq!((h.bol(), h.eol(true), h.begin(), h.end()), (1, 2, 1, 1));
+        assert_eq!(h.text_bounds().begin, 7);
+        assert!(h.at_bol() && h.hit_end() && h.skip(b'\n') && !h.skip(b'x'));
+        assert_eq!(h.before(), BufContext { offset: 1, len: 2, num: 3 });
+        assert_eq!((h.bef(1), h.aft(2)), (11, 12));
+        assert_eq!(h.fuzzy_edits(), 3);
+        assert_eq!(h.bytes_to_vec(1, 2), b"bc");
+        assert_eq!(h.with_bytes(0, 3, |b| b.len()), 3);
+    }
+
+    #[test]
+    #[should_panic(expected = "lent by with_bytes")]
+    fn matcher_is_not_callable_while_bytes_are_lent() {
+        let m = fake();
+        let h = MatcherHandle::new(fake::table(&m, MatcherKind::REFLEX));
+        h.with_bytes(0, 3, |_| h.find());
+    }
+
+    type Seen = std::rc::Rc<RefCell<Vec<(usize, usize, Vec<u8>)>>>;
+
+    struct Recorder(Seen);
+
+    impl ShiftHandler for Recorder {
+        fn on_shift(&self, event: ShiftEvent, buf: &[u8]) {
+            self.0.borrow_mut().push((event.len, event.num, buf.to_vec()));
+        }
+    }
+
+    #[test]
+    fn rust_handler_gets_events_until_reset() {
+        let m = fake();
+        let h = MatcherHandle::new(fake::table(&m, MatcherKind::REFLEX));
+        let seen = std::rc::Rc::new(RefCell::new(Vec::new()));
+        h.set_rust_handler(Box::new(Recorder(seen.clone())));
+        h.find();
+        h.invoke_handler(BufContext { offset: 0, len: 2, num: 1 });
+        assert_eq!(*seen.borrow(), vec![(4, 2, b"abc\n".to_vec()), (2, 1, b"abc\n"[..2].to_vec())]);
+        h.reset();
+        h.find();
+        assert_eq!(seen.borrow().len(), 2, "reset unregisters the handler");
+        h.set_rust_handler(Box::new(Recorder(seen.clone())));
+        h.set_shift_handler(HandlerKind::GREP);
+        h.find();
+        assert_eq!(seen.borrow().len(), 2, "a C++ handler replaces the Rust one");
+    }
+
+    #[test]
+    fn dropping_the_handle_unregisters_the_rust_handler() {
+        let m = fake();
+        {
+            let h = MatcherHandle::new(fake::table(&m, MatcherKind::LINE));
+            h.set_rust_handler(Box::new(Recorder(Default::default())));
+        }
+        assert!(m.shift.get().is_none());
+        assert_eq!(*m.calls.borrow(), vec!["unset"]);
     }
 }

@@ -318,8 +318,10 @@ mod ffi {
         /// The Rust-owned locals shared by the `Grep::search` branches (`signatures::search::SearchContext`).
         type SearchContext;
 
-        /// Seam function `src_core.matcher_handle_new`: `kind` is a `MatcherKind` value, `token` identifies the C++ matcher.
-        fn matcher_handle_new(kind: u8, token: usize) -> Box<MatcherHandle>;
+        /// Seam function `src_core.matcher_handle_new`: `table` is the address of a `ugrep_core_matcher_table`
+        /// (`src/search_seam.h`, `signatures::search::MatcherTable`) that the C++ facade filled; it is copied, and its `ctx`
+        /// must outlive the handle. The kind of the matcher is in the table.
+        fn matcher_handle_new(table: usize) -> Box<MatcherHandle>;
         /// Seam function `src_core.matcher_find`: `matcher->find()`. Every handle function takes `&MatcherHandle`:
         /// the C++ matcher mutates, and its shift handler re-enters while `find` or `eol` runs.
         fn matcher_find(handle: &MatcherHandle) -> bool;
@@ -344,8 +346,8 @@ mod ffi {
         fn matcher_shift_event(handle: &MatcherHandle, event: &MatcherShiftEvent, buf: &[u8]);
         /// Seam function `src_core.matcher_invoke_handler`: the explicit `handler(*matcher, buf, len, num)` call.
         fn matcher_invoke_handler(handle: &MatcherHandle, context: &MatcherContext);
-        /// Seam function `src_core.matcher_bytes`: `buf_[offset..offset + len]`, valid until the next handle call.
-        fn matcher_bytes(handle: &MatcherHandle, offset: usize, len: usize) -> &[u8];
+        /// Seam function `src_core.matcher_bytes`: a copy of `buf_[offset..offset + len]`.
+        fn matcher_bytes(handle: &MatcherHandle, offset: usize, len: usize) -> Vec<u8>;
         /// Seam function `src_core.matcher_reset`.
         fn matcher_reset(handle: &MatcherHandle);
         /// Seam functions `src_core.matcher_*`: the remaining `reflex::AbstractMatcher` accessors the branches use.
@@ -733,8 +735,10 @@ fn output_format_invert(
 // the Grep search seam (see SEAM.md, "Grep seam"): the opaque handles and the stub bodies of signatures::search
 use signatures::search::{self as grep_search, MatcherHandle, SearchContext};
 
-fn matcher_handle_new(kind: u8, token: usize) -> Box<MatcherHandle> {
-    Box::new(MatcherHandle::new(grep_search::MatcherKind(kind), token))
+fn matcher_handle_new(table: usize) -> Box<MatcherHandle> {
+    // `table` is the address of a filled `ugrep_core_matcher_table` (contract of the bridge function)
+    let table = grep_search::raw::read(table as *const grep_search::MatcherTable);
+    Box::new(MatcherHandle::new(table))
 }
 
 fn matcher_find(handle: &MatcherHandle) -> bool {
@@ -792,8 +796,8 @@ fn matcher_invoke_handler(handle: &MatcherHandle, context: &ffi::MatcherContext)
     handle.invoke_handler(grep_search::BufContext { offset: context.offset, len: context.len, num: context.num })
 }
 
-fn matcher_bytes(handle: &MatcherHandle, offset: usize, len: usize) -> &[u8] {
-    handle.bytes(offset, len)
+fn matcher_bytes(handle: &MatcherHandle, offset: usize, len: usize) -> Vec<u8> {
+    handle.bytes_to_vec(offset, len)
 }
 
 fn matcher_reset(handle: &MatcherHandle) {

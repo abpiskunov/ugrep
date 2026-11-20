@@ -4,13 +4,23 @@
 // The enums and the order of the table are pinned by tests in search_host.rs and search.rs: change both sides together.
 //
 // Ownership: the SearchContext is owned by Rust (search_context_new); ugrep_core_search_set_host copies the table, whose
-// ctx (the C++ facade of the Grep object) must outlive the context. Matchers stay owned by C++; a handle only borrows.
+// ctx (the C++ facade of the Grep object) must outlive the context. Matchers stay owned by C++; a handle only borrows:
+// Rust calls them through a ugrep_core_matcher_table that the facade fills (one per matcher, copied into the handle).
+// Handler lifetime: the handler object registered through set_shift_handler or set_rust_handler is owned by the facade;
+// it is destroyed by the next set_shift_handler/set_rust_handler, by reset and with the facade, and the facade never
+// leaves the matcher with a pointer to a destroyed handler.
 // Threads: every callback is called on the thread that runs Grep::search, never from another thread. Results by pointer
 // stay valid until the next callback. Positions are byte offsets from the start of the matcher buffer.
 #ifndef SEARCH_SEAM_H
 #define SEARCH_SEAM_H
 
 #include <stddef.h>
+
+#ifdef __cplusplus
+# define UGREP_CORE_ASSERT(cond) static_assert(cond, #cond)
+#else
+# define UGREP_CORE_ASSERT(cond) _Static_assert(cond, #cond)
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -38,6 +48,12 @@ extern "C" {
 #define UGREP_CORE_HANDLER_CONTEXT              6   // ContextGrepHandler
 #define UGREP_CORE_HANDLER_INVERT_CONTEXT       7   // InvertContextGrepHandler
 #define UGREP_CORE_HANDLER_RUST                 255 // trampoline into matcher_shift_event
+
+// the hex dump modes of Output::Dump (output.hpp), the mode of out_dump_hex
+#define UGREP_CORE_HEX_MATCH         0
+#define UGREP_CORE_HEX_LINE          1
+#define UGREP_CORE_HEX_CONTEXT_MATCH 2
+#define UGREP_CORE_HEX_CONTEXT_LINE  3
 
 // restline_data_get / restline_data_set kinds
 #define UGREP_CORE_RESTLINE_NONE   0 // restline_data == NULL
@@ -78,6 +94,60 @@ typedef enum ugrep_core_handler_op {
   UGREP_CORE_HANDLER_OP_ADD_BEFORE_CONTEXT_MATCH   // add_before_context_match(a = pos, b = size, c = offset)
 } ugrep_core_handler_op;
 
+// the positions of the current match, offsets from the start of the matcher buffer (TextBounds)
+typedef struct ugrep_core_text_bounds {
+  size_t begin, end, first, last, size, bol, eol, lineno, lines;
+} ugrep_core_text_bounds;
+
+// reflex::AbstractMatcher::Context as offsets into the matcher buffer (BufContext)
+typedef struct ugrep_core_buf_context {
+  size_t offset, len, num;
+} ugrep_core_buf_context;
+
+// the Rust shift handler (ShiftFn): called by the trampoline handler for every buffer-shift event
+typedef void (*ugrep_core_shift_fn)(void *user, size_t len, size_t num, const unsigned char *buf);
+
+// how Rust calls a C++ matcher (MatcherTable): every function takes ctx first, every field is one word
+typedef struct ugrep_core_matcher_table {
+  void *ctx;     // the facade's handle of the matcher
+  size_t kind;   // UGREP_CORE_MATCHER_*
+  int (*find)(void *ctx);
+  int (*next_match)(void *ctx, int skip_line);
+  size_t (*bol)(void *ctx);
+  size_t (*eol)(void *ctx, int inclusive);
+  size_t (*begin)(void *ctx);
+  size_t (*end)(void *ctx);
+  void (*text_bounds)(void *ctx, ugrep_core_text_bounds *out);
+  size_t (*first)(void *ctx);
+  size_t (*last)(void *ctx);
+  size_t (*size)(void *ctx);
+  size_t (*lineno)(void *ctx);
+  size_t (*lines)(void *ctx);
+  size_t (*columno)(void *ctx);
+  int (*at_bol)(void *ctx);
+  int (*hit_end)(void *ctx);
+  int (*skip)(void *ctx, int c);
+  size_t (*border)(void *ctx);
+  void (*before)(void *ctx, ugrep_core_buf_context *out);
+  void (*after)(void *ctx, ugrep_core_buf_context *out);
+  size_t (*bef)(void *ctx, size_t len);
+  size_t (*aft)(void *ctx, size_t len);
+  // buf_ + offset, len readable bytes, valid until the next call into the matcher
+  const unsigned char *(*bytes)(void *ctx, size_t offset, size_t len);
+  void (*set_reserve)(void *ctx, size_t size);
+  void (*fuzzy_distance)(void *ctx, unsigned short max);
+  unsigned short (*fuzzy_edits)(void *ctx);
+  void (*lineno_skip)(void *ctx, int on);
+  // destroy the previous handler, construct and register the UGREP_CORE_HANDLER_* class (NONE: only unregister)
+  void (*set_shift_handler)(void *ctx, int handler_kind);
+  // destroy the previous handler, register a trampoline handler that calls shift(user, len, num, buf)
+  void (*set_rust_handler)(void *ctx, void *user, ugrep_core_shift_fn shift);
+  // handler(*matcher, context->buf, context->len, context->num) on the registered handler
+  void (*invoke_handler)(void *ctx, const ugrep_core_buf_context *context);
+  // matcher->reset(): back to the start of the input, destroys the registered handler
+  void (*reset)(void *ctx);
+} ugrep_core_matcher_table;
+
 // what stays in C++ and is called back by Rust; the flags are Rust-owned (ugrep_settings) and are not in the table
 typedef struct ugrep_core_search_env {
   void *ctx;
@@ -101,8 +171,8 @@ typedef struct ugrep_core_search_env {
   int (*cnf_satisfied)(void *ctx, int acquire);
   // matchers->size(), or (size_t)-1 when matchers is NULL
   size_t (*matchers_len)(void *ctx);
-  // matchers->at(index): kind and token of the matcher, returns 0 when there is none
-  int (*matchers_matcher)(void *ctx, size_t index, unsigned char *kind, size_t *token);
+  // matchers->at(index): fills the matcher table, returns 0 when there is none
+  int (*matchers_matcher)(void *ctx, size_t index, ugrep_core_matcher_table *table);
   // reset the matching and notmatching bitmasks (--files)
   void (*matchers_reset)(void *ctx);
   int (*out_eof)(void *ctx);
@@ -127,6 +197,32 @@ typedef struct ugrep_core_search_env {
   size_t (*stats_found_parts)(void *ctx);
   void (*stats_score_matches)(void *ctx, size_t matches, size_t lines);
 } ugrep_core_search_env;
+
+// layout pins: the Rust tests pin the same numbers (search.rs, ffi/search_host.rs)
+UGREP_CORE_ASSERT(UGREP_CORE_MATCHER_BOOST == 5);
+UGREP_CORE_ASSERT(UGREP_CORE_STEP_EXIT == 2);
+UGREP_CORE_ASSERT(UGREP_CORE_HANDLER_INVERT_CONTEXT == 7);
+UGREP_CORE_ASSERT(UGREP_CORE_HANDLER_RUST == 255);
+UGREP_CORE_ASSERT(UGREP_CORE_HEX_CONTEXT_LINE == 3);
+UGREP_CORE_ASSERT(UGREP_CORE_RESTLINE_SAVED == 2);
+UGREP_CORE_ASSERT(UGREP_CORE_MEMBER_RESTLINE_LAST == 8);
+UGREP_CORE_ASSERT(UGREP_CORE_OUT_DUMP_DONE == 8);
+UGREP_CORE_ASSERT(UGREP_CORE_HANDLER_OP_ADD_BEFORE_CONTEXT_MATCH == 3);
+UGREP_CORE_ASSERT(sizeof(ugrep_core_text_bounds) == 9 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_text_bounds, lines) == 8 * sizeof(size_t));
+UGREP_CORE_ASSERT(sizeof(ugrep_core_buf_context) == 3 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_buf_context, num) == 2 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_matcher_table, kind) == 1 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_matcher_table, find) == 2 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_matcher_table, bytes) == 23 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_matcher_table, set_shift_handler) == 28 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_matcher_table, reset) == 31 * sizeof(size_t));
+UGREP_CORE_ASSERT(sizeof(ugrep_core_matcher_table) == 32 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, member_get) == 1 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, handler_op) == 10 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, matchers_matcher) == 14 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, stats_score_matches) == 30 * sizeof(size_t));
+UGREP_CORE_ASSERT(sizeof(ugrep_core_search_env) == 31 * sizeof(size_t));
 
 // attach the table to the Rust SearchContext (src_core::SearchContext, passed as an opaque pointer) and read the flags
 void ugrep_core_search_set_host(const void *search_context, const ugrep_core_search_env *env);

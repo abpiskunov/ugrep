@@ -8,7 +8,7 @@
 use std::ffi::c_void;
 use std::os::raw::c_int;
 
-use crate::signatures::search::{GrepFlags, GrepHost, MatcherHandle, MatcherKind, RestlineData, SearchContext};
+use crate::signatures::search::{GrepFlags, GrepHost, MatcherHandle, MatcherTable, RestlineData, SearchContext};
 use crate::signatures::Bytes;
 
 /// The flags are not in the table: they are Rust-owned (`ugrep_settings`, `ffi/settings.rs`), so no callback is needed.
@@ -142,7 +142,8 @@ pub struct GrepEnv {
     pub cnf_satisfied: extern "C" fn(*mut c_void, c_int) -> c_int,
     /// `matchers->size()`, or `usize::MAX` when `matchers` is NULL.
     pub matchers_len: extern "C" fn(*mut c_void) -> usize,
-    pub matchers_matcher: extern "C" fn(*mut c_void, usize, *mut u8, *mut usize) -> c_int,
+    /// Fills the matcher callback table of `matchers->at(index)` (any kind); returns 0 when there is none.
+    pub matchers_matcher: extern "C" fn(*mut c_void, usize, *mut MatcherTable) -> c_int,
     pub matchers_reset: extern "C" fn(*mut c_void),
     pub out_eof: extern "C" fn(*mut c_void) -> c_int,
     pub out_holding: extern "C" fn(*mut c_void) -> c_int,
@@ -309,9 +310,10 @@ impl GrepHost for CHost {
         }
     }
     fn matchers_matcher(&self, index: usize) -> Option<MatcherHandle> {
-        let (mut kind, mut token) = (0u8, 0usize);
-        if (self.0.matchers_matcher)(self.0.ctx, index, &mut kind, &mut token) != 0 {
-            Some(MatcherHandle::new(MatcherKind(kind), token))
+        let mut table = std::mem::MaybeUninit::<MatcherTable>::uninit();
+        if (self.0.matchers_matcher)(self.0.ctx, index, table.as_mut_ptr()) != 0 {
+            // SAFETY: a nonzero return means the callback filled the whole table.
+            Some(MatcherHandle::new(unsafe { table.assume_init() }))
         } else {
             None
         }
