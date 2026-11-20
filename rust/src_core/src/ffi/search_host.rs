@@ -258,6 +258,7 @@ impl CHost {
         match file {
             None => std::ptr::null_mut(),
             Some(FileSource::Stdin) => (self.0.stdin_file)(self.0.ctx),
+            Some(FileSource::Source) => (self.0.source)(self.0.ctx),
             Some(FileSource::Owned(file)) => raw::file_into_ptr(file),
         }
     }
@@ -431,17 +432,19 @@ impl GrepHost for CHost {
         // SAFETY: the facade returns the `FILE*` of `Grep::file_in` (or NULL), which C++ keeps open while the host is borrowed.
         unsafe { raw::file_ref((self.0.file_in)(self.0.ctx)) }
     }
-    fn set_file_in(&self, file: Option<FileSource>) {
+    fn set_file_in(&mut self, file: Option<FileSource>) {
         let ptr = self.source_ptr(file);
         (self.0.set_file_in)(self.0.ctx, ptr)
     }
-    fn take_file_in(&self) -> Option<FileSource> {
+    fn take_file_in(&mut self) -> Option<FileSource> {
         let ptr = (self.0.file_in)(self.0.ctx);
         (self.0.set_file_in)(self.0.ctx, std::ptr::null_mut());
         if ptr.is_null() {
             None
         } else if ptr == (self.0.stdin_file)(self.0.ctx) {
             Some(FileSource::Stdin)
+        } else if ptr == (self.0.source)(self.0.ctx) {
+            Some(FileSource::Source)
         } else {
             // SAFETY: `ptr` was `Grep::file_in`, now cleared, so the caller is the only owner of the open stream.
             unsafe { raw::owned_file(ptr) }.map(FileSource::Owned)
@@ -458,8 +461,13 @@ impl GrepHost for CHost {
     fn input_encoding(&self) -> i32 {
         (self.0.input_encoding)(self.0.ctx)
     }
-    fn input_set_file(&self, file: &FileRef<'_>, encoding: i32) {
-        (self.0.input_set_file)(self.0.ctx, raw::file_ptr(file), encoding)
+    fn input_set_file(&mut self, file: FileSource, encoding: i32) {
+        let ptr = self.source_ptr(Some(file));
+        (self.0.input_set_file)(self.0.ctx, ptr, encoding)
+    }
+    fn input_set_file_in(&mut self, encoding: i32) {
+        let ptr = (self.0.file_in)(self.0.ctx);
+        (self.0.input_set_file)(self.0.ctx, ptr, encoding)
     }
     fn input_clear(&self) {
         (self.0.input_clear)(self.0.ctx)
@@ -539,18 +547,12 @@ impl GrepHost for CHost {
     fn is_binary(&self, bytes: &[u8]) -> bool {
         (self.0.is_binary)(self.0.ctx, bytes.as_ptr(), bytes.len()) != 0
     }
-    fn zthread_start(&self, ztstage: usize, pathname: &[u8], file_in: FileSource, find: Option<&[u8]>) -> Option<OwnedFile> {
-        let Some(start) = self.0.zthread_start else {
-            // a file that is given up and cannot be consumed is closed here
-            if let FileSource::Owned(file) = file_in {
-                self.file_close(file);
-            }
-            return None;
-        };
+    fn zthread_start(&self, ztstage: usize, pathname: &[u8], file_in: &FileRef<'_>, find: Option<&[u8]>) -> Option<OwnedFile> {
+        let start = self.0.zthread_start?;
         let pathname = c_string(pathname);
         let find = find.map(c_string);
         let find_ptr = find.as_ref().map_or(std::ptr::null(), |f| f.as_ptr());
-        let file_in = self.source_ptr(Some(file_in));
+        let file_in = raw::file_ptr(file_in);
         // SAFETY: the facade returns the `FILE*` of the decompression pipe (or NULL), which the caller has to close.
         unsafe { raw::owned_file(start(self.0.ctx, ztstage, pathname.as_ptr(), file_in, find_ptr)) }
     }

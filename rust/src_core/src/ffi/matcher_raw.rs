@@ -81,7 +81,8 @@ pub unsafe fn with_bytes<R>(handle: &MatcherHandle, offset: usize, len: usize, f
 }
 
 /// An owned copy of the matcher buffer bytes `buf_[offset..offset + len]`; nothing borrowed survives the call.
-pub(crate) fn copy_bytes(t: &MatcherTable, offset: usize, len: usize) -> Vec<u8> {
+pub(crate) fn copy_bytes(handle: &MatcherHandle, offset: usize, len: usize) -> Vec<u8> {
+    let t = handle.t();
     let ptr = (t.bytes)(t.ctx, offset, len);
     assert!(!ptr.is_null(), "Grep seam: bytes {offset}+{len} lie outside the matcher buffer");
     // SAFETY: a non-NULL result of `bytes` is `len` bytes inside the matcher buffer (`new_handle` contract),

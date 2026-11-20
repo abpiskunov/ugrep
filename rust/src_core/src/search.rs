@@ -397,7 +397,7 @@ impl MatcherHandle {
     /// Copy of the bytes `buf_[offset..offset + len]` of the matcher buffer. Owned, so a later `find` cannot invalidate
     /// it; the copy is the cost of soundness on the hot path, [`raw::with_bytes`] is the zero-copy (unsafe) form.
     pub fn bytes_to_vec(&self, offset: usize, len: usize) -> Bytes {
-        raw::copy_bytes(self.t(), offset, len)
+        raw::copy_bytes(self, offset, len)
     }
 
     /// `matcher->set_reserve(size)`: reserve buffer space for a line kept across a buffer shift.
@@ -527,11 +527,12 @@ impl MatcherHandle {
 pub use raw::{BufferPtr, FileRef, GrepState, InputHandle, OwnedFile};
 
 /// The stream that `Grep::file_in` holds, or that is handed to the filter or the decompression thread: a file that
-/// the receiver closes, or the process `stdin`, which is never closed.
+/// the receiver closes, or the process `stdin` or `Static::source` (the TUI pipe of `-Q`), which are never closed.
 #[derive(Debug, PartialEq, Eq)]
 pub enum FileSource {
     Owned(OwnedFile),
     Stdin,
+    Source,
 }
 
 /// How a search branch ends (`Grep::SearchStep`): `CONTINUE` and `DONE` go on to the epilogue (`done_search`), `EXIT`
@@ -731,18 +732,26 @@ pub trait GrepHost {
     fn set_interactive(&self, interactive: bool);
     /// `Grep::file_in`, borrowed: `None` when NULL. It stays owned by C++; [`GrepHost::take_file_in`] takes it over.
     fn file_in(&self) -> Option<FileRef<'_>>;
-    /// `Grep::file_in = file` (NULL for `None`); C++ owns it from then on, as it fcloses it in `close_file`.
-    fn set_file_in(&self, file: Option<FileSource>);
-    /// Take `Grep::file_in` over and clear it: `Stdin` when it was `stdin`, `None` when it was NULL.
-    fn take_file_in(&self) -> Option<FileSource>;
+    /// `Grep::file_in = file` (NULL for `None`); C++ owns it from then on, as it fcloses it in `close_file`. It overwrites
+    /// the previous value without closing it: take that over first ([`GrepHost::take_file_in`]).
+    /// `&mut self`: no [`FileRef`] from [`GrepHost::file_in`] or [`GrepHost::input_file`] can be alive across the call.
+    fn set_file_in(&mut self, file: Option<FileSource>);
+    /// Take `Grep::file_in` over and clear it: `Stdin` or `Source` when it was that stream, `None` when it was NULL.
+    /// `&mut self`, so no [`FileRef`] of the stream is alive. `Grep::input` may still read it until the caller clears or
+    /// resets it ([`GrepHost::input_clear`]); a closed stream that `input` reads is C++ behavior kept for S4c-2b to avoid.
+    fn take_file_in(&mut self) -> Option<FileSource>;
     /// `&Grep::input`, for [`MatcherHandle::input`].
     fn input(&self) -> InputHandle;
     /// `Grep::input.file()`.
     fn input_file(&self) -> Option<FileRef<'_>>;
     /// `Grep::input.file_encoding()`, which `mmap.file(input, ...)` checks.
     fn input_encoding(&self) -> i32;
-    /// `Grep::input = reflex::Input(file, encoding)`, `encoding` is `flag_encoding_type`.
-    fn input_set_file(&self, file: &FileRef<'_>, encoding: i32);
+    /// `Grep::input = reflex::Input(file, encoding)` (`encoding` is `flag_encoding_type`) for a pipe or stream that the
+    /// host takes over: it keeps `file` open for `Grep::input`, so the caller cannot close it or use it afterwards.
+    fn input_set_file(&mut self, file: FileSource, encoding: i32);
+    /// `Grep::input = reflex::Input(Grep::file_in, encoding)`: the stream stays owned by `Grep::file_in`. A NULL `file_in` is
+    /// an error on the exception channel.
+    fn input_set_file_in(&mut self, encoding: i32);
     /// `Grep::input.clear()`.
     fn input_clear(&self);
     /// `Grep::input.get(buf, buf.len())`: the number of bytes read.
@@ -786,8 +795,9 @@ pub trait GrepHost {
     fn filter_spawn(&self, file: FileSource, pathname: &[u8], command: &[u8]) -> Option<OwnedFile>;
     /// `is_binary(bytes, len)` of ugrep.cpp (`flag_encoding_type`, `-a`, `-U`, `-W`, `reflex::isutf8`).
     fn is_binary(&self, bytes: &[u8]) -> bool;
-    /// `Grep::zthread.start(ztstage, pathname, file_in, find)`: the pipe, or NULL.
-    fn zthread_start(&self, ztstage: usize, pathname: &[u8], file_in: FileSource, find: Option<&[u8]>) -> Option<OwnedFile>;
+    /// `Grep::zthread.start(ztstage, pathname, file_in, find)`: the pipe, or NULL. `file_in` stays owned by the caller
+    /// (C++ `close_file` closes it); the thread only reads it.
+    fn zthread_start(&self, ztstage: usize, pathname: &[u8], file_in: &FileRef<'_>, find: Option<&[u8]>) -> Option<OwnedFile>;
     /// `Grep::zthread.open_next(pathname)`: the next pipe, or NULL.
     fn zthread_open_next(&self, pathname: &[u8]) -> Option<OwnedFile>;
     /// `Grep::zthread.cancel()`.
