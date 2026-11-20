@@ -6,6 +6,8 @@
 
 use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
+use std::marker::PhantomData;
+use std::ptr::NonNull;
 
 use super::{dispatch_shift, HandlerSlot, MatcherHandle, MatcherTable, ShiftEvent};
 
@@ -116,21 +118,29 @@ pub(crate) fn static_buffer(data: &'static [u8]) -> BufferPtr {
     unsafe { buffer_ptr(data.as_ptr(), data.len()) }
 }
 
-/// `FILE*` of C++, opaque to Rust; NULL is [`FileHandle::NULL`]. The field is private to this module: the port modules
-/// (`search::file`, `search::branch`) are not descendants of it, so they cannot forge a handle and pass it to a C++
-/// dereference. The handle owns the `FILE*`: it is not `Copy` or `Clone`, and the calls that close or consume the file
-/// take it by value.
+/// A `FILE*` that C++ still owns (`Grep::file_in`, `Static::source`, `stdin`, the file of `Grep::input`), borrowed for as
+/// long as the host borrow lasts. It is never NULL, not `Copy`, and cannot be closed, consumed or stored: only the calls that
+/// use a file take it. The field is private to this module, so the port modules (`search::file`, `search::branch`)
+/// cannot forge one.
 #[derive(Debug, PartialEq, Eq)]
-pub struct FileHandle(*mut c_void);
-
-impl FileHandle {
-    pub const NULL: FileHandle = FileHandle(std::ptr::null_mut());
-
-    pub fn is_null(&self) -> bool {
-        self.0.is_null()
-    }
+pub struct FileRef<'a> {
+    ptr: NonNull<c_void>,
+    _host: PhantomData<&'a ()>,
 }
 
+/// A `FILE*` that the holder must close: made only by `file_open`, `filter_spawn`, `zthread_start`/`open_next` and
+/// `take_file_in`. Never NULL (a failed call returns `None`), not `Copy` or `Clone`; `file_close`, `filter_spawn`,
+/// `zthread_start` and `set_file_in` take it by value, so a double close does not compile. Dropping it leaks the stream
+/// (no unsafe in `Drop`), which is safe.
+#[derive(Debug, PartialEq, Eq)]
+pub struct OwnedFile(NonNull<c_void>);
+
+impl OwnedFile {
+    /// The borrowed view for the calls that only use the file.
+    pub fn as_file(&self) -> FileRef<'_> {
+        FileRef { ptr: self.0, _host: PhantomData }
+    }
+}
 /// `reflex::Input*` of C++ (`&Grep::input`), opaque to Rust and made only here ([`input_handle`]).
 #[derive(Debug, PartialEq, Eq)]
 pub struct InputHandle(*const c_void);
@@ -169,24 +179,31 @@ pub unsafe fn set_mapping(state: &GrepState, mapping: Option<(usize, usize)>) {
     *state.mapping.borrow_mut() = mapping;
 }
 
-/// The handle of a C `FILE*` (or NULL).
+/// A borrowed handle of a `FILE*` that C++ keeps owning; `None` for NULL.
 ///
 /// # Safety
-/// `ptr` must be NULL or a `FILE*` that the facade handed over and that stays valid for as long as the handle is used.
-pub(crate) unsafe fn file_handle(ptr: *mut c_void) -> FileHandle {
-    FileHandle(ptr)
+/// `ptr` must be NULL or a `FILE*` that stays valid and owned by C++ for `'a`.
+pub(crate) unsafe fn file_ref<'a>(ptr: *mut c_void) -> Option<FileRef<'a>> {
+    NonNull::new(ptr).map(|ptr| FileRef { ptr, _host: PhantomData })
 }
 
-/// The `FILE*` of a handle, for the callbacks of the facade; the handle stays valid.
-pub(crate) fn file_ptr(handle: &FileHandle) -> *mut c_void {
-    handle.0
+/// An owned handle of a `FILE*` that the caller now has to close; `None` for NULL.
+///
+/// # Safety
+/// `ptr` must be NULL or an open `FILE*` that nothing else closes.
+pub(crate) unsafe fn owned_file(ptr: *mut c_void) -> Option<OwnedFile> {
+    NonNull::new(ptr).map(OwnedFile)
 }
 
-/// The `FILE*` of a handle that is given up (closed or consumed by the callback).
-pub(crate) fn file_into_ptr(handle: FileHandle) -> *mut c_void {
-    handle.0
+/// The `FILE*` of a borrowed file, for the callbacks of the facade.
+pub(crate) fn file_ptr(file: &FileRef<'_>) -> *mut c_void {
+    file.ptr.as_ptr()
 }
 
+/// The `FILE*` of a file that is given up (closed, consumed or handed to C++ by the callback).
+pub(crate) fn file_into_ptr(file: OwnedFile) -> *mut c_void {
+    file.0.as_ptr()
+}
 /// The handle of the host-owned `reflex::Input` (`&Grep::input`).
 ///
 /// # Safety

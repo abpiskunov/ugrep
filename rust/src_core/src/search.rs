@@ -524,7 +524,15 @@ impl MatcherHandle {
     }
 }
 
-pub use raw::{BufferPtr, FileHandle, GrepState, InputHandle};
+pub use raw::{BufferPtr, FileRef, GrepState, InputHandle, OwnedFile};
+
+/// The stream that `Grep::file_in` holds, or that is handed to the filter or the decompression thread: a file that
+/// the receiver closes, or the process `stdin`, which is never closed.
+#[derive(Debug, PartialEq, Eq)]
+pub enum FileSource {
+    Owned(OwnedFile),
+    Stdin,
+}
 
 /// How a search branch ends (`Grep::SearchStep`): `CONTINUE` and `DONE` go on to the epilogue (`done_search`), `EXIT`
 /// leaves it out (`exit_search`). The numbers are the C++ enum values.
@@ -721,24 +729,27 @@ pub trait GrepHost {
     /// `Grep::interactive`.
     fn interactive(&self) -> bool;
     fn set_interactive(&self, interactive: bool);
-    /// `Grep::file_in`.
-    fn file_in(&self) -> FileHandle;
-    fn set_file_in(&self, file: FileHandle);
+    /// `Grep::file_in`, borrowed: `None` when NULL. It stays owned by C++; [`GrepHost::take_file_in`] takes it over.
+    fn file_in(&self) -> Option<FileRef<'_>>;
+    /// `Grep::file_in = file` (NULL for `None`); C++ owns it from then on, as it fcloses it in `close_file`.
+    fn set_file_in(&self, file: Option<FileSource>);
+    /// Take `Grep::file_in` over and clear it: `Stdin` when it was `stdin`, `None` when it was NULL.
+    fn take_file_in(&self) -> Option<FileSource>;
     /// `&Grep::input`, for [`MatcherHandle::input`].
     fn input(&self) -> InputHandle;
     /// `Grep::input.file()`.
-    fn input_file(&self) -> FileHandle;
+    fn input_file(&self) -> Option<FileRef<'_>>;
     /// `Grep::input.file_encoding()`, which `mmap.file(input, ...)` checks.
     fn input_encoding(&self) -> i32;
     /// `Grep::input = reflex::Input(file, encoding)`, `encoding` is `flag_encoding_type`.
-    fn input_set_file(&self, file: &FileHandle, encoding: i32);
+    fn input_set_file(&self, file: &FileRef<'_>, encoding: i32);
     /// `Grep::input.clear()`.
     fn input_clear(&self);
     /// `Grep::input.get(buf, buf.len())`: the number of bytes read.
     fn input_get(&self, buf: &mut [u8]) -> usize;
     /// `Static::source`, and `stdin`.
-    fn source(&self) -> FileHandle;
-    fn stdin_file(&self) -> FileHandle;
+    fn source(&self) -> Option<FileRef<'_>>;
+    fn stdin_file(&self) -> FileRef<'_>;
     /// `reflex::Input::file_encoding::null_data`, which `flag_encoding_type` is compared with.
     fn encoding_null_data(&self) -> i32;
     /// `flag_filter` (a `std::string`, `--filter`), empty when unset.
@@ -746,39 +757,39 @@ pub trait GrepHost {
     /// `flag_filter_magic_label[index]` (`--filter-magic-label`), `None` past the last label.
     fn flag_filter_magic_label(&self, index: usize) -> Option<Bytes>;
     /// `reflex::Matcher(Static::filter_magic_pattern, file).scan()`, then `rewind(file)` as `Grep::filter` does.
-    fn filter_magic_scan(&self, file: &FileHandle) -> usize;
+    fn filter_magic_scan(&self, file: &FileRef<'_>) -> usize;
     /// `warning(message, arg)`.
     fn warning(&self, message: &[u8], arg: &[u8]);
     /// `fopenw_s(&file, pathname, "rb")`: NULL when it fails, after `warning("cannot read", pathname)` (so that the
     /// warning sees the `errno` of the failed open).
-    fn file_open(&self, pathname: &[u8]) -> FileHandle;
+    fn file_open(&self, pathname: &[u8]) -> Option<OwnedFile>;
     /// `fclose(file)`: the handle is consumed, so a closed file cannot be used again.
-    fn file_close(&self, file: FileHandle);
+    fn file_close(&self, file: OwnedFile);
     /// `ferror(file)`; true after `warning("cannot read", pathname)` (so that the warning sees the stream's `errno`).
-    fn file_read_error(&self, file: &FileHandle, pathname: &[u8]) -> bool;
+    fn file_read_error(&self, file: &FileRef<'_>, pathname: &[u8]) -> bool;
     /// `_setmode(fileno(file), _O_BINARY)` on Windows, nothing elsewhere.
-    fn file_set_binary(&self, file: &FileHandle);
+    fn file_set_binary(&self, file: &FileRef<'_>);
     /// Linux: make a regular file non-blocking (`fstat` S_ISREG then `fcntl` O_NONBLOCK, to raise EAGAIN for `/proc`
     /// files); nothing elsewhere. The caller checks `flag_devices_action != READ` and `file != stdin, source`.
-    fn file_nonblock_regular(&self, file: &FileHandle);
+    fn file_nonblock_regular(&self, file: &FileRef<'_>);
     /// Non-Windows: true when `file` is a character device, pipe or socket that was made non-blocking (`interactive`);
     /// false elsewhere (Windows decides by `input == stdin`).
-    fn file_probe_interactive(&self, file: &FileHandle) -> bool;
+    fn file_probe_interactive(&self, file: &FileRef<'_>) -> bool;
     /// `fseek(file, 0, SEEK_SET) == 0`.
-    fn file_seek_set(&self, file: &FileHandle) -> bool;
+    fn file_seek_set(&self, file: &FileRef<'_>) -> bool;
     /// `!feof(stdin) && fseek(stdin, 0, SEEK_END) < 0 && errno != EINVAL` with `WITH_STDIN_DRAIN`, false on Windows:
     /// stdin is a non-seekable pipe that `close_file` drains.
     fn stdin_drain_check(&self) -> bool;
     /// The retained C++ part of `--filter`: create the pipe, `fork`/`CreateProcess` the `command`, close `file` unless it
     /// is stdin, and return the reading end (`fdopen`, may be NULL). `None` when the pipe could not be created, after
     /// the warning and after `file` was closed.
-    fn filter_spawn(&self, file: FileHandle, pathname: &[u8], command: &[u8]) -> Option<FileHandle>;
+    fn filter_spawn(&self, file: FileSource, pathname: &[u8], command: &[u8]) -> Option<OwnedFile>;
     /// `is_binary(bytes, len)` of ugrep.cpp (`flag_encoding_type`, `-a`, `-U`, `-W`, `reflex::isutf8`).
     fn is_binary(&self, bytes: &[u8]) -> bool;
     /// `Grep::zthread.start(ztstage, pathname, file_in, find)`: the pipe, or NULL.
-    fn zthread_start(&self, ztstage: usize, pathname: &[u8], file_in: FileHandle, find: Option<&[u8]>) -> FileHandle;
+    fn zthread_start(&self, ztstage: usize, pathname: &[u8], file_in: FileSource, find: Option<&[u8]>) -> Option<OwnedFile>;
     /// `Grep::zthread.open_next(pathname)`: the next pipe, or NULL.
-    fn zthread_open_next(&self, pathname: &[u8]) -> FileHandle;
+    fn zthread_open_next(&self, pathname: &[u8]) -> Option<OwnedFile>;
     /// `Grep::zthread.cancel()`.
     fn zthread_cancel(&self);
 

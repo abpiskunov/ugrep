@@ -14,7 +14,7 @@ use std::rc::Rc;
 
 use crate::signatures::search::raw;
 use crate::signatures::search::{
-    CnfBits, CnfResult, FileHandle, GrepFlags, GrepHost, InputHandle, MatcherHandle, MatcherTable, RestlineData, SearchContext,
+    CnfBits, CnfResult, FileRef, FileSource, GrepFlags, GrepHost, InputHandle, MatcherHandle, MatcherTable, OwnedFile, RestlineData, SearchContext,
 };
 use crate::signatures::Bytes;
 
@@ -252,6 +252,15 @@ impl CHost {
     fn op(&self, op: OutOp) {
         (self.0.out_op)(self.0.ctx, op)
     }
+
+    /// The `FILE*` that a callback receives for a [`FileSource`] (NULL for `None`); an owned file is given up.
+    fn source_ptr(&self, file: Option<FileSource>) -> *mut c_void {
+        match file {
+            None => std::ptr::null_mut(),
+            Some(FileSource::Stdin) => (self.0.stdin_file)(self.0.ctx),
+            Some(FileSource::Owned(file)) => raw::file_into_ptr(file),
+        }
+    }
 }
 
 impl GrepHost for CHost {
@@ -418,25 +427,38 @@ impl GrepHost for CHost {
     fn set_interactive(&self, interactive: bool) {
         self.set(Member::Interactive, interactive as usize)
     }
-    fn file_in(&self) -> FileHandle {
-        // SAFETY: the facade returns the `FILE*` of `Grep::file_in` (or NULL).
-        unsafe { raw::file_handle((self.0.file_in)(self.0.ctx)) }
+    fn file_in(&self) -> Option<FileRef<'_>> {
+        // SAFETY: the facade returns the `FILE*` of `Grep::file_in` (or NULL), which C++ keeps open while the host is borrowed.
+        unsafe { raw::file_ref((self.0.file_in)(self.0.ctx)) }
     }
-    fn set_file_in(&self, file: FileHandle) {
-        (self.0.set_file_in)(self.0.ctx, raw::file_into_ptr(file))
+    fn set_file_in(&self, file: Option<FileSource>) {
+        let ptr = self.source_ptr(file);
+        (self.0.set_file_in)(self.0.ctx, ptr)
+    }
+    fn take_file_in(&self) -> Option<FileSource> {
+        let ptr = (self.0.file_in)(self.0.ctx);
+        (self.0.set_file_in)(self.0.ctx, std::ptr::null_mut());
+        if ptr.is_null() {
+            None
+        } else if ptr == (self.0.stdin_file)(self.0.ctx) {
+            Some(FileSource::Stdin)
+        } else {
+            // SAFETY: `ptr` was `Grep::file_in`, now cleared, so the caller is the only owner of the open stream.
+            unsafe { raw::owned_file(ptr) }.map(FileSource::Owned)
+        }
     }
     fn input(&self) -> InputHandle {
         // SAFETY: the facade returns the address of `Grep::input`, which lives as long as the `Grep`.
         unsafe { raw::input_handle((self.0.input)(self.0.ctx) as *const c_void) }
     }
-    fn input_file(&self) -> FileHandle {
-        // SAFETY: the facade returns `Grep::input.file()` (or NULL).
-        unsafe { raw::file_handle((self.0.input_file)(self.0.ctx)) }
+    fn input_file(&self) -> Option<FileRef<'_>> {
+        // SAFETY: the facade returns `Grep::input.file()` (or NULL), owned by C++.
+        unsafe { raw::file_ref((self.0.input_file)(self.0.ctx)) }
     }
     fn input_encoding(&self) -> i32 {
         (self.0.input_encoding)(self.0.ctx)
     }
-    fn input_set_file(&self, file: &FileHandle, encoding: i32) {
+    fn input_set_file(&self, file: &FileRef<'_>, encoding: i32) {
         (self.0.input_set_file)(self.0.ctx, raw::file_ptr(file), encoding)
     }
     fn input_clear(&self) {
@@ -445,13 +467,13 @@ impl GrepHost for CHost {
     fn input_get(&self, buf: &mut [u8]) -> usize {
         (self.0.input_get)(self.0.ctx, buf.as_mut_ptr(), buf.len())
     }
-    fn source(&self) -> FileHandle {
-        // SAFETY: the facade returns `Static::source` (or NULL).
-        unsafe { raw::file_handle((self.0.source)(self.0.ctx)) }
+    fn source(&self) -> Option<FileRef<'_>> {
+        // SAFETY: the facade returns `Static::source` (or NULL), owned by C++.
+        unsafe { raw::file_ref((self.0.source)(self.0.ctx)) }
     }
-    fn stdin_file(&self) -> FileHandle {
-        // SAFETY: the facade returns `stdin`.
-        unsafe { raw::file_handle((self.0.stdin_file)(self.0.ctx)) }
+    fn stdin_file(&self) -> FileRef<'_> {
+        // SAFETY: the facade returns `stdin`, which C++ never closes; the facade turns NULL into an error before it gets here.
+        unsafe { raw::file_ref((self.0.stdin_file)(self.0.ctx)) }.expect("stdin is not NULL")
     }
     fn encoding_null_data(&self) -> i32 {
         (self.0.encoding_null_data)(self.0.ctx)
@@ -470,46 +492,46 @@ impl GrepHost for CHost {
             Some(bytes_of(ptr, len))
         }
     }
-    fn filter_magic_scan(&self, file: &FileHandle) -> usize {
+    fn filter_magic_scan(&self, file: &FileRef<'_>) -> usize {
         (self.0.filter_magic_scan)(self.0.ctx, raw::file_ptr(file))
     }
     fn warning(&self, message: &[u8], arg: &[u8]) {
         let (message, arg) = (c_string(message), c_string(arg));
         (self.0.warning)(self.0.ctx, message.as_ptr(), arg.as_ptr())
     }
-    fn file_open(&self, pathname: &[u8]) -> FileHandle {
+    fn file_open(&self, pathname: &[u8]) -> Option<OwnedFile> {
         let pathname = c_string(pathname);
-        // SAFETY: the facade returns the `FILE*` of `fopen` (or NULL).
-        unsafe { raw::file_handle((self.0.file_open)(self.0.ctx, pathname.as_ptr())) }
+        // SAFETY: the facade returns the `FILE*` of `fopen` (or NULL), which the caller has to close.
+        unsafe { raw::owned_file((self.0.file_open)(self.0.ctx, pathname.as_ptr())) }
     }
-    fn file_close(&self, file: FileHandle) {
+    fn file_close(&self, file: OwnedFile) {
         (self.0.file_close)(self.0.ctx, raw::file_into_ptr(file))
     }
-    fn file_read_error(&self, file: &FileHandle, pathname: &[u8]) -> bool {
+    fn file_read_error(&self, file: &FileRef<'_>, pathname: &[u8]) -> bool {
         let pathname = c_string(pathname);
         (self.0.file_read_error)(self.0.ctx, raw::file_ptr(file), pathname.as_ptr()) != 0
     }
-    fn file_set_binary(&self, file: &FileHandle) {
+    fn file_set_binary(&self, file: &FileRef<'_>) {
         (self.0.file_set_binary)(self.0.ctx, raw::file_ptr(file))
     }
-    fn file_nonblock_regular(&self, file: &FileHandle) {
+    fn file_nonblock_regular(&self, file: &FileRef<'_>) {
         (self.0.file_nonblock_regular)(self.0.ctx, raw::file_ptr(file))
     }
-    fn file_probe_interactive(&self, file: &FileHandle) -> bool {
+    fn file_probe_interactive(&self, file: &FileRef<'_>) -> bool {
         (self.0.file_probe_interactive)(self.0.ctx, raw::file_ptr(file)) != 0
     }
-    fn file_seek_set(&self, file: &FileHandle) -> bool {
+    fn file_seek_set(&self, file: &FileRef<'_>) -> bool {
         (self.0.file_seek_set)(self.0.ctx, raw::file_ptr(file)) != 0
     }
     fn stdin_drain_check(&self) -> bool {
         (self.0.stdin_drain_check)(self.0.ctx) != 0
     }
-    fn filter_spawn(&self, file: FileHandle, pathname: &[u8], command: &[u8]) -> Option<FileHandle> {
+    fn filter_spawn(&self, file: FileSource, pathname: &[u8], command: &[u8]) -> Option<OwnedFile> {
         let (pathname, command) = (c_string(pathname), c_string(command));
         let mut out: *mut c_void = std::ptr::null_mut();
-        if (self.0.filter_spawn)(self.0.ctx, raw::file_into_ptr(file), pathname.as_ptr(), command.as_ptr(), &mut out) != 0 {
-            // SAFETY: the facade returns the `FILE*` of `fdopen` (or NULL).
-            Some(unsafe { raw::file_handle(out) })
+        if (self.0.filter_spawn)(self.0.ctx, self.source_ptr(Some(file)), pathname.as_ptr(), command.as_ptr(), &mut out) != 0 {
+            // SAFETY: the facade returns the `FILE*` of `fdopen` (or NULL), which the caller has to close.
+            unsafe { raw::owned_file(out) }
         } else {
             None
         }
@@ -517,25 +539,26 @@ impl GrepHost for CHost {
     fn is_binary(&self, bytes: &[u8]) -> bool {
         (self.0.is_binary)(self.0.ctx, bytes.as_ptr(), bytes.len()) != 0
     }
-    fn zthread_start(&self, ztstage: usize, pathname: &[u8], file_in: FileHandle, find: Option<&[u8]>) -> FileHandle {
+    fn zthread_start(&self, ztstage: usize, pathname: &[u8], file_in: FileSource, find: Option<&[u8]>) -> Option<OwnedFile> {
         let Some(start) = self.0.zthread_start else {
-            // SAFETY: NULL is a valid `FILE*` value (no stream).
-            return unsafe { raw::file_handle(std::ptr::null_mut()) };
+            // a file that is given up and cannot be consumed is closed here
+            if let FileSource::Owned(file) = file_in {
+                self.file_close(file);
+            }
+            return None;
         };
         let pathname = c_string(pathname);
         let find = find.map(c_string);
         let find_ptr = find.as_ref().map_or(std::ptr::null(), |f| f.as_ptr());
-        // SAFETY: the facade returns the `FILE*` of the decompression pipe (or NULL).
-        unsafe { raw::file_handle(start(self.0.ctx, ztstage, pathname.as_ptr(), raw::file_into_ptr(file_in), find_ptr)) }
+        let file_in = self.source_ptr(Some(file_in));
+        // SAFETY: the facade returns the `FILE*` of the decompression pipe (or NULL), which the caller has to close.
+        unsafe { raw::owned_file(start(self.0.ctx, ztstage, pathname.as_ptr(), file_in, find_ptr)) }
     }
-    fn zthread_open_next(&self, pathname: &[u8]) -> FileHandle {
-        let Some(open_next) = self.0.zthread_open_next else {
-            // SAFETY: NULL is a valid `FILE*` value (no stream).
-            return unsafe { raw::file_handle(std::ptr::null_mut()) };
-        };
+    fn zthread_open_next(&self, pathname: &[u8]) -> Option<OwnedFile> {
+        let open_next = self.0.zthread_open_next?;
         let pathname = c_string(pathname);
-        // SAFETY: the facade returns the `FILE*` of the next decompression pipe (or NULL).
-        unsafe { raw::file_handle(open_next(self.0.ctx, pathname.as_ptr())) }
+        // SAFETY: the facade returns the `FILE*` of the next decompression pipe (or NULL), which the caller has to close.
+        unsafe { raw::owned_file(open_next(self.0.ctx, pathname.as_ptr())) }
     }
     fn zthread_cancel(&self) {
         if let Some(cancel) = self.0.zthread_cancel {

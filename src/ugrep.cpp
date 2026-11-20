@@ -3032,6 +3032,13 @@ struct Grep {
         throw std::out_of_range(what);
     }
 
+    // a FILE* from Rust is never NULL where a stream is used: NULL is an error of the channel
+    static FILE *stream(void *file, const char *what)
+    {
+      check(file != NULL, what);
+      return static_cast<FILE*>(file);
+    }
+
     // the C++ caller of the bridge calls this after every call: rethrow the stored exception, once
     void rethrow()
     {
@@ -3769,7 +3776,7 @@ struct Grep {
       {
         G(c, [&]()
         {
-          F(c).grep.input = reflex::Input(static_cast<FILE*>(file), static_cast<reflex::Input::file_encoding_type>(encoding));
+          F(c).grep.input = reflex::Input(stream(file, "input_set_file: NULL file"), static_cast<reflex::Input::file_encoding_type>(encoding));
         });
       };
       env->input_clear = [](void *c) { G(c, [&]() { F(c).grep.input.clear(); }); };
@@ -3784,7 +3791,7 @@ struct Grep {
       {
         return G(c, [&]() -> size_t
         {
-          FILE *in = static_cast<FILE*>(file);
+          FILE *in = stream(file, "filter_magic_scan: NULL file");
           size_t match = reflex::Matcher(Static::filter_magic_pattern, in).scan();
           rewind(in);
           return match;
@@ -3796,7 +3803,7 @@ struct Grep {
 #if defined(HAVE_LIBZ) && defined(WITH_DECOMPRESSION_THREAD)
       env->zthread_start = [](void *c, size_t ztstage, const char *path, void *file, const char *find) -> void*
       {
-        return G(c, [&]() -> void* { return F(c).grep.zthread.start(ztstage, path, static_cast<FILE*>(file), find); });
+        return G(c, [&]() -> void* { return F(c).grep.zthread.start(ztstage, path, stream(file, "zthread_start: NULL file"), find); });
       };
       env->zthread_open_next = [](void *c, const char *path) -> void*
       {
@@ -3895,12 +3902,12 @@ struct Grep {
           return file;
         });
       };
-      env->file_close = [](void *c, void *file) { G(c, [&]() { fclose(static_cast<FILE*>(file)); }); };
+      env->file_close = [](void *c, void *file) { G(c, [&]() { fclose(stream(file, "file_close: NULL file")); }); };
       env->file_read_error = [](void *c, void *file, const char *path) -> int
       {
         return G(c, [&]() -> int
         {
-          if (!ferror(static_cast<FILE*>(file)))
+          if (!ferror(stream(file, "file_read_error: NULL file")))
             return 0;
           warning("cannot read", path);
           return 1;
@@ -3911,9 +3918,9 @@ struct Grep {
         G(c, [&]()
         {
 #ifdef OS_WIN
-          (void)_setmode(fileno(static_cast<FILE*>(file)), _O_BINARY);
+          (void)_setmode(fileno(stream(file, "file_set_binary: NULL file")), _O_BINARY);
 #else
-          (void)file;
+          (void)stream(file, "file_set_binary: NULL file");
 #endif
         });
       };
@@ -3922,13 +3929,13 @@ struct Grep {
         G(c, [&]()
         {
 #if defined(__linux__)
-          int fd = fileno(static_cast<FILE*>(file));
+          int fd = fileno(stream(file, "file_nonblock_regular: NULL file"));
           struct stat buf;
 
           if (fstat(fd, &buf) == 0 && S_ISREG(buf.st_mode))
             fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
 #else
-          (void)file;
+          (void)stream(file, "file_nonblock_regular: NULL file");
 #endif
         });
       };
@@ -3937,20 +3944,20 @@ struct Grep {
         return G(c, [&]() -> int
         {
 #ifndef OS_WIN_OR_MINGW
-          int fd = fileno(static_cast<FILE*>(file));
+          int fd = fileno(stream(file, "file_probe_interactive: NULL file"));
           struct stat buf;
 
           if (fstat(fd, &buf) == 0 && (S_ISCHR(buf.st_mode) || S_ISFIFO(buf.st_mode) || S_ISSOCK(buf.st_mode)))
             return fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) != -1;
 #else
-          (void)file;
+          (void)stream(file, "file_probe_interactive: NULL file");
 #endif
           return 0;
         });
       };
       env->file_seek_set = [](void *c, void *file) -> int
       {
-        return G(c, [&]() -> int { return fseek(static_cast<FILE*>(file), 0, SEEK_SET) == 0; });
+        return G(c, [&]() -> int { return fseek(stream(file, "file_seek_set: NULL file"), 0, SEEK_SET) == 0; });
       };
       env->stdin_drain_check = [](void *c) -> int
       {
@@ -3968,7 +3975,7 @@ struct Grep {
         *out = NULL;
         return G(c, [&]() -> int
         {
-          FILE *in = static_cast<FILE*>(file);
+          FILE *in = stream(file, "filter_spawn: NULL file");
           bool ok = F(c).grep.filter_spawn(in, path, command);
           *out = in;
           return ok;
