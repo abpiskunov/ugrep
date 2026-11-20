@@ -84,6 +84,7 @@ pub fn flags_from_settings() -> GrepFlags {
         with_hex: s.flag_with_hex,
         zmax: s.flag_zmax,
         max_mmap: s.flag_max_mmap,
+        color_se: cstr(s.color_se.as_ptr()).unwrap_or_default(),
         color_sl: cstr(s.color_sl.as_ptr()).unwrap_or_default(),
         color_cx: cstr(s.color_cx.as_ptr()).unwrap_or_default(),
         color_off: cstr(s.color_off).unwrap_or_default(),

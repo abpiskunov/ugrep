@@ -1,0 +1,15 @@
+schema: cpp-rust-unit/1
+unit: grep_branches
+component: src_core
+functions: [src_core.search_setup, src_core.search_quiet_list, src_core.search_count, src_core.search_format]
+cpp_files: [src/ugrep.cpp]
+rust_files: rust/src_core/src/search.rs rust/src_core/src/ffi/search_host.rs
+rust_crate_name: src_core
+harness_crate_name: src_core-harness
+depends_on: [grep_file]
+status: ported
+notes:
+  - 'S4c-3 port: Rust bodies of branch::setup, quiet_list, count and format in rust/src_core/src/search.rs. The C++ bodies of Grep::search_setup, search_quiet_list, search_count and search_format in src/ugrep.cpp are forwarders to the bridge (search_setup(ctx), search_quiet_list/count/format(ctx, matcher) -> u8 SearchStep). No build switch, no tap. Shell Grep::search and compute_cost stay in C++ until the last S4c child.'
+  - 'Additive GrepFlags field color_se (signature change request, as S4c-2b did for color_sl): count uses it for -c --color. Filled in ffi/search_host.rs flags_from_settings.'
+  - 'Forwarders bind ctx.pathname into the facade path_slot (RAII, unbound on return) so out_header_file/out_format and the format handlers see the pathname; before this nothing bound it.'
+  - 'No per-line bridge allocation: Rust reads flags once, counters live in locals and are written back on every exit; the facade out_format and out_format_count callbacks pass the global --format/--format-open/--format-close text without a std::string copy (known_format).'
