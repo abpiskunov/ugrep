@@ -1,0 +1,13 @@
+schema: cpp-rust-unit/1
+unit: grep_file
+component: src_core
+functions: [Grep::cnf_matching, Grep::cnf_satisfied, Grep::open_file, Grep::filter, Grep::close_file, Grep::init_read, Grep::init_is_binary, Grep::output_or_save_restline, Grep::output_restline, Grep::save_restline]
+cpp_files: [src/ugrep.cpp]
+rust_files: rust/src_core/src/search.rs rust/src_core/src/signatures.rs rust/src_core/src/ffi/search_host.rs
+rust_crate_name: src_core
+harness_crate_name: src_core-harness
+depends_on: [zthread, output-buffer, stats_cnf]
+status: planned
+notes:
+  - 'Port not started: blocked by the seam. The fixed S4c-1 seam (src/search_seam.h, ffi/search_host.rs, search.rs) cannot express these members. (1) No bridge entry points exist for open_file/filter/close_file/init_read/init_is_binary/cnf_*: only the 12 search_* branch functions cross, and the host table (ugrep_core_search_env) has no callback for file members (filename, file_in, input, mmap, interactive, bin_handler, stdin_handler, zthread, Static::source). (2) The matcher table (ugrep_core_matcher_table) has no input(), buffer(), avail(), in.set_handler(bin_handler/stdin_handler) or begin-as-pointer method that init_read and init_is_binary need. (3) cnf_matching throws EXIT_SEARCH; the table has no stop/exit convention (cnf_matching returns int). (4) The C++ facade that fills ugrep_core_search_env and the matcher tables does not exist yet in src/ugrep.cpp, only the header include. (5) validation-plan src_core linked_args only forbids CNF and Stats, so linked-check cannot prove the Grep members are gone (plan is operator-owned).'
+  - 'Follow-up needed (Prepare seam, cpp-seam-builder): add bridge functions for the file members and the missing matcher-table methods, define the error/exit return, and fill the facade. A Port cannot change the fixed signatures.'
