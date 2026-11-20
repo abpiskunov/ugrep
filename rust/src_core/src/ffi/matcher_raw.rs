@@ -7,9 +7,7 @@
 use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
 
-use super::{dispatch_shift, FileHandle, HandlerSlot, InputHandle, MatcherHandle, MatcherTable, ShiftEvent};
-#[cfg(test)]
-use super::BufferPtr;
+use super::{dispatch_shift, HandlerSlot, MatcherHandle, MatcherTable, ShiftEvent};
 
 /// The Rust shift handler the C++ trampoline handler calls for every buffer-shift event (`ugrep_core_shift_fn`).
 pub type ShiftFn = unsafe extern "C" fn(user: *mut c_void, len: usize, num: usize, buf: *const u8);
@@ -118,6 +116,59 @@ pub(crate) fn static_buffer(data: &'static [u8]) -> BufferPtr {
     unsafe { buffer_ptr(data.as_ptr(), data.len()) }
 }
 
+/// `FILE*` of C++, opaque to Rust; NULL is [`FileHandle::NULL`]. The field is private to this module: the port modules
+/// (`search::file`, `search::branch`) are not descendants of it, so they cannot forge a handle and pass it to a C++
+/// dereference. The handle owns the `FILE*`: it is not `Copy` or `Clone`, and the calls that close or consume the file
+/// take it by value.
+#[derive(Debug, PartialEq, Eq)]
+pub struct FileHandle(*mut c_void);
+
+impl FileHandle {
+    pub const NULL: FileHandle = FileHandle(std::ptr::null_mut());
+
+    pub fn is_null(&self) -> bool {
+        self.0.is_null()
+    }
+}
+
+/// `reflex::Input*` of C++ (`&Grep::input`), opaque to Rust and made only here ([`input_handle`]).
+#[derive(Debug, PartialEq, Eq)]
+pub struct InputHandle(*const c_void);
+
+/// Memory that a matcher reads from after [`MatcherHandle::buffer`], with the size to pass (the C++ passes `size + 1`
+/// for an mmap, which counts the terminating NUL). Made only here ([`buffer_ptr`], unsafe); not `Copy`.
+#[derive(Debug, PartialEq, Eq)]
+pub struct BufferPtr {
+    ptr: *const u8,
+    size: usize,
+}
+
+/// The Rust state that lives as long as the C++ `Grep` (see `GrepState` in `search.rs`). `mapping` is private: it is set
+/// only by [`set_mapping`] (unsafe), so safe code cannot make a later unmapping touch memory the state does not own.
+#[derive(Debug, Default)]
+pub struct GrepState {
+    mapping: RefCell<Option<(usize, usize)>>,
+}
+
+impl GrepState {
+    pub fn new() -> GrepState {
+        GrepState::default()
+    }
+
+    /// The mapping reused across files: `(base address, mapped size)`, `None` when nothing is mapped.
+    pub fn mapping(&self) -> Option<(usize, usize)> {
+        *self.mapping.borrow()
+    }
+}
+
+/// Record the mapping that the state unmaps (or reuses with `MAP_FIXED`) when the `Grep` goes.
+///
+/// # Safety
+/// `mapping` must be `None` or `(base, size)` of a live mapping that the caller made and that nothing else unmaps.
+pub unsafe fn set_mapping(state: &GrepState, mapping: Option<(usize, usize)>) {
+    *state.mapping.borrow_mut() = mapping;
+}
+
 /// The handle of a C `FILE*` (or NULL).
 ///
 /// # Safety
@@ -126,8 +177,13 @@ pub(crate) unsafe fn file_handle(ptr: *mut c_void) -> FileHandle {
     FileHandle(ptr)
 }
 
-/// The `FILE*` of a handle, for the callbacks of the facade.
-pub(crate) fn file_ptr(handle: FileHandle) -> *mut c_void {
+/// The `FILE*` of a handle, for the callbacks of the facade; the handle stays valid.
+pub(crate) fn file_ptr(handle: &FileHandle) -> *mut c_void {
+    handle.0
+}
+
+/// The `FILE*` of a handle that is given up (closed or consumed by the callback).
+pub(crate) fn file_into_ptr(handle: FileHandle) -> *mut c_void {
     handle.0
 }
 
@@ -137,6 +193,16 @@ pub(crate) fn file_ptr(handle: FileHandle) -> *mut c_void {
 /// `ptr` must be the address of the `reflex::Input` of the `Grep`, valid while the handle is used.
 pub(crate) unsafe fn input_handle(ptr: *const c_void) -> InputHandle {
     InputHandle(ptr)
+}
+
+/// The address of the `reflex::Input` of a handle.
+pub(crate) fn input_ptr(handle: &InputHandle) -> *const c_void {
+    handle.0
+}
+
+/// The base and size of a buffer, for `MatcherHandle::buffer`.
+pub(crate) fn buffer_parts(memory: &BufferPtr) -> (*const u8, usize) {
+    (memory.ptr, memory.size)
 }
 
 /// Memory for [`MatcherHandle::buffer`]; the mmap port makes these in `ffi/`. Only the tests make one until then.

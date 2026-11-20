@@ -193,10 +193,11 @@ pub struct MatcherTable {
     pub begin_ptr: extern "C" fn(*mut c_void, usize) -> *const u8,
     /// `matcher->in.set_handler(&handler)`: an `INPUT_HANDLER_*` value, `INPUT_HANDLER_NONE` sets NULL.
     pub set_input_handler: extern "C" fn(*mut c_void, c_int),
-    /// `matcher->buffer(src_bol, src_eol - src_bol + 1)` where `src_*` address the buffer of the matcher with context
-    /// `src`: this matcher reads one line of another matcher (`cnf_matching`). Returns 0 and does nothing when the
-    /// offsets are not `bol <= eol <= end` of the data of `src`.
-    pub buffer_line: extern "C" fn(*mut c_void, *mut c_void, usize, usize) -> c_int,
+    /// `matcher->buffer(src_bol, src_eol - src_bol + 1).find()` where `src_*` address the buffer of the matcher with
+    /// context `src`: this matcher buffers one line of another matcher and searches it in one call (`cnf_matching`), so
+    /// it never keeps a pointer into the buffer of `src` after the call. Returns 1 for a match, 0 for none and, with an
+    /// error of the channel, for offsets that are not `bol <= eol <= end` of the data of `src`.
+    pub find_in_line: extern "C" fn(*mut c_void, *mut c_void, usize, usize) -> c_int,
 }
 
 /// The `reflex::Input::Handler` that `matcher->in.set_handler` registers: the numbers are the C++ values of the facade.
@@ -471,9 +472,9 @@ impl MatcherHandle {
     }
 
     /// `matcher->input(input)`: assign the host-owned `Grep::input` to the matcher and restart it.
-    pub fn input(&self, input: InputHandle) {
+    pub fn input(&self, input: &InputHandle) {
         let t = self.t();
-        (t.input)(t.ctx, input.0);
+        (t.input)(t.ctx, raw::input_ptr(input));
     }
 
     /// `matcher->buffer(base, size)`: make the matcher read from memory the caller keeps alive (an mmap). `size` is
@@ -482,16 +483,18 @@ impl MatcherHandle {
     /// The memory is a [`BufferPtr`], which only `ffi/` makes (unsafe) and which carries the size it vouches for.
     pub fn buffer(&self, memory: &BufferPtr) {
         let t = self.t();
-        (t.buffer)(t.ctx, memory.ptr, memory.size);
+        let (base, size) = raw::buffer_parts(memory);
+        (t.buffer)(t.ctx, base, size);
     }
 
-    /// `matcher->buffer(bol, eol - bol + 1)` with `bol` and `eol` offsets into the buffer of `src` (another matcher):
-    /// make this matcher read that line, as `cnf_matching` does. False, and nothing done, when the offsets are not
-    /// `bol <= eol <=` the end of the data of `src`.
-    pub fn buffer_line(&self, src: &MatcherHandle, bol: usize, eol: usize) -> bool {
+    /// `matcher->buffer(bol, eol - bol + 1).find() != 0` with `bol` and `eol` offsets into the buffer of `src` (another
+    /// matcher): search that line of `src`, as `cnf_matching` does, in one call so that this matcher is not left
+    /// pointing at memory `src` may shift. False for no match, and for offsets that are not `bol <= eol <=` the end of
+    /// the data of `src` (nothing done; see [`GrepHost::error_pending`]).
+    pub fn find_in_line(&self, src: &MatcherHandle, bol: usize, eol: usize) -> bool {
         let src_ctx = src.t().ctx;
         let t = self.t();
-        (t.buffer_line)(t.ctx, src_ctx, bol, eol) != 0
+        (t.find_in_line)(t.ctx, src_ctx, bol, eol) != 0
     }
 
     /// `matcher->buffer()`: buffer all input; false when a read error occurred.
@@ -521,30 +524,7 @@ impl MatcherHandle {
     }
 }
 
-/// `FILE*` of C++, opaque to Rust; NULL is [`FileHandle::NULL`]. The field is private: only `ffi/` makes a handle, with
-/// [`raw::file_handle`] (unsafe), so safe code cannot forge one and pass it to a C++ dereference.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct FileHandle(*mut c_void);
-
-impl FileHandle {
-    pub const NULL: FileHandle = FileHandle(std::ptr::null_mut());
-
-    pub fn is_null(self) -> bool {
-        self.0.is_null()
-    }
-}
-
-/// `reflex::Input*` of C++ (`&Grep::input`), opaque to Rust and made only by `ffi/` ([`raw::input_handle`]).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct InputHandle(*const c_void);
-
-/// Memory that a matcher reads from after [`MatcherHandle::buffer`], with the size to pass (the C++ passes `size + 1`
-/// for an mmap, which counts the terminating NUL). Made only by `ffi/` ([`raw::buffer_ptr`], unsafe).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct BufferPtr {
-    ptr: *const u8,
-    size: usize,
-}
+pub use raw::{BufferPtr, FileHandle, GrepState, InputHandle};
 
 /// How a search branch ends (`Grep::SearchStep`): `CONTINUE` and `DONE` go on to the epilogue (`done_search`), `EXIT`
 /// leaves it out (`exit_search`). The numbers are the C++ enum values.
@@ -751,7 +731,7 @@ pub trait GrepHost {
     /// `Grep::input.file_encoding()`, which `mmap.file(input, ...)` checks.
     fn input_encoding(&self) -> i32;
     /// `Grep::input = reflex::Input(file, encoding)`, `encoding` is `flag_encoding_type`.
-    fn input_set_file(&self, file: FileHandle, encoding: i32);
+    fn input_set_file(&self, file: &FileHandle, encoding: i32);
     /// `Grep::input.clear()`.
     fn input_clear(&self);
     /// `Grep::input.get(buf, buf.len())`: the number of bytes read.
@@ -766,26 +746,26 @@ pub trait GrepHost {
     /// `flag_filter_magic_label[index]` (`--filter-magic-label`), `None` past the last label.
     fn flag_filter_magic_label(&self, index: usize) -> Option<Bytes>;
     /// `reflex::Matcher(Static::filter_magic_pattern, file).scan()`, then `rewind(file)` as `Grep::filter` does.
-    fn filter_magic_scan(&self, file: FileHandle) -> usize;
+    fn filter_magic_scan(&self, file: &FileHandle) -> usize;
     /// `warning(message, arg)`.
     fn warning(&self, message: &[u8], arg: &[u8]);
     /// `fopenw_s(&file, pathname, "rb")`: NULL when it fails, after `warning("cannot read", pathname)` (so that the
     /// warning sees the `errno` of the failed open).
     fn file_open(&self, pathname: &[u8]) -> FileHandle;
-    /// `fclose(file)`.
+    /// `fclose(file)`: the handle is consumed, so a closed file cannot be used again.
     fn file_close(&self, file: FileHandle);
     /// `ferror(file)`; true after `warning("cannot read", pathname)` (so that the warning sees the stream's `errno`).
-    fn file_read_error(&self, file: FileHandle, pathname: &[u8]) -> bool;
+    fn file_read_error(&self, file: &FileHandle, pathname: &[u8]) -> bool;
     /// `_setmode(fileno(file), _O_BINARY)` on Windows, nothing elsewhere.
-    fn file_set_binary(&self, file: FileHandle);
+    fn file_set_binary(&self, file: &FileHandle);
     /// Linux: make a regular file non-blocking (`fstat` S_ISREG then `fcntl` O_NONBLOCK, to raise EAGAIN for `/proc`
     /// files); nothing elsewhere. The caller checks `flag_devices_action != READ` and `file != stdin, source`.
-    fn file_nonblock_regular(&self, file: FileHandle);
+    fn file_nonblock_regular(&self, file: &FileHandle);
     /// Non-Windows: true when `file` is a character device, pipe or socket that was made non-blocking (`interactive`);
     /// false elsewhere (Windows decides by `input == stdin`).
-    fn file_probe_interactive(&self, file: FileHandle) -> bool;
+    fn file_probe_interactive(&self, file: &FileHandle) -> bool;
     /// `fseek(file, 0, SEEK_SET) == 0`.
-    fn file_seek_set(&self, file: FileHandle) -> bool;
+    fn file_seek_set(&self, file: &FileHandle) -> bool;
     /// `!feof(stdin) && fseek(stdin, 0, SEEK_END) < 0 && errno != EINVAL` with `WITH_STDIN_DRAIN`, false on Windows:
     /// stdin is a non-seekable pipe that `close_file` drains.
     fn stdin_drain_check(&self) -> bool;
@@ -804,8 +784,9 @@ pub trait GrepHost {
 
     /// `matchers->size()`, `None` when `matchers` is NULL.
     fn matchers_len(&self) -> Option<usize>;
-    /// The matcher handle of element `index` of `matchers` (`matchers->at(index)`), any kind.
-    fn matchers_matcher(&self, index: usize) -> Option<MatcherHandle>;
+    /// The matcher handle of element `index` of `matchers` (`matchers->at(index)`), any kind: its first alternative,
+    /// so it is the shared handle of `cnf_alt_matcher(index, 0)` (one handle per C++ matcher).
+    fn matchers_matcher(&self, index: usize) -> Option<Rc<MatcherHandle>>;
     /// `--files`: reset the `matching` and `notmatching` bitmasks for the `matchers` (the body of `search_setup`).
     fn matchers_reset(&self);
 
@@ -898,22 +879,6 @@ impl SearchContext {
     /// no host is attached.
     pub fn error_pending(&self) -> bool {
         self.host.borrow().as_deref().is_some_and(|host| host.error_pending())
-    }
-}
-
-/// The Rust state that lives as long as the C++ `Grep` (not one `search()` call, which owns a [`SearchContext`]),
-/// created by the facade (`grep_state_new`) and freed with it. The mmap of the input file is ported to Rust and its
-/// mapping is reused across the files of one `Grep` (`MAP_FIXED`), so it must outlive `search()` and be unmapped when
-/// the `Grep` is destroyed (this type's `Drop`, written by the port that ports `mmap`).
-#[derive(Default)]
-pub struct GrepState {
-    /// The mapping reused across files: `(base address, mapped size)`, `None` when nothing is mapped.
-    pub mapping: RefCell<Option<(usize, usize)>>,
-}
-
-impl GrepState {
-    pub fn new() -> GrepState {
-        GrepState::default()
     }
 }
 
@@ -1144,7 +1109,7 @@ mod tests {
             offset_of!(MatcherTable, avail),
             offset_of!(MatcherTable, begin_ptr),
             offset_of!(MatcherTable, set_input_handler),
-            offset_of!(MatcherTable, buffer_line),
+            offset_of!(MatcherTable, find_in_line),
         ];
         for (i, o) in offsets.iter().enumerate() {
             assert_eq!(*o, i * w, "field {i}");
@@ -1244,7 +1209,7 @@ mod tests {
                 std::ptr::null()
             }
         }
-        extern "C" fn buffer_line(_: *mut c_void, _: *mut c_void, _: usize, _: usize) -> c_int {
+        extern "C" fn find_in_line(_: *mut c_void, _: *mut c_void, _: usize, _: usize) -> c_int {
             1
         }
         extern "C" fn set_input_handler(ctx: *mut c_void, kind: c_int) {
@@ -1297,7 +1262,7 @@ mod tests {
                 avail,
                 begin_ptr,
                 set_input_handler,
-                buffer_line,
+                find_in_line,
             }
         }
     }
@@ -1335,7 +1300,7 @@ mod tests {
         assert!(h.buffer_all());
         let data = b"xyz";
         h.buffer(&raw::static_buffer(data));
-        assert!(h.buffer_line(&h, 0, 3));
+        assert!(h.find_in_line(&h, 0, 3));
         h.set_input_handler(INPUT_HANDLER_BINARY);
         h.set_input_handler(INPUT_HANDLER_NONE);
         assert_eq!(*m.calls.borrow(), vec!["find", "find", "find", "input_handler", "input_handler_none"]);

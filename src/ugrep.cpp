@@ -2986,7 +2986,8 @@ struct Grep {
         grep(grep),
         path_slot(NULL),
         context_handler(NULL),
-        invert_context_handler(NULL)
+        invert_context_handler(NULL),
+        state(ugrep_rust::grep_state_new())
     { }
 
     SeamFacade(const SeamFacade&) = delete;
@@ -3348,15 +3349,14 @@ struct Grep {
           }
         });
       };
-      // matcher->buffer(src_bol, src_eol - src_bol + 1) on the buffer of another matcher, for cnf_matching
-      table->buffer_line = [](void *c, void *src_c, size_t bol, size_t eol) -> int
+      // matcher->buffer(src_bol, src_eol - src_bol + 1).find() on the buffer of another matcher, for cnf_matching
+      table->find_in_line = [](void *c, void *src_c, size_t bol, size_t eol) -> int
       {
         return GM(c, [&]() -> int
         {
           reflex::AbstractMatcher& src = am(src_c);
-          check(bol <= eol && eol <= Peek::end(src), "buffer_line: outside the buffer of the source matcher");
-          am(c).buffer(const_cast<char*>(Peek::base(src)) + bol, eol - bol + 1);
-          return 1;
+          check(bol <= eol && eol <= Peek::end(src), "find_in_line: outside the buffer of the source matcher");
+          return am(c).buffer(const_cast<char*>(Peek::base(src)) + bol, eol - bol + 1).find() != 0;
         });
       };
       return true;
@@ -3587,7 +3587,19 @@ struct Grep {
               break;
             case UGREP_CORE_HANDLER_OP_ADD_BEFORE_CONTEXT_MATCH:
               if (f.invert_context_handler != NULL)
+              {
+                // output_before_context reads ptr + pos for size bytes and computes pos - the end of the previous match: the
+                // match must start at or after the previous match and end inside the before line it is added to
+                auto& state = f.invert_context_handler->state;
+                if (state.before_length > 0)
+                {
+                  const auto& before_line = state.before_lines[(state.before_index + state.before_length - 1) % state.before_length];
+                  size_t prev_end = before_line.matches.empty() ? 0 : before_line.matches.back().pos + before_line.matches.back().size;
+                  size_t line_size = before_line.line.size();
+                  check(a >= prev_end && b <= line_size && a <= line_size - b, "add_before_context_match: outside the before line");
+                }
                 f.invert_context_handler->add_before_context_match(a, b, cc);
+              }
               break;
           }
         });
@@ -3979,6 +3991,7 @@ struct Grep {
     ContextGrepHandler    *context_handler;        // the registered handler when of this class, owned by its MatcherCtx
     InvertContextGrepHandler *invert_context_handler; // the registered handler when of this class
     std::deque<MatcherCtx> matcher_ctxs;           // one per matcher handed out
+    rust::Box<ugrep_rust::GrepState> state;        // the Rust state of the Grep lifetime (the mmap mapping), freed with the facade
   };
 
   const char                    *filename;      // the name of the file being searched

@@ -423,7 +423,7 @@ impl GrepHost for CHost {
         unsafe { raw::file_handle((self.0.file_in)(self.0.ctx)) }
     }
     fn set_file_in(&self, file: FileHandle) {
-        (self.0.set_file_in)(self.0.ctx, raw::file_ptr(file))
+        (self.0.set_file_in)(self.0.ctx, raw::file_into_ptr(file))
     }
     fn input(&self) -> InputHandle {
         // SAFETY: the facade returns the address of `Grep::input`, which lives as long as the `Grep`.
@@ -436,7 +436,7 @@ impl GrepHost for CHost {
     fn input_encoding(&self) -> i32 {
         (self.0.input_encoding)(self.0.ctx)
     }
-    fn input_set_file(&self, file: FileHandle, encoding: i32) {
+    fn input_set_file(&self, file: &FileHandle, encoding: i32) {
         (self.0.input_set_file)(self.0.ctx, raw::file_ptr(file), encoding)
     }
     fn input_clear(&self) {
@@ -470,7 +470,7 @@ impl GrepHost for CHost {
             Some(bytes_of(ptr, len))
         }
     }
-    fn filter_magic_scan(&self, file: FileHandle) -> usize {
+    fn filter_magic_scan(&self, file: &FileHandle) -> usize {
         (self.0.filter_magic_scan)(self.0.ctx, raw::file_ptr(file))
     }
     fn warning(&self, message: &[u8], arg: &[u8]) {
@@ -483,22 +483,22 @@ impl GrepHost for CHost {
         unsafe { raw::file_handle((self.0.file_open)(self.0.ctx, pathname.as_ptr())) }
     }
     fn file_close(&self, file: FileHandle) {
-        (self.0.file_close)(self.0.ctx, raw::file_ptr(file))
+        (self.0.file_close)(self.0.ctx, raw::file_into_ptr(file))
     }
-    fn file_read_error(&self, file: FileHandle, pathname: &[u8]) -> bool {
+    fn file_read_error(&self, file: &FileHandle, pathname: &[u8]) -> bool {
         let pathname = c_string(pathname);
         (self.0.file_read_error)(self.0.ctx, raw::file_ptr(file), pathname.as_ptr()) != 0
     }
-    fn file_set_binary(&self, file: FileHandle) {
+    fn file_set_binary(&self, file: &FileHandle) {
         (self.0.file_set_binary)(self.0.ctx, raw::file_ptr(file))
     }
-    fn file_nonblock_regular(&self, file: FileHandle) {
+    fn file_nonblock_regular(&self, file: &FileHandle) {
         (self.0.file_nonblock_regular)(self.0.ctx, raw::file_ptr(file))
     }
-    fn file_probe_interactive(&self, file: FileHandle) -> bool {
+    fn file_probe_interactive(&self, file: &FileHandle) -> bool {
         (self.0.file_probe_interactive)(self.0.ctx, raw::file_ptr(file)) != 0
     }
-    fn file_seek_set(&self, file: FileHandle) -> bool {
+    fn file_seek_set(&self, file: &FileHandle) -> bool {
         (self.0.file_seek_set)(self.0.ctx, raw::file_ptr(file)) != 0
     }
     fn stdin_drain_check(&self) -> bool {
@@ -507,7 +507,7 @@ impl GrepHost for CHost {
     fn filter_spawn(&self, file: FileHandle, pathname: &[u8], command: &[u8]) -> Option<FileHandle> {
         let (pathname, command) = (c_string(pathname), c_string(command));
         let mut out: *mut c_void = std::ptr::null_mut();
-        if (self.0.filter_spawn)(self.0.ctx, raw::file_ptr(file), pathname.as_ptr(), command.as_ptr(), &mut out) != 0 {
+        if (self.0.filter_spawn)(self.0.ctx, raw::file_into_ptr(file), pathname.as_ptr(), command.as_ptr(), &mut out) != 0 {
             // SAFETY: the facade returns the `FILE*` of `fdopen` (or NULL).
             Some(unsafe { raw::file_handle(out) })
         } else {
@@ -526,7 +526,7 @@ impl GrepHost for CHost {
         let find = find.map(c_string);
         let find_ptr = find.as_ref().map_or(std::ptr::null(), |f| f.as_ptr());
         // SAFETY: the facade returns the `FILE*` of the decompression pipe (or NULL).
-        unsafe { raw::file_handle(start(self.0.ctx, ztstage, pathname.as_ptr(), raw::file_ptr(file_in), find_ptr)) }
+        unsafe { raw::file_handle(start(self.0.ctx, ztstage, pathname.as_ptr(), raw::file_into_ptr(file_in), find_ptr)) }
     }
     fn zthread_open_next(&self, pathname: &[u8]) -> FileHandle {
         let Some(open_next) = self.0.zthread_open_next else {
@@ -548,15 +548,9 @@ impl GrepHost for CHost {
             n => Some(n),
         }
     }
-    fn matchers_matcher(&self, index: usize) -> Option<MatcherHandle> {
-        let mut table = std::mem::MaybeUninit::<MatcherTable>::uninit();
-        if (self.0.matchers_matcher)(self.0.ctx, index, table.as_mut_ptr()) != 0 {
-            // SAFETY: a nonzero return means the callback filled the whole table, and the C++ facade's table honours
-            // `src/search_seam.h` while the matcher lives.
-            Some(unsafe { crate::signatures::search::raw::new_handle(table.assume_init()) })
-        } else {
-            None
-        }
+    fn matchers_matcher(&self, index: usize) -> Option<Rc<MatcherHandle>> {
+        // the first alternative of the AND term: the one cached handle of that matcher
+        self.cnf_alt_matcher(index, 0)
     }
     fn matchers_reset(&self) {
         (self.0.matchers_reset)(self.0.ctx)

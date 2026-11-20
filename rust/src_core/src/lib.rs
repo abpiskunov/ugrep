@@ -900,47 +900,62 @@ fn search_setup(ctx: &SearchContext) {
 }
 
 fn search_quiet_list(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::quiet_list(ctx, matcher).0
+    step_code(ctx, grep_search::branch::quiet_list(ctx, matcher))
 }
 
 fn search_count(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::count(ctx, matcher).0
+    step_code(ctx, grep_search::branch::count(ctx, matcher))
 }
 
 fn search_format(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::format(ctx, matcher).0
+    step_code(ctx, grep_search::branch::format(ctx, matcher))
 }
 
 fn search_only_matching(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::only_matching(ctx, matcher).0
+    step_code(ctx, grep_search::branch::only_matching(ctx, matcher))
 }
 
 fn search_only_matching_context(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::only_matching_context(ctx, matcher).0
+    step_code(ctx, grep_search::branch::only_matching_context(ctx, matcher))
 }
 
 fn search_plain(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::plain(ctx, matcher).0
+    step_code(ctx, grep_search::branch::plain(ctx, matcher))
 }
 
 fn search_invert(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::invert(ctx, matcher).0
+    step_code(ctx, grep_search::branch::invert(ctx, matcher))
 }
 
 fn search_any_line(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::any_line(ctx, matcher).0
+    step_code(ctx, grep_search::branch::any_line(ctx, matcher))
 }
 
 fn search_context(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::context(ctx, matcher).0
+    step_code(ctx, grep_search::branch::context(ctx, matcher))
 }
 
 fn search_context_invert(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::context_invert(ctx, matcher).0
+    step_code(ctx, grep_search::branch::context_invert(ctx, matcher))
 }
 
 fn search_epilogue(ctx: &SearchContext, matcher: &MatcherHandle) {
     grep_search::branch::epilogue(ctx, matcher)
+}
+
+/// The result of a search branch: EXIT (2) when a facade callback left an exception pending, as `cnf_code`.
+fn step_code(ctx: &SearchContext, step: grep_search::SearchStep) -> u8 {
+    if ctx.error_pending() {
+        grep_search::SearchStep::EXIT.0
+    } else {
+        step.0
+    }
+}
+
+/// The result of a file member that returns a bool: false (stop, the neutral value) when a facade callback left an
+/// exception pending; the C++ caller rethrows it.
+fn bool_code(ctx: &SearchContext, result: bool) -> bool {
+    result && !ctx.error_pending()
 }
 
 fn grep_state_new() -> Box<GrepState> {
@@ -965,23 +980,23 @@ fn search_cnf_satisfied(ctx: &SearchContext, acquire: bool) -> u8 {
 }
 
 fn search_open_file(ctx: &SearchContext, pathname: &[u8], find: &[u8], has_find: bool, is_stdin: bool) -> bool {
-    grep_search::file::open_file(ctx, pathname, has_find.then_some(find), is_stdin)
+    bool_code(ctx, grep_search::file::open_file(ctx, pathname, has_find.then_some(find), is_stdin))
 }
 
 fn search_filter(ctx: &SearchContext, pathname: &[u8]) -> bool {
-    grep_search::file::filter(ctx, pathname)
+    bool_code(ctx, grep_search::file::filter(ctx, pathname))
 }
 
 fn search_close_file(ctx: &SearchContext, pathname: &[u8]) -> bool {
-    grep_search::file::close_file(ctx, pathname)
+    bool_code(ctx, grep_search::file::close_file(ctx, pathname))
 }
 
 fn search_init_read(state: &GrepState, ctx: &SearchContext, matcher: &MatcherHandle) -> bool {
-    grep_search::file::init_read(state, ctx, matcher)
+    bool_code(ctx, grep_search::file::init_read(state, ctx, matcher))
 }
 
 fn search_init_is_binary(ctx: &SearchContext, matcher: &MatcherHandle) -> bool {
-    grep_search::file::init_is_binary(ctx, matcher)
+    bool_code(ctx, grep_search::file::init_is_binary(ctx, matcher))
 }
 
 fn search_output_or_save_restline(ctx: &SearchContext, matcher: &MatcherHandle, invert: bool, hex_context: bool) {

@@ -176,10 +176,11 @@ typedef struct ugrep_core_matcher_table {
   const unsigned char *(*begin_ptr)(void *ctx, size_t len);
   // matcher->in.set_handler(&handler): UGREP_CORE_INPUT_HANDLER_*, NONE sets NULL
   void (*set_input_handler)(void *ctx, int handler_kind);
-  // matcher->buffer(src_bol, src_eol - src_bol + 1) where src is the ctx of another table (the matcher of Grep::matcher)
-  // and the offsets are into its buffer; returns 0 (and does nothing) unless src_bol <= src_eol <= its buffer end.
-  // cnf_matching reads a line of the buffer of Grep::matcher with the other matchers this way
-  int (*buffer_line)(void *ctx, void *src_ctx, size_t bol, size_t eol);
+  // matcher->buffer(src_bol, src_eol - src_bol + 1).find() != 0 where src is the ctx of another table (the matcher of
+  // Grep::matcher) and the offsets are into its buffer: buffers one line of src and searches it in one call, so this
+  // matcher is never left pointing into the buffer of src. An offset pair that is not src_bol <= src_eol <= the end of the
+  // data of src is an error of the channel and returns 0. cnf_matching tests a line with the other matchers this way
+  int (*find_in_line)(void *ctx, void *src_ctx, size_t bol, size_t eol);
 } ugrep_core_matcher_table;
 
 // what stays in C++ and is called back by Rust; the flags are Rust-owned (ugrep_settings) and are not in the table
@@ -325,7 +326,7 @@ UGREP_CORE_ASSERT(offsetof(ugrep_core_matcher_table, reset) == 31 * sizeof(size_
 UGREP_CORE_ASSERT(offsetof(ugrep_core_matcher_table, input) == 32 * sizeof(size_t));
 UGREP_CORE_ASSERT(offsetof(ugrep_core_matcher_table, begin_ptr) == 36 * sizeof(size_t));
 UGREP_CORE_ASSERT(offsetof(ugrep_core_matcher_table, set_input_handler) == 37 * sizeof(size_t));
-UGREP_CORE_ASSERT(offsetof(ugrep_core_matcher_table, buffer_line) == 38 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_matcher_table, find_in_line) == 38 * sizeof(size_t));
 UGREP_CORE_ASSERT(sizeof(ugrep_core_matcher_table) == 39 * sizeof(size_t));
 UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, member_get) == 1 * sizeof(size_t));
 UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, handler_op) == 10 * sizeof(size_t));
