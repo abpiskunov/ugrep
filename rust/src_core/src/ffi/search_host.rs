@@ -411,6 +411,31 @@ pub unsafe extern "C" fn ugrep_core_search_set_host(ctx: *const SearchContext, e
     ctx.set_flags(flags_from_settings());
 }
 
+/// Make the handle of a C++ matcher: `table` is filled by the facade, is copied, and its `ctx` must outlive the handle.
+/// The result is passed to the cxx matcher functions as their `MatcherHandle` argument and freed with
+/// [`ugrep_core_matcher_handle_free`]. There is one handle per C++ matcher (SEAM.md, "Matcher callback table").
+///
+/// # Safety
+/// `table` must point to a fully filled `ugrep_core_matcher_table` (`src/search_seam.h`).
+#[no_mangle]
+pub unsafe extern "C" fn ugrep_core_matcher_handle_new(table: *const MatcherTable) -> *mut MatcherHandle {
+    // SAFETY: the caller guarantees `table` points to a filled table.
+    let table = unsafe { crate::signatures::search::raw::read(table) };
+    Box::into_raw(Box::new(MatcherHandle::new(table)))
+}
+
+/// Free a handle of [`ugrep_core_matcher_handle_new`]; this unregisters a Rust shift handler from the matcher first.
+///
+/// # Safety
+/// `handle` must come from [`ugrep_core_matcher_handle_new`] and not be used afterwards.
+#[no_mangle]
+pub unsafe extern "C" fn ugrep_core_matcher_handle_free(handle: *mut MatcherHandle) {
+    if !handle.is_null() {
+        // SAFETY: the caller guarantees `handle` is a live box made by `ugrep_core_matcher_handle_new`.
+        drop(unsafe { Box::from_raw(handle) });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

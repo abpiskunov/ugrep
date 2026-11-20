@@ -478,7 +478,7 @@ Other state read by branches (not in the context; stays in `Grep` members, reach
 | epilogue | `search_epilogue` | after any non-EXIT branch | `matched` (set true), `pathname` unused | lineno; host: `cnf_satisfied`, `matches`, `out.nl`, `Stats::score_matches` |
 
 Matcher-handle API: `find`, `next_match(skip_line)`, `bol`, `eol(inclusive)`, `begin`, `end`, `text_bounds` (begin/end/first/last/size/bol/eol/lineno/lines
-snapshot), `with_bytes(offset, len, |b| ..)` / `bytes_to_vec(offset, len)` (the buffer bytes; there is no method returning a borrowed slice), `before()`/`after()` returning `BufContext {offset, len, num}`, `bef(len)`/`aft(len)` returning an offset,
+snapshot), `with_bytes(offset, len, |b| ..)` (unsafe fn) / `bytes_to_vec(offset, len)` (the buffer bytes; there is no method returning a borrowed slice), `before()`/`after()` returning `BufContext {offset, len, num}`, `bef(len)`/`aft(len)` returning an offset,
 `lineno_skip`, `reset`. `lineno()` and `lines()` are handle calls (hot loop), also snapshotted in `text_bounds`.
 Buffer-shift event: `set_shift_handler(HandlerKind)` registers one of the C++ handler classes (GREP, ONLY_MATCHING_CONTEXT, INVERT_MATCH,
 FORMAT_INVERT_MATCH, ANY_LINE, CONTEXT, INVERT_CONTEXT; `NONE` unregisters) as the matcher's event handler, or `set_rust_handler(Box<dyn ShiftHandler>)`
@@ -546,10 +546,10 @@ handle of the matcher), the `kind`, and one `extern "C"` function pointer per ha
 `text_bounds`, `first`, `last`, `size`, `lineno`, `lines`, `columno`, `at_bol`, `hit_end`, `skip`, `border`, `before`, `after`, `bef`, `aft`, `bytes`,
 `set_reserve`, `fuzzy_distance`, `fuzzy_edits`, `lineno_skip`, `set_shift_handler` (handler construction by `HandlerKind`), `set_rust_handler`
 (trampoline registration) and `invoke_handler`, plus `reset`: 32 words. The facade fills one table per matcher; `GrepEnv.matchers_matcher(index)` fills
-it for `matchers->at(index)`, and the cxx `matcher_handle_new(table_address)` copies it for `Grep::matcher`. Rust tests pin the layout and run the
+it for `matchers->at(index)`, and the C entry `ugrep_core_matcher_handle_new(table)` copies it for `Grep::matcher` (one handle per matcher). Rust tests pin the layout and run the
 handle against a fake matcher through the table; the header pins enum last values, `offsetof` and `sizeof` with `static_assert`.
 - **Buffer bytes:** `MatcherHandle` has no method returning `&[u8]`. `bytes_to_vec` returns an owned copy (a cost for the performance task on the hot
-  path), and `with_bytes(offset, len, |b| ..)` lends the slice zero-copy: while the closure runs, every other call on the handle panics, so no call can
+  path), and `unsafe fn with_bytes(offset, len, |b| ..)` lends the slice zero-copy: while the closure runs, every other call on the handle panics, and the caller guarantees the handle is the only one on the matcher, so no call can
   shift the buffer under the slice. The host (`out_str` and the like) does not touch the matcher and may be called from the closure.
 - **Handler lifetime:** the C++ handler object (`GrepHandler` and its derived classes, or the trampoline of a Rust handler) is owned by the facade. It
   lives until the next `set_shift_handler`/`set_rust_handler`, `reset` or the destruction of the facade, whichever comes first, and the facade never
@@ -557,7 +557,13 @@ handle against a fake matcher through the table; the header pins enum last value
   its handler again after `reset` and after each new input source (once per file). A Rust handler lives in the handle: `reset` and the next
   registration drop it after C++ replaced the trampoline, and dropping the handle first unregisters the trampoline. Handler classes are registered only
   by `set_shift_handler`; `HandlerKind::RUST` is registered by `set_rust_handler` alone.
-- **unsafe:** the raw-pointer reads (ytes, deref, ead) are in fi/matcher_raw.rs, declared from search.rs, so policy-scan sees them in fi/ and the signatures-only harness still builds.
+- **unsafe:** every raw-pointer read, the `bytes`/`deref`/`read` functions (all `unsafe fn` with a `# Safety` contract), the slice creation of `with_bytes`,
+  and the shift trampoline `rust_shift_trampoline` are in `ffi/matcher_raw.rs`, declared from `search.rs`, so policy-scan sees them in `ffi/` and the
+  signatures-only harness still builds. The table reaches Rust through the C entry `ugrep_core_matcher_handle_new(const ugrep_core_matcher_table *)`
+  (`ffi/search_host.rs`, declared in `src/search_seam.h`, a typed pointer, no `usize`) and goes away with `ugrep_core_matcher_handle_free`.
+- **One handle per C++ matcher:** the `lent` guard of `with_bytes` and the Rust handler slot live in the handle, so they only protect the matcher if no
+  second handle exists for it. The facade keeps one cached handle per matcher (`Grep::matcher`, each `matchers->at(i)`), and `with_bytes` is therefore
+  `unsafe fn`: its contract is "the only handle, no matcher call while the closure runs". `bytes_to_vec` copies immediately and is safe.
 - **Re-entrancy:** a shift event arrives inside `find`, `next_match` or `eol(true)` through the trampoline into `dispatch_shift`, which only borrows the
   handler slot; a handler that replaces itself while running is skipped, not aliased.
 

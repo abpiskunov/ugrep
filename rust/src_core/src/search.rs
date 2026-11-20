@@ -53,6 +53,7 @@ impl MatcherKind {
 /// pointers minus `buf_`), valid until the next buffer shift event. `text()` is never part of this: it writes a NUL
 /// into the buffer.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(C)]
 pub struct TextBounds {
     /// `begin()`: first byte of the match.
     pub begin: usize,
@@ -77,6 +78,7 @@ pub struct TextBounds {
 /// `reflex::AbstractMatcher::Context`: a run of the matcher buffer, `buf_[offset..offset + len]`, with the number of
 /// lines in it. What `before()` and `after()` return and what the handler takes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(C)]
 pub struct BufContext {
     pub offset: usize,
     pub len: usize,
@@ -189,13 +191,6 @@ fn dispatch_shift(slot: &HandlerSlot, event: ShiftEvent, buf: &[u8]) {
             handler.on_shift(event, buf);
         }
     }
-}
-
-extern "C" fn rust_shift_trampoline(user: *mut c_void, len: usize, num: usize, buf: *const u8) {
-    // `user` is the address of the boxed `HandlerSlot` of a live `MatcherHandle`, which unregisters it from the matcher
-    // before the slot is dropped; the matcher passes `len` readable bytes that stay valid for this call.
-    let slot: &HandlerSlot = raw::deref(user);
-    dispatch_shift(slot, ShiftEvent { len, num }, raw::bytes(buf, len));
 }
 
 /// Handle of a matcher of any kind that stays owned by C++ (`Grep::matcher`, one element of `Grep::matchers`). The handle
@@ -379,30 +374,9 @@ impl MatcherHandle {
     }
 
     /// Copy of the bytes `buf_[offset..offset + len]` of the matcher buffer. Owned, so a later `find` cannot invalidate
-    /// it; the copy is the cost of soundness on the hot path, [`MatcherHandle::with_bytes`] is the zero-copy form.
+    /// it; the copy is the cost of soundness on the hot path, [`raw::with_bytes`] is the zero-copy (unsafe) form.
     pub fn bytes_to_vec(&self, offset: usize, len: usize) -> Bytes {
-        self.with_bytes(offset, len, |b| b.to_vec())
-    }
-
-    /// Zero-copy view of the bytes `buf_[offset..offset + len]` of the matcher buffer, for `out_str`, `check_binary`,
-    /// `memchr`, `utf8nlen` and the like. The slice lives only inside `f`, and while `f` runs every other call on this
-    /// handle panics (any of them could shift the buffer), so the slice cannot be used after the buffer moved. `f` may
-    /// call the host (`out_str` and the like), which does not touch the matcher.
-    pub fn with_bytes<R>(&self, offset: usize, len: usize, f: impl FnOnce(&[u8]) -> R) -> R {
-        struct Lent<'a>(&'a Cell<bool>);
-        impl Drop for Lent<'_> {
-            fn drop(&mut self) {
-                self.0.set(false);
-            }
-        }
-        let t = self.t();
-        let ptr = (t.bytes)(t.ctx, offset, len);
-        self.lent.set(true);
-        let _lent = Lent(&self.lent);
-        // the callback returned `len` readable bytes; they stay valid until the next call into the matcher, and `lent`
-        // makes every such call through this handle panic until `f` returns
-        let slice = raw::bytes(ptr, len);
-        f(slice)
+        raw::copy_bytes(self.t(), offset, len)
     }
 
     /// `matcher->set_reserve(size)`: reserve buffer space for a line kept across a buffer shift.
@@ -452,8 +426,7 @@ impl MatcherHandle {
     pub fn set_rust_handler(&self, handler: Box<dyn ShiftHandler>) {
         let t = self.t();
         *self.handler.borrow_mut() = Some(handler);
-        let user = &*self.handler as *const HandlerSlot as *mut c_void;
-        (t.set_rust_handler)(t.ctx, user, rust_shift_trampoline);
+        (t.set_rust_handler)(t.ctx, raw::slot_user(self), raw::rust_shift_trampoline);
     }
 
     /// The buffer-shift event, as the C++ trampoline delivers it to the Rust handler. Runs inside `find`, `next_match` or
@@ -881,7 +854,7 @@ mod tests {
         }
 
         fn f<'a>(ctx: *mut c_void) -> &'a Fake {
-            raw::deref(ctx)
+            raw::fake::deref_ctx(ctx)
         }
 
         extern "C" fn find(ctx: *mut c_void) -> c_int {
@@ -903,7 +876,7 @@ mod tests {
             2
         }
         extern "C" fn bounds(_: *mut c_void, out: *mut TextBounds) {
-            raw::write(out, TextBounds { begin: 7, ..TextBounds::default() });
+            raw::fake::write_value(out, TextBounds { begin: 7, ..TextBounds::default() });
         }
         extern "C" fn flag(_: *mut c_void) -> c_int {
             1
@@ -912,7 +885,7 @@ mod tests {
             (c == 10) as c_int
         }
         extern "C" fn ctx_out(_: *mut c_void, out: *mut BufContext) {
-            raw::write(out, BufContext { offset: 1, len: 2, num: 3 });
+            raw::fake::write_value(out, BufContext { offset: 1, len: 2, num: 3 });
         }
         extern "C" fn plus(_: *mut c_void, n: usize) -> usize {
             n + 10
@@ -938,7 +911,7 @@ mod tests {
         }
         extern "C" fn invoke_handler(ctx: *mut c_void, context: *const BufContext) {
             let m = f(ctx);
-            let c = raw::read(context);
+            let c = raw::fake::read_value(context);
             if let Some(shift) = m.shift.get() {
                 shift(m.user.get(), c.len, c.num, m.buf.as_ptr());
             }
@@ -1014,7 +987,7 @@ mod tests {
         assert_eq!((h.bef(1), h.aft(2)), (11, 12));
         assert_eq!(h.fuzzy_edits(), 3);
         assert_eq!(h.bytes_to_vec(1, 2), b"bc");
-        assert_eq!(h.with_bytes(0, 3, |b| b.len()), 3);
+        assert_eq!(raw::fake::with_bytes(&h, 0, 3, |b| b.len()), 3);
     }
 
     #[test]
@@ -1022,7 +995,7 @@ mod tests {
     fn matcher_is_not_callable_while_bytes_are_lent() {
         let m = fake();
         let h = MatcherHandle::new(fake::table(&m, MatcherKind::REFLEX));
-        h.with_bytes(0, 3, |_| h.find());
+        raw::fake::with_bytes(&h, 0, 3, |_| h.find());
     }
 
     type Seen = std::rc::Rc<RefCell<Vec<(usize, usize, Vec<u8>)>>>;

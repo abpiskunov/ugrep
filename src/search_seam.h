@@ -16,11 +16,8 @@
 
 #include <stddef.h>
 
-#ifdef __cplusplus
-# define UGREP_CORE_ASSERT(cond) static_assert(cond, #cond)
-#else
-# define UGREP_CORE_ASSERT(cond) _Static_assert(cond, #cond)
-#endif
+// C++11 or later (static_assert); this header is included from C++ only.
+#define UGREP_CORE_ASSERT(cond) static_assert(cond, #cond)
 
 #ifdef __cplusplus
 extern "C" {
@@ -226,6 +223,11 @@ UGREP_CORE_ASSERT(sizeof(ugrep_core_search_env) == 31 * sizeof(size_t));
 
 // attach the table to the Rust SearchContext (src_core::SearchContext, passed as an opaque pointer) and read the flags
 void ugrep_core_search_set_host(const void *search_context, const ugrep_core_search_env *env);
+
+// one handle per C++ matcher: copies the table (whose ctx must outlive the handle); the result is the MatcherHandle of the
+// cxx matcher functions. The free unregisters a Rust shift handler from the matcher first.
+void *ugrep_core_matcher_handle_new(const ugrep_core_matcher_table *table);
+void ugrep_core_matcher_handle_free(void *handle);
 
 #ifdef __cplusplus
 }

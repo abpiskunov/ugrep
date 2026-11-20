@@ -313,15 +313,12 @@ mod ffi {
 
     extern "Rust" {
         /// The handle of a matcher that C++ owns, of any kind (`signatures::search::MatcherHandle`): `MatcherKind::REFLEX`,
-        /// `PCRE2`, `LINE`, `FUZZY` or `BOOST`.
+        /// `PCRE2`, `LINE`, `FUZZY` or `BOOST`. C++ creates it with the C entry `ugrep_core_matcher_handle_new(table)`
+        /// (`ffi/search_host.rs`, `src/search_seam.h`) and frees it with `ugrep_core_matcher_handle_free`.
         type MatcherHandle;
         /// The Rust-owned locals shared by the `Grep::search` branches (`signatures::search::SearchContext`).
         type SearchContext;
 
-        /// Seam function `src_core.matcher_handle_new`: `table` is the address of a `ugrep_core_matcher_table`
-        /// (`src/search_seam.h`, `signatures::search::MatcherTable`) that the C++ facade filled; it is copied, and its `ctx`
-        /// must outlive the handle. The kind of the matcher is in the table.
-        fn matcher_handle_new(table: usize) -> Box<MatcherHandle>;
         /// Seam function `src_core.matcher_find`: `matcher->find()`. Every handle function takes `&MatcherHandle`:
         /// the C++ matcher mutates, and its shift handler re-enters while `find` or `eol` runs.
         fn matcher_find(handle: &MatcherHandle) -> bool;
@@ -734,12 +731,6 @@ fn output_format_invert(
 
 // the Grep search seam (see SEAM.md, "Grep seam"): the opaque handles and the stub bodies of signatures::search
 use signatures::search::{self as grep_search, MatcherHandle, SearchContext};
-
-fn matcher_handle_new(table: usize) -> Box<MatcherHandle> {
-    // `table` is the address of a filled `ugrep_core_matcher_table` (contract of the bridge function)
-    let table = grep_search::raw::read(table as *const grep_search::MatcherTable);
-    Box::new(MatcherHandle::new(table))
-}
 
 fn matcher_find(handle: &MatcherHandle) -> bool {
     handle.find()
