@@ -87,6 +87,13 @@ pub(crate) fn copy_bytes(t: &MatcherTable, offset: usize, len: usize) -> Vec<u8>
     unsafe { bytes(ptr, len) }.to_vec()
 }
 
+/// An owned copy of `len` bytes at `ptr` (the matched text of `begin_ptr`); nothing borrowed survives the call.
+pub(crate) fn copy_begin(ptr: *const u8, len: usize) -> Vec<u8> {
+    // SAFETY: `begin_ptr` is the start of the matched text in the matcher buffer and the callers ask for at most
+    // `avail` bytes (the contract of `init_is_binary`); the copy is made before anything else runs.
+    unsafe { bytes(ptr, len) }.to_vec()
+}
+
 /// The C function that the C++ matcher's registered trampoline calls for a buffer-shift event; `user` is the handler
 /// slot address given to `set_rust_handler`, `buf` and `len` the text about to leave the buffer, `num` its lines.
 ///

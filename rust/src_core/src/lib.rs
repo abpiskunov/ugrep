@@ -388,6 +388,17 @@ mod ffi {
         fn search_context(ctx: &SearchContext, matcher: &MatcherHandle) -> u8;
         fn search_context_invert(ctx: &SearchContext, matcher: &MatcherHandle) -> u8;
         fn search_epilogue(ctx: &SearchContext, matcher: &MatcherHandle);
+        // the file members of Grep (S4c-2a, stubs): 0 no, 1 yes, 2 EXIT_SEARCH for the two cnf functions
+        fn search_cnf_matching(ctx: &SearchContext, matcher: &MatcherHandle, bol: usize, eol: usize, acquire: bool) -> u8;
+        fn search_cnf_satisfied(ctx: &SearchContext, acquire: bool) -> u8;
+        fn search_open_file(ctx: &SearchContext, pathname: &[u8], find: &[u8], has_find: bool) -> bool;
+        fn search_filter(ctx: &SearchContext, pathname: &[u8]) -> bool;
+        fn search_close_file(ctx: &SearchContext, pathname: &[u8]) -> bool;
+        fn search_init_read(ctx: &SearchContext, matcher: &MatcherHandle) -> bool;
+        fn search_init_is_binary(ctx: &SearchContext, matcher: &MatcherHandle) -> bool;
+        fn search_output_or_save_restline(ctx: &SearchContext, matcher: &MatcherHandle, invert: bool, hex_context: bool);
+        fn search_output_restline(ctx: &SearchContext, matcher: &MatcherHandle, invert: bool, hex_context: bool);
+        fn search_save_restline(ctx: &SearchContext);
     }
 
     extern "Rust" {
@@ -923,4 +934,44 @@ fn search_context_invert(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
 
 fn search_epilogue(ctx: &SearchContext, matcher: &MatcherHandle) {
     grep_search::branch::epilogue(ctx, matcher)
+}
+
+fn search_cnf_matching(ctx: &SearchContext, matcher: &MatcherHandle, bol: usize, eol: usize, acquire: bool) -> u8 {
+    grep_search::file::cnf_matching(ctx, matcher, bol, eol, acquire).0
+}
+
+fn search_cnf_satisfied(ctx: &SearchContext, acquire: bool) -> u8 {
+    grep_search::file::cnf_satisfied(ctx, acquire).0
+}
+
+fn search_open_file(ctx: &SearchContext, pathname: &[u8], find: &[u8], has_find: bool) -> bool {
+    grep_search::file::open_file(ctx, pathname, has_find.then_some(find))
+}
+
+fn search_filter(ctx: &SearchContext, pathname: &[u8]) -> bool {
+    grep_search::file::filter(ctx, pathname)
+}
+
+fn search_close_file(ctx: &SearchContext, pathname: &[u8]) -> bool {
+    grep_search::file::close_file(ctx, pathname)
+}
+
+fn search_init_read(ctx: &SearchContext, matcher: &MatcherHandle) -> bool {
+    grep_search::file::init_read(ctx, matcher)
+}
+
+fn search_init_is_binary(ctx: &SearchContext, matcher: &MatcherHandle) -> bool {
+    grep_search::file::init_is_binary(ctx, matcher)
+}
+
+fn search_output_or_save_restline(ctx: &SearchContext, matcher: &MatcherHandle, invert: bool, hex_context: bool) {
+    grep_search::file::output_or_save_restline(ctx, matcher, invert, hex_context)
+}
+
+fn search_output_restline(ctx: &SearchContext, matcher: &MatcherHandle, invert: bool, hex_context: bool) {
+    grep_search::file::output_restline(ctx, matcher, invert, hex_context)
+}
+
+fn search_save_restline(ctx: &SearchContext) {
+    grep_search::file::save_restline(ctx)
 }

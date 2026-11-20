@@ -179,7 +179,26 @@ pub struct MatcherTable {
     /// `handler(*matcher, context.buf, context.len, context.num)` on the registered handler.
     pub invoke_handler: extern "C" fn(*mut c_void, *const BufContext),
     pub reset: extern "C" fn(*mut c_void),
+    /// `matcher->input(*(const reflex::Input*)host_input)`, the pointer of [`GrepHost::input`].
+    pub input: extern "C" fn(*mut c_void, *const c_void),
+    /// `matcher->buffer(base, size)`: read from memory; `size` is passed as is (the C++ passes `size + 1` for mmap).
+    pub buffer: extern "C" fn(*mut c_void, *const u8, usize),
+    /// `matcher->buffer()`: buffer all input; 0 when a read error occurred.
+    pub buffer_all: extern "C" fn(*mut c_void) -> c_int,
+    /// `matcher->avail(len)`: bytes available from `begin()` on, reading more input to make `len` available.
+    pub avail: extern "C" fn(*mut c_void, usize) -> usize,
+    /// `matcher->begin()` as a pointer to the matched text (`txt_`): valid until the next call into the matcher.
+    pub begin_ptr: extern "C" fn(*mut c_void) -> *const u8,
+    /// `matcher->in.set_handler(&handler)`: an `INPUT_HANDLER_*` value, `INPUT_HANDLER_NONE` sets NULL.
+    pub set_input_handler: extern "C" fn(*mut c_void, c_int),
 }
+
+/// The `reflex::Input::Handler` that `matcher->in.set_handler` registers: the numbers are the C++ values of the facade.
+pub const INPUT_HANDLER_NONE: i32 = 0;
+/// `Grep::bin_handler`: NUL bytes set `binfile`.
+pub const INPUT_HANDLER_BINARY: i32 = 1;
+/// `Grep::stdin_handler`: slow TTY or pipe input (not on Windows).
+pub const INPUT_HANDLER_STDIN: i32 = 2;
 
 /// Where the Rust shift handler of a handle lives. Boxed so that its address, which C++ holds as `user`, is stable.
 type HandlerSlot = RefCell<Option<Box<dyn ShiftHandler>>>;
@@ -444,7 +463,74 @@ impl MatcherHandle {
         (t.reset)(t.ctx);
         self.handler.borrow_mut().take();
     }
+
+    /// `matcher->input(input)`: assign the host-owned `Grep::input` to the matcher and restart it.
+    pub fn input(&self, input: InputHandle) {
+        let t = self.t();
+        (t.input)(t.ctx, input.0);
+    }
+
+    /// `matcher->buffer(base, size)`: make the matcher read from memory the caller keeps alive (an mmap, or a line of
+    /// the buffer of another matcher). `size` is passed as is.
+    ///
+    /// Not safe to call with a dangling pointer, so it takes the address as [`BufferPtr`], which only `ffi/` makes.
+    pub fn buffer(&self, base: BufferPtr, size: usize) {
+        let t = self.t();
+        (t.buffer)(t.ctx, base.0, size);
+    }
+
+    /// `matcher->buffer()`: buffer all input; false when a read error occurred.
+    pub fn buffer_all(&self) -> bool {
+        let t = self.t();
+        (t.buffer_all)(t.ctx) != 0
+    }
+
+    /// `matcher->avail(len)`: the number of bytes available in the buffer from `begin()` on, after reading more input to
+    /// make `len` available when possible.
+    pub fn avail(&self, len: usize) -> usize {
+        let t = self.t();
+        (t.avail)(t.ctx, len)
+    }
+
+    /// `matcher->begin()` as a pointer (`txt_`): `len` bytes from it are readable when `len <= avail`. Copied out, so a
+    /// later call cannot invalidate it. `None` when the matcher has no buffer.
+    pub fn begin_bytes(&self, len: usize) -> Option<Bytes> {
+        let t = self.t();
+        let ptr = (t.begin_ptr)(t.ctx);
+        if ptr.is_null() {
+            None
+        } else {
+            Some(raw::copy_begin(ptr, len))
+        }
+    }
+
+    /// `matcher->in.set_handler(&handler)`: `INPUT_HANDLER_BINARY`, `INPUT_HANDLER_STDIN` or `INPUT_HANDLER_NONE`. The
+    /// handler objects are `Grep::bin_handler` and `Grep::stdin_handler`, owned by C++.
+    pub fn set_input_handler(&self, kind: i32) {
+        let t = self.t();
+        (t.set_input_handler)(t.ctx, kind as c_int);
+    }
 }
+
+/// `FILE*` of C++, opaque to Rust; NULL is [`FileHandle::NULL`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FileHandle(pub *mut c_void);
+
+impl FileHandle {
+    pub const NULL: FileHandle = FileHandle(std::ptr::null_mut());
+
+    pub fn is_null(self) -> bool {
+        self.0.is_null()
+    }
+}
+
+/// `reflex::Input*` of C++ (`&Grep::input`), opaque to Rust.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InputHandle(pub *const c_void);
+
+/// Memory that a matcher reads from after [`MatcherHandle::buffer`], opaque to the safe code.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BufferPtr(pub *const u8);
 
 /// How a search branch ends (`Grep::SearchStep`): `CONTINUE` and `DONE` go on to the epilogue (`done_search`), `EXIT`
 /// leaves it out (`exit_search`). The numbers are the C++ enum values.
@@ -455,6 +541,31 @@ impl SearchStep {
     pub const CONTINUE: SearchStep = SearchStep(0);
     pub const DONE: SearchStep = SearchStep(1);
     pub const EXIT: SearchStep = SearchStep(2);
+}
+
+/// Result of `cnf_matching` and `cnf_satisfied`. The C++ members return a bool and throw `Grep::EXIT_SEARCH`; an exception
+/// must not unwind through the seam, so the facade catches it and returns `Exit`, and the caller of the seam rethrows
+/// it (C++) or leaves the search (Rust, as `SearchStep::EXIT`). The numbers are the `UGREP_CORE_CNF_*` values.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CnfResult(pub u8);
+
+impl CnfResult {
+    /// `false`: the line does not satisfy the CNF.
+    pub const NO: CnfResult = CnfResult(0);
+    /// `true`.
+    pub const YES: CnfResult = CnfResult(1);
+    /// `Grep::EXIT_SEARCH` was thrown: stop searching this file (equals `SearchStep::EXIT`).
+    pub const EXIT: CnfResult = CnfResult(2);
+}
+
+/// The bitmask of `Grep` that `cnf_bit_get` and `cnf_bit_set` address.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CnfBits {
+    /// `matching[k]`.
+    Matching,
+    /// `notmatching[k][l]`.
+    NotMatching,
 }
 
 /// The hex dump modes of `Output::Dump` (`output.hpp`), the `mode` of `out_dump_hex`.
@@ -575,9 +686,54 @@ pub trait GrepHost {
     /// `handler.add_before_context_match(pos, size, offset)`.
     fn handler_add_before_context_match(&self, pos: usize, size: usize, offset: usize);
 
-    // the CNF of `--files` / `-e -e`: `cnf_matching`, `cnf_satisfied`, `matchers`, `matching`, `notmatching`
-    fn cnf_matching(&self, bol: usize, eol: usize, acquire: bool) -> bool;
-    fn cnf_satisfied(&self, acquire: bool) -> bool;
+    // the CNF of `--files` / `-e -e`: `cnf_matching`, `cnf_satisfied`, `matchers`, `matching`, `notmatching`. The C++ throws
+    // `Grep::EXIT_SEARCH` in both; the table returns it as `CnfResult::Exit` (SEAM.md, "Grep file members").
+    fn cnf_matching(&self, bol: usize, eol: usize, acquire: bool) -> CnfResult;
+    fn cnf_satisfied(&self, acquire: bool) -> CnfResult;
+    /// `out.launch()`.
+    fn out_launch(&self);
+    /// `Grep::matchers` is a list of lists: the number of alternatives of AND term `term`.
+    fn cnf_alts(&self, term: usize) -> usize;
+    /// The matcher at (`term`, `alt`) of `matchers`, `None` for a NULL element (an undefined pattern).
+    fn cnf_alt_matcher(&self, term: usize, alt: usize) -> Option<MatcherHandle>;
+    /// `matching[k]` (`CnfBits::Matching`, `l` unused) or `notmatching[k][l]`.
+    fn cnf_bit_get(&self, which: CnfBits, k: usize, l: usize) -> bool;
+    /// Set the same bit to true.
+    fn cnf_bit_set(&self, which: CnfBits, k: usize, l: usize);
+
+    // the file members: `filename`, `file_in`, `input`, `interactive`, `Static::source`, `zthread`, `warning`
+    /// `Grep::filename`, `None` when NULL.
+    fn filename(&self) -> Option<Bytes>;
+    /// `Grep::interactive`.
+    fn interactive(&self) -> bool;
+    fn set_interactive(&self, interactive: bool);
+    /// `Grep::file_in`.
+    fn file_in(&self) -> FileHandle;
+    fn set_file_in(&self, file: FileHandle);
+    /// `&Grep::input`, for [`MatcherHandle::input`].
+    fn input(&self) -> InputHandle;
+    /// `Grep::input.file()`.
+    fn input_file(&self) -> FileHandle;
+    /// `Grep::input = reflex::Input(file, encoding)`, `encoding` is `flag_encoding_type`.
+    fn input_set_file(&self, file: FileHandle, encoding: i32);
+    /// `Grep::input.clear()`.
+    fn input_clear(&self);
+    /// `Grep::input.get(buf, buf.len())`: the number of bytes read.
+    fn input_get(&self, buf: &mut [u8]) -> usize;
+    /// `Static::source`, and `stdin`.
+    fn source(&self) -> FileHandle;
+    fn stdin_file(&self) -> FileHandle;
+    /// `reflex::Matcher(Static::filter_magic_pattern, file).scan()`, then `rewind(file)` as `Grep::filter` does.
+    fn filter_magic_scan(&self, file: FileHandle) -> usize;
+    /// `warning(message, arg)`.
+    fn warning(&self, message: &[u8], arg: &[u8]);
+    /// `Grep::zthread.start(ztstage, pathname, file_in, find)`: the pipe, or NULL.
+    fn zthread_start(&self, ztstage: usize, pathname: &[u8], file_in: FileHandle, find: Option<&[u8]>) -> FileHandle;
+    /// `Grep::zthread.open_next(pathname)`: the next pipe, or NULL.
+    fn zthread_open_next(&self, pathname: &[u8]) -> FileHandle;
+    /// `Grep::zthread.cancel()`.
+    fn zthread_cancel(&self);
+
     /// `matchers->size()`, `None` when `matchers` is NULL.
     fn matchers_len(&self) -> Option<usize>;
     /// The matcher handle of element `index` of `matchers` (`matchers->at(index)`), any kind.
@@ -739,6 +895,64 @@ pub mod branch {
     }
 }
 
+/// One stub per file member of `Grep` (ugrep.cpp ~2141-2960), named as the C++ members; ported by S4c-2b. `matcher` is
+/// `Grep::matcher`. What they need of `Grep` (`file_in`, `input`, `interactive`, `zthread`, `restline*`, `out`, the CNF
+/// bits) is reached through the [`GrepHost`] of `ctx`. The `mmap` of `init_read` is ported to Rust, not a callback.
+pub mod file {
+    use super::{CnfResult, MatcherHandle, SearchContext};
+
+    /// `Grep::cnf_matching(bol, eol, acquire)`: `bol` and `eol` are offsets into the buffer of `matcher`. `Exit` is the
+    /// `throw EXIT_SEARCH()` of the C++.
+    pub fn cnf_matching(_ctx: &SearchContext, _matcher: &MatcherHandle, _bol: usize, _eol: usize, _acquire: bool) -> CnfResult {
+        panic!("Grep seam: file::cnf_matching is not ported")
+    }
+
+    /// `Grep::cnf_satisfied(acquire)`; `Exit` is the `throw EXIT_SEARCH()` of the C++.
+    pub fn cnf_satisfied(_ctx: &SearchContext, _acquire: bool) -> CnfResult {
+        panic!("Grep seam: file::cnf_satisfied is not ported")
+    }
+
+    /// `Grep::open_file(pathname, find)`: `find` is NULL for `None`.
+    pub fn open_file(_ctx: &SearchContext, _pathname: &[u8], _find: Option<&[u8]>) -> bool {
+        panic!("Grep seam: file::open_file is not ported")
+    }
+
+    /// `Grep::filter(file_in, pathname)`: `--filter`, replaces `file_in` through the host.
+    pub fn filter(_ctx: &SearchContext, _pathname: &[u8]) -> bool {
+        panic!("Grep seam: file::filter is not ported")
+    }
+
+    /// `Grep::close_file(pathname)`: true when the next file of an archive is to be searched.
+    pub fn close_file(_ctx: &SearchContext, _pathname: &[u8]) -> bool {
+        panic!("Grep seam: file::close_file is not ported")
+    }
+
+    /// `Grep::init_read()`: false when the file is skipped (`-I` and binary).
+    pub fn init_read(_ctx: &SearchContext, _matcher: &MatcherHandle) -> bool {
+        panic!("Grep seam: file::init_read is not ported")
+    }
+
+    /// `Grep::init_is_binary()`.
+    pub fn init_is_binary(_ctx: &SearchContext, _matcher: &MatcherHandle) -> bool {
+        panic!("Grep seam: file::init_is_binary is not ported")
+    }
+
+    /// `Grep::output_or_save_restline(invert, hex_context)`.
+    pub fn output_or_save_restline(_ctx: &SearchContext, _matcher: &MatcherHandle, _invert: bool, _hex_context: bool) {
+        panic!("Grep seam: file::output_or_save_restline is not ported")
+    }
+
+    /// `Grep::output_restline(invert, hex_context)`.
+    pub fn output_restline(_ctx: &SearchContext, _matcher: &MatcherHandle, _invert: bool, _hex_context: bool) {
+        panic!("Grep seam: file::output_restline is not ported")
+    }
+
+    /// `Grep::save_restline()`.
+    pub fn save_restline(_ctx: &SearchContext) {
+        panic!("Grep seam: file::save_restline is not ported")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -751,6 +965,10 @@ mod tests {
             [1, 2, 3, 4, 5]
         );
         assert_eq!([SearchStep::CONTINUE.0, SearchStep::DONE.0, SearchStep::EXIT.0], [0, 1, 2]);
+        assert_eq!([CnfResult::NO.0, CnfResult::YES.0, CnfResult::EXIT.0], [0, 1, 2]);
+        assert_eq!(CnfResult::EXIT.0, SearchStep::EXIT.0, "an exit from the CNF is a SearchStep::EXIT");
+        assert_eq!([INPUT_HANDLER_NONE, INPUT_HANDLER_BINARY, INPUT_HANDLER_STDIN], [0, 1, 2]);
+        assert_eq!([CnfBits::Matching as i32, CnfBits::NotMatching as i32], [0, 1]);
         assert_eq!(
             [
                 HandlerKind::NONE.0,
@@ -828,11 +1046,17 @@ mod tests {
             offset_of!(MatcherTable, set_rust_handler),
             offset_of!(MatcherTable, invoke_handler),
             offset_of!(MatcherTable, reset),
+            offset_of!(MatcherTable, input),
+            offset_of!(MatcherTable, buffer),
+            offset_of!(MatcherTable, buffer_all),
+            offset_of!(MatcherTable, avail),
+            offset_of!(MatcherTable, begin_ptr),
+            offset_of!(MatcherTable, set_input_handler),
         ];
         for (i, o) in offsets.iter().enumerate() {
             assert_eq!(*o, i * w, "field {i}");
         }
-        assert_eq!(size_of::<MatcherTable>(), 32 * w);
+        assert_eq!(size_of::<MatcherTable>(), 38 * w);
     }
 
     // a fake C++ matcher over a byte buffer, to run the handle through the table
@@ -911,6 +1135,20 @@ mod tests {
                 raw::fake::call_shift(shift, m.user.get(), c.len, c.num, m.buf.as_ptr());
             }
         }
+        extern "C" fn input(_: *mut c_void, _: *const c_void) {}
+        extern "C" fn buffer(_: *mut c_void, _: *const u8, _: usize) {}
+        extern "C" fn buffer_all(_: *mut c_void) -> c_int {
+            1
+        }
+        extern "C" fn avail(ctx: *mut c_void, _: usize) -> usize {
+            f(ctx).buf.len()
+        }
+        extern "C" fn begin_ptr(ctx: *mut c_void) -> *const u8 {
+            f(ctx).buf.as_ptr()
+        }
+        extern "C" fn set_input_handler(ctx: *mut c_void, kind: c_int) {
+            f(ctx).calls.borrow_mut().push(if kind == 0 { "input_handler_none" } else { "input_handler" });
+        }
         extern "C" fn reset(ctx: *mut c_void) {
             let m = f(ctx);
             m.pos.set(0);
@@ -952,6 +1190,12 @@ mod tests {
                 set_rust_handler,
                 invoke_handler,
                 reset,
+                input,
+                buffer,
+                buffer_all,
+                avail,
+                begin_ptr,
+                set_input_handler,
             }
         }
     }
@@ -983,6 +1227,18 @@ mod tests {
         assert_eq!(h.fuzzy_edits(), 3);
         assert_eq!(h.bytes_to_vec(1, 2), b"bc");
         assert_eq!(raw::fake::with_bytes(&h, 0, 3, |b| b.len()), 3);
+        assert_eq!(h.avail(131072), 4);
+        assert_eq!(h.begin_bytes(3), Some(b"abc".to_vec()));
+        assert!(h.buffer_all());
+        h.set_input_handler(INPUT_HANDLER_BINARY);
+        h.set_input_handler(INPUT_HANDLER_NONE);
+        assert_eq!(*m.calls.borrow(), vec!["find", "find", "find", "input_handler", "input_handler_none"]);
+    }
+
+    #[test]
+    #[should_panic(expected = "file::open_file is not ported")]
+    fn file_stub_panics_instead_of_running() {
+        file::open_file(&SearchContext::new(b"a", 0), b"a", None);
     }
 
     #[test]

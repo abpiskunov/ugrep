@@ -545,7 +545,7 @@ All stay in C++ in this stage; the branch functions read them through `this`.
 handle of the matcher), the `kind`, and one `extern "C"` function pointer per handle method: `find`, `next_match`, `bol`, `eol`, `begin`, `end`,
 `text_bounds`, `first`, `last`, `size`, `lineno`, `lines`, `columno`, `at_bol`, `hit_end`, `skip`, `border`, `before`, `after`, `bef`, `aft`, `bytes`,
 `set_reserve`, `fuzzy_distance`, `fuzzy_edits`, `lineno_skip`, `set_shift_handler` (handler construction by `HandlerKind`), `set_rust_handler`
-(trampoline registration) and `invoke_handler`, plus `reset`: 32 words. The facade fills one table per matcher; `GrepEnv.matchers_matcher(index)` fills
+(trampoline registration) and `invoke_handler`, plus `reset`: 32 words (38 after "Grep file members" below). The facade fills one table per matcher; `GrepEnv.matchers_matcher(index)` fills
 it for `matchers->at(index)`, and the C entry `ugrep_core_matcher_handle_new(table)` copies it for `Grep::matcher` (one handle per matcher). Rust tests pin the layout and run the
 handle against a fake matcher through the table; the header pins enum last values, `offsetof` and `sizeof` with `static_assert`.
 - **Buffer bytes:** `MatcherHandle` has no method returning `&[u8]`. `bytes_to_vec` returns an owned copy (a cost for the performance task on the hot
@@ -573,3 +573,27 @@ handle against a fake matcher through the table; the header pins enum last value
 ### Unknown ownership
 - None for the matcher calls: they go through the table above. Open for the Port that fills the facade: the concrete C++ functions behind each table
   entry (S4c-2 fills them with the first switched branch).
+
+## Grep file members (Prepare seam S4c-2a; C++ bodies stay active, default build C++, Rust is panic stubs)
+
+Members: `cnf_matching`, `cnf_satisfied`, `open_file`, `filter`, `close_file`, `init_read`, `init_is_binary`, `output_or_save_restline`,
+`output_restline`, `save_restline`. Rust entry points: `grep_search::file::*` (panic stubs) behind cxx bridge functions `search_cnf_matching`,
+`search_cnf_satisfied`, `search_open_file(ctx, pathname, find, has_find)`, `search_filter`, `search_close_file`, `search_init_read`,
+`search_init_is_binary`, `search_output_or_save_restline`, `search_output_restline`, `search_save_restline` (lib.rs).
+
+- **Facade:** `Grep::SeamFacade` in `src/ugrep.cpp` fills `ugrep_core_search_env` (50 words) and the matcher table (38 words) with non-capturing
+  lambdas. `matcher_kind()` picks the kind by `dynamic_cast` (FuzzyMatcher, LineMatcher, PCRE2 under `HAVE_PCRE2` or Boost under `HAVE_BOOST_REGEX`,
+  Matcher); one template (`fill_matcher_table`) serves all kinds. Nothing instantiates it in the default build. Call `bind(ctx.pathname)` before use
+  (handlers take `const char *&`); one facade per Grep on the search thread, destroyed before the matchers it handed out.
+- **New env slots** (appended, old offsets unchanged): filename, interactive (get/set), file_in (get/set), input (file/set/clear/get), source,
+  stdin_file, filter_magic_scan (scan, then `rewind(file)`), warning, zthread_start/open_next/cancel (under `HAVE_LIBZ`), cnf_alts, cnf_alt_matcher,
+  cnf_bit_get/set, out_launch. **No mmap slot**: mmap is ported to Rust (operator answer).
+- **New matcher-table slots:** input, buffer, avail, begin_ptr (pointer to the match start; `begin` stays an offset), set_input_handler (bin/stdin
+  handler through `in.set_handler`). Pins in `search_seam.h` and the Rust layout tests agree (`input`=32, `begin_ptr`=36, size 38; env `filename`=31,
+  `cnf_bit_set`=49, size 50).
+- **Exit convention (cpp-rust-error-handling):** C++ `Grep::cnf_matching`/`cnf_satisfied` still throw `EXIT_SEARCH` (caught in `Grep::search`). The
+  facade catches it and returns `UGREP_CORE_CNF_EXIT` (2 == `STEP_EXIT`); Rust returns `CnfResult::EXIT` and the caller rethrows. 0 = no, 1 = yes. No
+  exception crosses a callback or the bridge; panics abort.
+- **cnf offsets** are relative to the buffer base of `Grep::matcher`; Rust derives pointers from `begin_ptr` minus the `begin` offset.
+  `matchers_matcher(index)` is the first matcher of AND term `index`; `cnf_alts`/`cnf_alt_matcher`/`cnf_bit_*` give the full walk.
+- **Open for S4c-2b:** ownership of `Grep::file_in`/`input` once Rust `open_file` is switched; the switch and deletion of the C++ bodies.

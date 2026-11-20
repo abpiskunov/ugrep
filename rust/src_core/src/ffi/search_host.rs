@@ -6,9 +6,12 @@
 //! valid until the next callback. All callbacks are called on the searching thread only.
 
 use std::ffi::c_void;
-use std::os::raw::c_int;
+use std::ffi::CString;
+use std::os::raw::{c_char, c_int};
 
-use crate::signatures::search::{GrepFlags, GrepHost, MatcherHandle, MatcherTable, RestlineData, SearchContext};
+use crate::signatures::search::{
+    CnfBits, CnfResult, FileHandle, GrepFlags, GrepHost, InputHandle, MatcherHandle, MatcherTable, RestlineData, SearchContext,
+};
 use crate::signatures::Bytes;
 
 /// The flags are not in the table: they are Rust-owned (`ugrep_settings`, `ffi/settings.rs`), so no callback is needed.
@@ -85,6 +88,7 @@ pub enum Member {
     Binary,
     RestlineSize,
     RestlineLast,
+    Interactive,
 }
 
 /// How the C++ facade decodes `restline_data_get` and `restline_data_set`: 0 NULL, 1 offset in the matcher buffer,
@@ -116,6 +120,7 @@ pub enum OutOp {
     HeaderFile,
     BinaryFileMatches,
     DumpDone,
+    Launch,
 }
 
 /// Mirrors `struct ugrep_core_search_env` of `src/search_seam.h`; the order of the fields and of the enum values is
@@ -162,10 +167,36 @@ pub struct GrepEnv {
     pub stats_found: extern "C" fn(*mut c_void, c_int) -> c_int,
     pub stats_found_parts: extern "C" fn(*mut c_void) -> usize,
     pub stats_score_matches: extern "C" fn(*mut c_void, usize, usize),
+    // the file members of Grep (S4c-2): FILE* and reflex::Input* are opaque pointers
+    pub filename: extern "C" fn(*mut c_void, *mut usize) -> *const u8,
+    pub file_in: extern "C" fn(*mut c_void) -> *mut c_void,
+    pub set_file_in: extern "C" fn(*mut c_void, *mut c_void),
+    pub input: extern "C" fn(*mut c_void) -> *mut c_void,
+    pub input_file: extern "C" fn(*mut c_void) -> *mut c_void,
+    pub input_set_file: extern "C" fn(*mut c_void, *mut c_void, c_int),
+    pub input_clear: extern "C" fn(*mut c_void),
+    pub input_get: extern "C" fn(*mut c_void, *mut u8, usize) -> usize,
+    pub source: extern "C" fn(*mut c_void) -> *mut c_void,
+    pub stdin_file: extern "C" fn(*mut c_void) -> *mut c_void,
+    pub filter_magic_scan: extern "C" fn(*mut c_void, *mut c_void) -> usize,
+    pub warning: extern "C" fn(*mut c_void, *const c_char, *const c_char),
+    pub zthread_start: extern "C" fn(*mut c_void, usize, *const c_char, *mut c_void, *const c_char) -> *mut c_void,
+    pub zthread_open_next: extern "C" fn(*mut c_void, *const c_char) -> *mut c_void,
+    pub zthread_cancel: extern "C" fn(*mut c_void),
+    pub cnf_alts: extern "C" fn(*mut c_void, usize) -> usize,
+    pub cnf_alt_matcher: extern "C" fn(*mut c_void, usize, usize, *mut MatcherTable) -> c_int,
+    pub cnf_bit_get: extern "C" fn(*mut c_void, c_int, usize, usize) -> c_int,
+    pub cnf_bit_set: extern "C" fn(*mut c_void, c_int, usize, usize),
 }
 
 /// The C++ facade behind the callbacks table.
 struct CHost(GrepEnv);
+
+/// A NUL-terminated copy for the `const char *` arguments; a NUL inside the bytes ends the string, as in C++.
+fn c_string(s: &[u8]) -> CString {
+    let end = s.iter().position(|&b| b == 0).unwrap_or(s.len());
+    CString::new(&s[..end]).unwrap_or_default()
+}
 
 fn bytes_of(ptr: *const u8, len: usize) -> Bytes {
     if ptr.is_null() {
@@ -297,11 +328,95 @@ impl GrepHost for CHost {
         (self.0.restline_save)(self.0.ctx)
     }
 
-    fn cnf_matching(&self, bol: usize, eol: usize, acquire: bool) -> bool {
-        (self.0.cnf_matching)(self.0.ctx, bol, eol, acquire as c_int) != 0
+    fn cnf_matching(&self, bol: usize, eol: usize, acquire: bool) -> CnfResult {
+        CnfResult((self.0.cnf_matching)(self.0.ctx, bol, eol, acquire as c_int) as u8)
     }
-    fn cnf_satisfied(&self, acquire: bool) -> bool {
-        (self.0.cnf_satisfied)(self.0.ctx, acquire as c_int) != 0
+    fn cnf_satisfied(&self, acquire: bool) -> CnfResult {
+        CnfResult((self.0.cnf_satisfied)(self.0.ctx, acquire as c_int) as u8)
+    }
+    fn out_launch(&self) {
+        self.op(OutOp::Launch)
+    }
+    fn cnf_alts(&self, term: usize) -> usize {
+        (self.0.cnf_alts)(self.0.ctx, term)
+    }
+    fn cnf_alt_matcher(&self, term: usize, alt: usize) -> Option<MatcherHandle> {
+        let mut table = std::mem::MaybeUninit::<MatcherTable>::uninit();
+        if (self.0.cnf_alt_matcher)(self.0.ctx, term, alt, table.as_mut_ptr()) != 0 {
+            // SAFETY: a nonzero return means the callback filled the whole table, as for `matchers_matcher`.
+            Some(unsafe { crate::signatures::search::raw::new_handle(table.assume_init()) })
+        } else {
+            None
+        }
+    }
+    fn cnf_bit_get(&self, which: CnfBits, k: usize, l: usize) -> bool {
+        (self.0.cnf_bit_get)(self.0.ctx, which as c_int, k, l) != 0
+    }
+    fn cnf_bit_set(&self, which: CnfBits, k: usize, l: usize) {
+        (self.0.cnf_bit_set)(self.0.ctx, which as c_int, k, l)
+    }
+
+    fn filename(&self) -> Option<Bytes> {
+        let mut len = 0usize;
+        let ptr = (self.0.filename)(self.0.ctx, &mut len);
+        if ptr.is_null() {
+            None
+        } else {
+            Some(bytes_of(ptr, len))
+        }
+    }
+    fn interactive(&self) -> bool {
+        self.get(Member::Interactive) != 0
+    }
+    fn set_interactive(&self, interactive: bool) {
+        self.set(Member::Interactive, interactive as usize)
+    }
+    fn file_in(&self) -> FileHandle {
+        FileHandle((self.0.file_in)(self.0.ctx))
+    }
+    fn set_file_in(&self, file: FileHandle) {
+        (self.0.set_file_in)(self.0.ctx, file.0)
+    }
+    fn input(&self) -> InputHandle {
+        InputHandle((self.0.input)(self.0.ctx) as *const c_void)
+    }
+    fn input_file(&self) -> FileHandle {
+        FileHandle((self.0.input_file)(self.0.ctx))
+    }
+    fn input_set_file(&self, file: FileHandle, encoding: i32) {
+        (self.0.input_set_file)(self.0.ctx, file.0, encoding)
+    }
+    fn input_clear(&self) {
+        (self.0.input_clear)(self.0.ctx)
+    }
+    fn input_get(&self, buf: &mut [u8]) -> usize {
+        (self.0.input_get)(self.0.ctx, buf.as_mut_ptr(), buf.len())
+    }
+    fn source(&self) -> FileHandle {
+        FileHandle((self.0.source)(self.0.ctx))
+    }
+    fn stdin_file(&self) -> FileHandle {
+        FileHandle((self.0.stdin_file)(self.0.ctx))
+    }
+    fn filter_magic_scan(&self, file: FileHandle) -> usize {
+        (self.0.filter_magic_scan)(self.0.ctx, file.0)
+    }
+    fn warning(&self, message: &[u8], arg: &[u8]) {
+        let (message, arg) = (c_string(message), c_string(arg));
+        (self.0.warning)(self.0.ctx, message.as_ptr(), arg.as_ptr())
+    }
+    fn zthread_start(&self, ztstage: usize, pathname: &[u8], file_in: FileHandle, find: Option<&[u8]>) -> FileHandle {
+        let pathname = c_string(pathname);
+        let find = find.map(c_string);
+        let find_ptr = find.as_ref().map_or(std::ptr::null(), |f| f.as_ptr());
+        FileHandle((self.0.zthread_start)(self.0.ctx, ztstage, pathname.as_ptr(), file_in.0, find_ptr))
+    }
+    fn zthread_open_next(&self, pathname: &[u8]) -> FileHandle {
+        let pathname = c_string(pathname);
+        FileHandle((self.0.zthread_open_next)(self.0.ctx, pathname.as_ptr()))
+    }
+    fn zthread_cancel(&self) {
+        (self.0.zthread_cancel)(self.0.ctx)
     }
     fn matchers_len(&self) -> Option<usize> {
         match (self.0.matchers_len)(self.0.ctx) {
@@ -457,6 +572,7 @@ mod tests {
             Member::Binary,
             Member::RestlineSize,
             Member::RestlineLast,
+            Member::Interactive,
         ];
         for (i, m) in members.iter().enumerate() {
             assert_eq!(*m as i32, i as i32);
@@ -471,6 +587,7 @@ mod tests {
             OutOp::HeaderFile,
             OutOp::BinaryFileMatches,
             OutOp::DumpDone,
+            OutOp::Launch,
         ];
         for (i, o) in ops.iter().enumerate() {
             assert_eq!(*o as i32, i as i32);
@@ -522,10 +639,30 @@ mod tests {
             offset_of!(GrepEnv, stats_found),
             offset_of!(GrepEnv, stats_found_parts),
             offset_of!(GrepEnv, stats_score_matches),
+            offset_of!(GrepEnv, filename),
+            offset_of!(GrepEnv, file_in),
+            offset_of!(GrepEnv, set_file_in),
+            offset_of!(GrepEnv, input),
+            offset_of!(GrepEnv, input_file),
+            offset_of!(GrepEnv, input_set_file),
+            offset_of!(GrepEnv, input_clear),
+            offset_of!(GrepEnv, input_get),
+            offset_of!(GrepEnv, source),
+            offset_of!(GrepEnv, stdin_file),
+            offset_of!(GrepEnv, filter_magic_scan),
+            offset_of!(GrepEnv, warning),
+            offset_of!(GrepEnv, zthread_start),
+            offset_of!(GrepEnv, zthread_open_next),
+            offset_of!(GrepEnv, zthread_cancel),
+            offset_of!(GrepEnv, cnf_alts),
+            offset_of!(GrepEnv, cnf_alt_matcher),
+            offset_of!(GrepEnv, cnf_bit_get),
+            offset_of!(GrepEnv, cnf_bit_set),
         ];
         for (i, o) in offsets.iter().enumerate() {
             assert_eq!(*o, i * w, "field {i}");
         }
+        assert_eq!(offsets.len(), 50);
         assert_eq!(size_of::<GrepEnv>(), offsets.len() * w);
     }
 }

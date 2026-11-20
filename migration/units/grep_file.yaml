@@ -1,0 +1,18 @@
+schema: cpp-rust-unit/1
+unit: grep_file
+component: src_core
+functions: [src_core.grep_cnf_matching, src_core.grep_cnf_satisfied, src_core.grep_open_file, src_core.grep_filter, src_core.grep_close_file, src_core.grep_init_read, src_core.grep_init_is_binary, src_core.grep_output_or_save_restline, src_core.grep_output_restline, src_core.grep_save_restline]
+cpp_files: [src/ugrep.cpp]
+rust_files: rust/src_core/src/search.rs rust/src_core/src/ffi/search_host.rs rust/src_core/src/ffi/matcher_raw.rs
+rust_crate_name: src_core
+harness_crate_name: src_core-harness
+depends_on: [zthread]
+status: planned
+notes:
+  - 'S4c-2a Prepare seam: C++ bodies unchanged and active, default build C++, Rust entry points are panic stubs (grep_search::file::*), facade Grep::SeamFacade in src/ugrep.cpp is not instantiated yet. Details: rust/src_core/SEAM.md "Grep file members".'
+  - 'C++ signatures (struct Grep): bool cnf_matching(const char *bol, const char *eol, bool acquire = false); bool cnf_satisfied(bool acquire = false); bool open_file(const char *pathname, const char *find = NULL); bool filter(FILE *&in, const char *pathname); bool close_file(const char *pathname); bool init_read(); bool init_is_binary(); void output_or_save_restline(bool invert = false, bool hex_context = false); void output_restline(bool invert = false, bool hex_context = false); void save_restline().'
+  - 'Bridge (lib.rs): search_cnf_matching(ctx, ...) -> u8 and search_cnf_satisfied(ctx, acquire) -> u8 (0 no, 1 yes, 2 EXIT); search_open_file(ctx, pathname, find, has_find) -> bool; search_filter, search_close_file, search_init_read, search_init_is_binary -> bool; search_output_or_save_restline, search_output_restline, search_save_restline -> ().'
+  - 'Exit convention: EXIT_SEARCH (thrown in cnf_matching/cnf_satisfied, caught in Grep::search) is turned by the facade into return code 2 (UGREP_CORE_CNF_EXIT == STEP_EXIT); Rust CnfResult::EXIT; the caller rethrows. No exception unwinds through a callback or the bridge.'
+  - 'Env callbacks added (50 words, appended): filename, interactive get/set, file_in get/set, input file/set/clear/get, source, stdin_file, filter_magic_scan (scan then rewind), warning, zthread_start/open_next/cancel, cnf_alts, cnf_alt_matcher, cnf_bit_get/set, out_launch. No mmap callback: mmap is ported to Rust (operator answer).'
+  - 'Matcher table added (38 words): input, buffer, avail, begin_ptr, set_input_handler (bin/stdin handler); begin stays an offset. Facade fills it for RE-flex Matcher, PCRE2 (HAVE_PCRE2), Boost (HAVE_BOOST_REGEX), LineMatcher and FuzzyMatcher.'
+  - 'Verified in the Prepare seam: Base-Release (HAVE_LIBZ, HAVE_BOOST_REGEX) compiles; the PCRE2 branch of matcher_kind is compiled only in Pcre-Release (not built in this task). Open for S4c-2b: lifetime of Grep::file_in/input once open_file is switched; bind(pathname) before use.'
