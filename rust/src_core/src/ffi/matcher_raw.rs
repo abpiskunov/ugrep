@@ -7,7 +7,9 @@
 use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
 
-use super::{dispatch_shift, HandlerSlot, MatcherHandle, MatcherTable, ShiftEvent};
+use super::{dispatch_shift, FileHandle, HandlerSlot, InputHandle, MatcherHandle, MatcherTable, ShiftEvent};
+#[cfg(test)]
+use super::BufferPtr;
 
 /// The Rust shift handler the C++ trampoline handler calls for every buffer-shift event (`ugrep_core_shift_fn`).
 pub type ShiftFn = unsafe extern "C" fn(user: *mut c_void, len: usize, num: usize, buf: *const u8);
@@ -88,10 +90,63 @@ pub(crate) fn copy_bytes(t: &MatcherTable, offset: usize, len: usize) -> Vec<u8>
 }
 
 /// An owned copy of `len` bytes at `ptr` (the matched text of `begin_ptr`); nothing borrowed survives the call.
-pub(crate) fn copy_begin(ptr: *const u8, len: usize) -> Vec<u8> {
-    // SAFETY: `begin_ptr` is the start of the matched text in the matcher buffer and the callers ask for at most
-    // `avail` bytes (the contract of `init_is_binary`); the copy is made before anything else runs.
+///
+/// # Safety
+/// `ptr` must address `len` readable bytes (the contract of a non-NULL `begin_ptr` result).
+pub(crate) unsafe fn copy_begin(ptr: *const u8, len: usize) -> Vec<u8> {
+    // SAFETY: the caller guarantees `ptr` addresses `len` readable bytes; the copy is made before anything else runs.
     unsafe { bytes(ptr, len) }.to_vec()
+}
+
+/// `len` bytes from the begin of the match of `handle`, copied out; `None` when `begin_ptr` returns NULL.
+pub(crate) fn begin_bytes(handle: &MatcherHandle, len: usize) -> Option<Vec<u8>> {
+    let t = handle.t();
+    let ptr = (t.begin_ptr)(t.ctx, len);
+    if ptr.is_null() {
+        None
+    } else {
+        // SAFETY: the table contract (`new_handle`): a non-NULL `begin_ptr` result addresses `len` readable bytes inside
+        // the matcher buffer data, and nothing runs before the copy.
+        Some(unsafe { copy_begin(ptr, len) })
+    }
+}
+
+/// A buffer over static data, for the tests.
+#[cfg(test)]
+pub(crate) fn static_buffer(data: &'static [u8]) -> BufferPtr {
+    // SAFETY: `data` is readable for `'static` and never modified.
+    unsafe { buffer_ptr(data.as_ptr(), data.len()) }
+}
+
+/// The handle of a C `FILE*` (or NULL).
+///
+/// # Safety
+/// `ptr` must be NULL or a `FILE*` that the facade handed over and that stays valid for as long as the handle is used.
+pub(crate) unsafe fn file_handle(ptr: *mut c_void) -> FileHandle {
+    FileHandle(ptr)
+}
+
+/// The `FILE*` of a handle, for the callbacks of the facade.
+pub(crate) fn file_ptr(handle: FileHandle) -> *mut c_void {
+    handle.0
+}
+
+/// The handle of the host-owned `reflex::Input` (`&Grep::input`).
+///
+/// # Safety
+/// `ptr` must be the address of the `reflex::Input` of the `Grep`, valid while the handle is used.
+pub(crate) unsafe fn input_handle(ptr: *const c_void) -> InputHandle {
+    InputHandle(ptr)
+}
+
+/// Memory for [`MatcherHandle::buffer`]; the mmap port makes these in `ffi/`. Only the tests make one until then.
+///
+/// # Safety
+/// `ptr` must address `size` readable bytes (the C++ counts the terminating NUL in an mmap) that stay valid and
+/// unmodified until the matcher reads from something else or is destroyed.
+#[cfg(test)]
+pub(crate) unsafe fn buffer_ptr(ptr: *const u8, size: usize) -> BufferPtr {
+    BufferPtr { ptr, size }
 }
 
 /// The C function that the C++ matcher's registered trampoline calls for a buffer-shift event; `user` is the handler
