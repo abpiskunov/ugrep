@@ -5032,3 +5032,209 @@
 {"id":"out-rn2-format-n-invert","args":["-v","--format=%n,%l,%k,%b%~","foo","t.txt"],"files":{"t.txt":"foo bar\nplain\nplain2\nfoo\nx\nfoo x\n"}}
 {"id":"out-rn2-replace-invert","args":["-v","--replace=<%n>","foo","t.txt"],"files":{"t.txt":"foo bar\nplain\nplain2\nfoo\nx\nfoo x\n"}}
 {"id":"out-r-65-5_n-q1","args":["--max-line=100000","--replace=<%{5}n>","foo","t.txt"],"files":{"t.txt":"foo bar\nbar foo foo\nplain line\n\tfoo tab\nFoo Bar\nfoobar foo\nlast foo\nctx1\nctx2\nctx3\nfoo again\nctx4\nctx5\nctx6\nctx7\nfoo end\nz\n"}}
+{"id":"gseam-q-match","args":["-q","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-q-nomatch","args":["-q","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-q-multi","args":["-J1","-q","foo","a.txt","b.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n","b.txt":"zzz\n"}}
+{"id":"gseam-l-match","args":["-l","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-l-nomatch","args":["-l","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-l-multi","args":["-J1","-l","foo","a.txt","b.txt","c.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n","b.txt":"zzz\n","c.txt":"foo\n"}}
+{"id":"gseam-L-match","args":["-L","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-L-nomatch","args":["-L","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-L-multi","args":["-J1","-L","foo","a.txt","b.txt","c.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n","b.txt":"zzz\n","c.txt":"foo\n"}}
+{"id":"gseam-l-v","args":["-l","-v","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-l-null","args":["-J1","-l","--null","foo","a.txt","c.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n","c.txt":"foo\n"}}
+{"id":"gseam-l-count-flag","args":["-l","-c","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-q-binary","args":["-q","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-l-binary","args":["-l","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-c-plain","args":["-c","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-c-nomatch","args":["-c","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-c-v","args":["-c","-v","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-c-multi","args":["-J1","-c","foo","a.txt","b.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n","b.txt":"foo\nfoo\nbar\n"}}
+{"id":"gseam-c-with-filename","args":["-c","-H","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-c-o","args":["-c","-o","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-c-i","args":["-c","-i","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-c-max","args":["-c","-m2","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-c-binary","args":["-c","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-c-null","args":["-c","--null","-H","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-c-lines40","args":["-c","foo","a.txt"],"files":{"a.txt":"line 1 xyz\nline 2 xyz\nline 3 foo\nline 4 xyz\nline 5 xyz\nline 6 foo\nline 7 xyz\nline 8 xyz\nline 9 foo\nline 10 xyz\nline 11 xyz\nline 12 foo\nline 13 xyz\nline 14 xyz\nline 15 foo\nline 16 xyz\nline 17 xyz\nline 18 foo\nline 19 xyz\nline 20 xyz\nline 21 foo\nline 22 xyz\nline 23 xyz\nline 24 foo\nline 25 xyz\nline 26 xyz\nline 27 foo\nline 28 xyz\nline 29 xyz\nline 30 foo\nline 31 xyz\nline 32 xyz\nline 33 foo\nline 34 xyz\nline 35 xyz\nline 36 foo\nline 37 xyz\nline 38 xyz\nline 39 foo\nline 40 xyz\n"}}
+{"id":"gseam-fmt-basic","args":["--format=%f:%n:%k:%O%~","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-fmt-match","args":["--format=[%m]%~","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-fmt-o","args":["-o","--format=%o@%b%~","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-fmt-v","args":["-v","--format=%n:%O%~","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-fmt-begin-end","args":["--format-begin=BEGIN%~","--format-end=END %m%~","--format=%m%~","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-fmt-open-close","args":["--format-open=<%f>%~","--format-close=</%f>%~","--format=%n%~","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-fmt-multi","args":["-J1","--format=%f:%n:%m%~","foo","a.txt","b.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n","b.txt":"foo x\nbar\n"}}
+{"id":"gseam-fmt-fields","args":["--format=%[1]$%u%s%T%h%~","-e","(fo)o","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-fmt-context","args":["-C1","--format=%n:%O%~","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-fmt-ABC-v","args":["-v","-A1","-B1","--format=%n:%O%~","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-fmt-nomatch","args":["--format=%n%~","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-fmt-binary","args":["-a","--format=%n:%O%~","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-fmt-lines","args":["--format=%L:%l:%C%~","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-fmt-zero","args":["--format=%m%z","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-o-plain","args":["-o","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-o-n","args":["-o","-n","-b","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-o-k","args":["-o","-k","-H","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-o-i","args":["-o","-i","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-o-multi","args":["-J1","-o","-H","foo","a.txt","b.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n","b.txt":"x foo foo\n"}}
+{"id":"gseam-o-color","args":["-o","--color=always","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-o-regex","args":["-o","-e","o+","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-o-empty-match","args":["-o","-e","x*","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-o-utf8","args":["-o","-e","\\w+","a.txt"],"files":{"a.txt":"caf\u00e9 foo\nna\u00efve bar\nfoo \u00fcber\n"}}
+{"id":"gseam-o-binary","args":["-o","-a","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-o-crlf","args":["-o","-e","foo.*","a.txt"],"files":{"a.txt":"foo one\r\nbar two\r\nfoo three\r\n"}}
+{"id":"gseam-o-pcre","args":["-o","-P","fo(?=o)","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-o-nonl","args":["-o","foo","a.txt"],"files":{"a.txt":"foo bar\nfoo last"}}
+{"id":"gseam-o-max","args":["-o","-m1","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-o-json","args":["-o","--json","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-o-A1","args":["-o","-A1","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-o-B1","args":["-o","-B1","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-o-C1","args":["-o","-C1","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-o-C1-n","args":["-o","-C1","-n","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-o-C2-color","args":["-o","-C2","--color=always","foo","a.txt"],"files":{"a.txt":"line 1 xyz\nline 2 xyz\nline 3 foo\nline 4 xyz\nline 5 xyz\nline 6 foo\nline 7 xyz\nline 8 xyz\nline 9 foo\nline 10 xyz\nline 11 xyz\nline 12 foo\nline 13 xyz\nline 14 xyz\nline 15 foo\nline 16 xyz\nline 17 xyz\nline 18 foo\nline 19 xyz\nline 20 xyz\nline 21 foo\nline 22 xyz\nline 23 xyz\nline 24 foo\nline 25 xyz\nline 26 xyz\nline 27 foo\nline 28 xyz\nline 29 xyz\nline 30 foo\nline 31 xyz\nline 32 xyz\nline 33 foo\nline 34 xyz\nline 35 xyz\nline 36 foo\nline 37 xyz\nline 38 xyz\nline 39 foo\nline 40 xyz\n"}}
+{"id":"gseam-o-A2-multi","args":["-J1","-o","-A2","-H","foo","a.txt","b.txt"],"files":{"a.txt":"line 1 xyz\nline 2 xyz\nline 3 foo\nline 4 xyz\nline 5 xyz\nline 6 foo\nline 7 xyz\nline 8 xyz\nline 9 foo\nline 10 xyz\nline 11 xyz\nline 12 foo\nline 13 xyz\nline 14 xyz\nline 15 foo\nline 16 xyz\nline 17 xyz\nline 18 foo\nline 19 xyz\nline 20 xyz\nline 21 foo\nline 22 xyz\nline 23 xyz\nline 24 foo\nline 25 xyz\nline 26 xyz\nline 27 foo\nline 28 xyz\nline 29 xyz\nline 30 foo\nline 31 xyz\nline 32 xyz\nline 33 foo\nline 34 xyz\nline 35 xyz\nline 36 foo\nline 37 xyz\nline 38 xyz\nline 39 foo\nline 40 xyz\n","b.txt":"x\nfoo\ny\nz\n"}}
+{"id":"gseam-o-C1-v","args":["-o","-C1","-v","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-o-A1-max","args":["-o","-A1","-m2","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain","args":["foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-n","args":["-n","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-nbk","args":["-n","-b","-k","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-H","args":["-H","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-color","args":["--color=always","-n","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-i","args":["-i","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-w","args":["-w","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-x","args":["-x","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-fixed","args":["-F","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-regex","args":["-e","fo+\\s","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-pcre","args":["-P","(?<=bar )foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-two-patterns","args":["-e","foo","-e","baz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-and","args":["--and","foo","bar","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-nomatch","args":["zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-max","args":["-m2","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-crlf","args":["foo","a.txt"],"files":{"a.txt":"foo one\r\nbar two\r\nfoo three\r\n"}}
+{"id":"gseam-plain-nonl","args":["foo","a.txt"],"files":{"a.txt":"foo bar\nfoo last"}}
+{"id":"gseam-plain-utf8","args":["-n","foo","a.txt"],"files":{"a.txt":"caf\u00e9 foo\nna\u00efve bar\nfoo \u00fcber\n"}}
+{"id":"gseam-plain-long","args":["-n","foo","a.txt"],"files":{"a.txt":"line 1 xyz\nline 2 xyz\nline 3 foo\nline 4 xyz\nline 5 xyz\nline 6 foo\nline 7 xyz\nline 8 xyz\nline 9 foo\nline 10 xyz\nline 11 xyz\nline 12 foo\nline 13 xyz\nline 14 xyz\nline 15 foo\nline 16 xyz\nline 17 xyz\nline 18 foo\nline 19 xyz\nline 20 xyz\nline 21 foo\nline 22 xyz\nline 23 xyz\nline 24 foo\nline 25 xyz\nline 26 xyz\nline 27 foo\nline 28 xyz\nline 29 xyz\nline 30 foo\nline 31 xyz\nline 32 xyz\nline 33 foo\nline 34 xyz\nline 35 xyz\nline 36 foo\nline 37 xyz\nline 38 xyz\nline 39 foo\nline 40 xyz\n"}}
+{"id":"gseam-plain-empty-file","args":["foo","a.txt"],"files":{"a.txt":""}}
+{"id":"gseam-plain-empty-pattern","args":["-c","","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-fuzzy","args":["-Z","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-fuzzy-best","args":["-Zbest","-n","fxo","a.txt"],"files":{"a.txt":"foo\nfxo\nfo\nfxxo\n"}}
+{"id":"gseam-plain-binary-text","args":["foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-plain-binary-a","args":["-a","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-plain-ignore-binary","args":["-I","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-plain-json","args":["--json","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-csv","args":["--csv","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-xml","args":["--xml","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-tabs","args":["-T","-n","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-plain-heading","args":["-J1","--heading","-n","foo","a.txt","b.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n","b.txt":"foo x\n"}}
+{"id":"gseam-plain-stdin-label","args":["-J1","--label=LBL","-H","foo","-"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"},"stdin":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}
+{"id":"gseam-hex-binary","args":["--hex","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-hex-text","args":["--hex","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-hex-with-hex","args":["--with-hex","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-hex-with-hex-text","args":["--with-hex","-n","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-hex-o","args":["--hex","-o","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-hex-v","args":["--hex","-v","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-hex-C1","args":["--hex","-C1","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-hex-color","args":["--hex","--color=always","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-hex-long","args":["--hex","-e","ab","b.bin"],"files":{"b.bin":{"hex":"0061626364656667686970616263646566676869706162636465666768697061626364656667686970616263646566676869706162636465666768697061626364656667686970616263646566676869700a6162ffffffffffffffffffffffffffffffffffffffff"}}}
+{"id":"gseam-hex-cols","args":["--hex","--hexdump=2a1","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-hex-count","args":["--hex","-c","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-hex-multi","args":["-J1","--hex","-H","foo","b.bin","a.txt"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"},"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-hex-b","args":["--hex","-b","-n","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-hex-binary-files","args":["--binary-files=hex","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-v-plain","args":["-v","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-v-n","args":["-v","-n","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-v-nomatch","args":["-v","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-v-allmatch","args":["-v","-e",".","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-v-i","args":["-v","-i","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-v-w","args":["-v","-w","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-v-x","args":["-v","-x","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-v-multi","args":["-J1","-v","-H","foo","a.txt","b.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n","b.txt":"foo\nzzz\n"}}
+{"id":"gseam-v-max","args":["-v","-m2","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-v-crlf","args":["-v","foo","a.txt"],"files":{"a.txt":"foo one\r\nbar two\r\nfoo three\r\n"}}
+{"id":"gseam-v-nonl","args":["-v","bar","a.txt"],"files":{"a.txt":"foo bar\nfoo last"}}
+{"id":"gseam-v-long","args":["-v","-n","foo","a.txt"],"files":{"a.txt":"line 1 xyz\nline 2 xyz\nline 3 foo\nline 4 xyz\nline 5 xyz\nline 6 foo\nline 7 xyz\nline 8 xyz\nline 9 foo\nline 10 xyz\nline 11 xyz\nline 12 foo\nline 13 xyz\nline 14 xyz\nline 15 foo\nline 16 xyz\nline 17 xyz\nline 18 foo\nline 19 xyz\nline 20 xyz\nline 21 foo\nline 22 xyz\nline 23 xyz\nline 24 foo\nline 25 xyz\nline 26 xyz\nline 27 foo\nline 28 xyz\nline 29 xyz\nline 30 foo\nline 31 xyz\nline 32 xyz\nline 33 foo\nline 34 xyz\nline 35 xyz\nline 36 foo\nline 37 xyz\nline 38 xyz\nline 39 foo\nline 40 xyz\n"}}
+{"id":"gseam-v-color","args":["-v","--color=always","-n","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-v-two-patterns","args":["-v","-e","foo","-e","bar","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-v-binary","args":["-v","-a","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-v-empty-file","args":["-v","foo","a.txt"],"files":{"a.txt":""}}
+{"id":"gseam-v-only-matching","args":["-v","-o","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-v-pcre","args":["-v","-P","fo+","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-y-plain","args":["-y","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-y-n","args":["-y","-n","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-y-color","args":["-y","--color=always","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-y-nomatch","args":["-y","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-y-v","args":["-y","-v","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-y-i","args":["-y","-i","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-y-H-b","args":["-y","-H","-b","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-y-o","args":["-y","-o","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-y-max","args":["-y","-m1","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-y-multi","args":["-J1","-y","-H","foo","a.txt","b.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n","b.txt":"x\nfoo\n"}}
+{"id":"gseam-y-crlf","args":["-y","foo","a.txt"],"files":{"a.txt":"foo one\r\nbar two\r\nfoo three\r\n"}}
+{"id":"gseam-y-nonl","args":["-y","foo","a.txt"],"files":{"a.txt":"foo bar\nfoo last"}}
+{"id":"gseam-y-long","args":["-y","-n","foo","a.txt"],"files":{"a.txt":"line 1 xyz\nline 2 xyz\nline 3 foo\nline 4 xyz\nline 5 xyz\nline 6 foo\nline 7 xyz\nline 8 xyz\nline 9 foo\nline 10 xyz\nline 11 xyz\nline 12 foo\nline 13 xyz\nline 14 xyz\nline 15 foo\nline 16 xyz\nline 17 xyz\nline 18 foo\nline 19 xyz\nline 20 xyz\nline 21 foo\nline 22 xyz\nline 23 xyz\nline 24 foo\nline 25 xyz\nline 26 xyz\nline 27 foo\nline 28 xyz\nline 29 xyz\nline 30 foo\nline 31 xyz\nline 32 xyz\nline 33 foo\nline 34 xyz\nline 35 xyz\nline 36 foo\nline 37 xyz\nline 38 xyz\nline 39 foo\nline 40 xyz\n"}}
+{"id":"gseam-y-binary","args":["-y","-a","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-y-format","args":["-y","--format=%n:%O%~","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-y-empty","args":["-y","foo","a.txt"],"files":{"a.txt":""}}
+{"id":"gseam-ctx-A1","args":["-A1","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctx-B1","args":["-B1","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctx-C1","args":["-C1","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctx-C1-n","args":["-C1","-n","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctx-A2-B1","args":["-A2","-B1","-n","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctx-C2-long","args":["-C2","-n","foo","a.txt"],"files":{"a.txt":"line 1 xyz\nline 2 xyz\nline 3 foo\nline 4 xyz\nline 5 xyz\nline 6 foo\nline 7 xyz\nline 8 xyz\nline 9 foo\nline 10 xyz\nline 11 xyz\nline 12 foo\nline 13 xyz\nline 14 xyz\nline 15 foo\nline 16 xyz\nline 17 xyz\nline 18 foo\nline 19 xyz\nline 20 xyz\nline 21 foo\nline 22 xyz\nline 23 xyz\nline 24 foo\nline 25 xyz\nline 26 xyz\nline 27 foo\nline 28 xyz\nline 29 xyz\nline 30 foo\nline 31 xyz\nline 32 xyz\nline 33 foo\nline 34 xyz\nline 35 xyz\nline 36 foo\nline 37 xyz\nline 38 xyz\nline 39 foo\nline 40 xyz\n"}}
+{"id":"gseam-ctx-A3-long","args":["-A3","-n","foo","a.txt"],"files":{"a.txt":"line 1 xyz\nline 2 xyz\nline 3 foo\nline 4 xyz\nline 5 xyz\nline 6 foo\nline 7 xyz\nline 8 xyz\nline 9 foo\nline 10 xyz\nline 11 xyz\nline 12 foo\nline 13 xyz\nline 14 xyz\nline 15 foo\nline 16 xyz\nline 17 xyz\nline 18 foo\nline 19 xyz\nline 20 xyz\nline 21 foo\nline 22 xyz\nline 23 xyz\nline 24 foo\nline 25 xyz\nline 26 xyz\nline 27 foo\nline 28 xyz\nline 29 xyz\nline 30 foo\nline 31 xyz\nline 32 xyz\nline 33 foo\nline 34 xyz\nline 35 xyz\nline 36 foo\nline 37 xyz\nline 38 xyz\nline 39 foo\nline 40 xyz\n"}}
+{"id":"gseam-ctx-B3-long","args":["-B3","-n","foo","a.txt"],"files":{"a.txt":"line 1 xyz\nline 2 xyz\nline 3 foo\nline 4 xyz\nline 5 xyz\nline 6 foo\nline 7 xyz\nline 8 xyz\nline 9 foo\nline 10 xyz\nline 11 xyz\nline 12 foo\nline 13 xyz\nline 14 xyz\nline 15 foo\nline 16 xyz\nline 17 xyz\nline 18 foo\nline 19 xyz\nline 20 xyz\nline 21 foo\nline 22 xyz\nline 23 xyz\nline 24 foo\nline 25 xyz\nline 26 xyz\nline 27 foo\nline 28 xyz\nline 29 xyz\nline 30 foo\nline 31 xyz\nline 32 xyz\nline 33 foo\nline 34 xyz\nline 35 xyz\nline 36 foo\nline 37 xyz\nline 38 xyz\nline 39 foo\nline 40 xyz\n"}}
+{"id":"gseam-ctx-color","args":["-C1","--color=always","-n","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctx-H-b","args":["-C1","-H","-b","-n","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctx-group","args":["-C1","--group-separator=##","-n","foo","a.txt"],"files":{"a.txt":"line 1 xyz\nline 2 xyz\nline 3 foo\nline 4 xyz\nline 5 xyz\nline 6 foo\nline 7 xyz\nline 8 xyz\nline 9 foo\nline 10 xyz\nline 11 xyz\nline 12 foo\nline 13 xyz\nline 14 xyz\nline 15 foo\nline 16 xyz\nline 17 xyz\nline 18 foo\nline 19 xyz\nline 20 xyz\nline 21 foo\nline 22 xyz\nline 23 xyz\nline 24 foo\nline 25 xyz\nline 26 xyz\nline 27 foo\nline 28 xyz\nline 29 xyz\nline 30 foo\nline 31 xyz\nline 32 xyz\nline 33 foo\nline 34 xyz\nline 35 xyz\nline 36 foo\nline 37 xyz\nline 38 xyz\nline 39 foo\nline 40 xyz\n"}}
+{"id":"gseam-ctx-no-group","args":["-C1","--no-group-separator","-n","foo","a.txt"],"files":{"a.txt":"line 1 xyz\nline 2 xyz\nline 3 foo\nline 4 xyz\nline 5 xyz\nline 6 foo\nline 7 xyz\nline 8 xyz\nline 9 foo\nline 10 xyz\nline 11 xyz\nline 12 foo\nline 13 xyz\nline 14 xyz\nline 15 foo\nline 16 xyz\nline 17 xyz\nline 18 foo\nline 19 xyz\nline 20 xyz\nline 21 foo\nline 22 xyz\nline 23 xyz\nline 24 foo\nline 25 xyz\nline 26 xyz\nline 27 foo\nline 28 xyz\nline 29 xyz\nline 30 foo\nline 31 xyz\nline 32 xyz\nline 33 foo\nline 34 xyz\nline 35 xyz\nline 36 foo\nline 37 xyz\nline 38 xyz\nline 39 foo\nline 40 xyz\n"}}
+{"id":"gseam-ctx-max","args":["-C1","-m2","-n","foo","a.txt"],"files":{"a.txt":"line 1 xyz\nline 2 xyz\nline 3 foo\nline 4 xyz\nline 5 xyz\nline 6 foo\nline 7 xyz\nline 8 xyz\nline 9 foo\nline 10 xyz\nline 11 xyz\nline 12 foo\nline 13 xyz\nline 14 xyz\nline 15 foo\nline 16 xyz\nline 17 xyz\nline 18 foo\nline 19 xyz\nline 20 xyz\nline 21 foo\nline 22 xyz\nline 23 xyz\nline 24 foo\nline 25 xyz\nline 26 xyz\nline 27 foo\nline 28 xyz\nline 29 xyz\nline 30 foo\nline 31 xyz\nline 32 xyz\nline 33 foo\nline 34 xyz\nline 35 xyz\nline 36 foo\nline 37 xyz\nline 38 xyz\nline 39 foo\nline 40 xyz\n"}}
+{"id":"gseam-ctx-nomatch","args":["-C1","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctx-multi","args":["-J1","-C1","-H","foo","a.txt","b.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n","b.txt":"x\nfoo\ny\n"}}
+{"id":"gseam-ctx-crlf","args":["-C1","foo","a.txt"],"files":{"a.txt":"foo one\r\nbar two\r\nfoo three\r\n"}}
+{"id":"gseam-ctx-nonl","args":["-C1","foo","a.txt"],"files":{"a.txt":"foo bar\nfoo last"}}
+{"id":"gseam-ctx-binary","args":["-C1","-a","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-ctx-i","args":["-C1","-i","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctx-w","args":["-C1","-w","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctx-fixed","args":["-C1","-F","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctx-pcre","args":["-C1","-P","fo+\\b","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctx-json","args":["-C1","--json","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctx-tabs","args":["-C1","-T","-n","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctx-heading","args":["-J1","-C1","--heading","-n","foo","a.txt","b.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n","b.txt":"x\nfoo\ny\n"}}
+{"id":"gseam-ctxv-A1","args":["-v","-A1","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctxv-B1","args":["-v","-B1","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctxv-C1","args":["-v","-C1","-n","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctxv-C2-long","args":["-v","-C2","-n","foo","a.txt"],"files":{"a.txt":"line 1 xyz\nline 2 xyz\nline 3 foo\nline 4 xyz\nline 5 xyz\nline 6 foo\nline 7 xyz\nline 8 xyz\nline 9 foo\nline 10 xyz\nline 11 xyz\nline 12 foo\nline 13 xyz\nline 14 xyz\nline 15 foo\nline 16 xyz\nline 17 xyz\nline 18 foo\nline 19 xyz\nline 20 xyz\nline 21 foo\nline 22 xyz\nline 23 xyz\nline 24 foo\nline 25 xyz\nline 26 xyz\nline 27 foo\nline 28 xyz\nline 29 xyz\nline 30 foo\nline 31 xyz\nline 32 xyz\nline 33 foo\nline 34 xyz\nline 35 xyz\nline 36 foo\nline 37 xyz\nline 38 xyz\nline 39 foo\nline 40 xyz\n"}}
+{"id":"gseam-ctxv-A2-B1","args":["-v","-A2","-B1","-n","bar","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctxv-color","args":["-v","-C1","--color=always","-n","foo","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctxv-max","args":["-v","-C1","-m2","-n","foo","a.txt"],"files":{"a.txt":"line 1 xyz\nline 2 xyz\nline 3 foo\nline 4 xyz\nline 5 xyz\nline 6 foo\nline 7 xyz\nline 8 xyz\nline 9 foo\nline 10 xyz\nline 11 xyz\nline 12 foo\nline 13 xyz\nline 14 xyz\nline 15 foo\nline 16 xyz\nline 17 xyz\nline 18 foo\nline 19 xyz\nline 20 xyz\nline 21 foo\nline 22 xyz\nline 23 xyz\nline 24 foo\nline 25 xyz\nline 26 xyz\nline 27 foo\nline 28 xyz\nline 29 xyz\nline 30 foo\nline 31 xyz\nline 32 xyz\nline 33 foo\nline 34 xyz\nline 35 xyz\nline 36 foo\nline 37 xyz\nline 38 xyz\nline 39 foo\nline 40 xyz\n"}}
+{"id":"gseam-ctxv-multi","args":["-J1","-v","-C1","-H","foo","a.txt","b.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n","b.txt":"foo\nzzz\nfoo\n"}}
+{"id":"gseam-ctxv-nomatch","args":["-v","-C1","zzz","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctxv-allmatch","args":["-v","-C1","-e",".","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-ctxv-crlf","args":["-v","-C1","foo","a.txt"],"files":{"a.txt":"foo one\r\nbar two\r\nfoo three\r\n"}}
+{"id":"gseam-ctxv-nonl","args":["-v","-C1","bar","a.txt"],"files":{"a.txt":"foo bar\nfoo last"}}
+{"id":"gseam-ctxv-binary","args":["-v","-C1","-a","foo","b.bin"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-ctxv-group","args":["-v","-C1","--group-separator=##","-n","xyz","a.txt"],"files":{"a.txt":"line 1 xyz\nline 2 xyz\nline 3 foo\nline 4 xyz\nline 5 xyz\nline 6 foo\nline 7 xyz\nline 8 xyz\nline 9 foo\nline 10 xyz\nline 11 xyz\nline 12 foo\nline 13 xyz\nline 14 xyz\nline 15 foo\nline 16 xyz\nline 17 xyz\nline 18 foo\nline 19 xyz\nline 20 xyz\nline 21 foo\nline 22 xyz\nline 23 xyz\nline 24 foo\nline 25 xyz\nline 26 xyz\nline 27 foo\nline 28 xyz\nline 29 xyz\nline 30 foo\nline 31 xyz\nline 32 xyz\nline 33 foo\nline 34 xyz\nline 35 xyz\nline 36 foo\nline 37 xyz\nline 38 xyz\nline 39 foo\nline 40 xyz\n"}}
+{"id":"gseam-ctxv-heading","args":["-J1","-v","-C1","--heading","-n","foo","a.txt","b.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n","b.txt":"foo\nzzz\nfoo\n"}}
+{"id":"gseam-multi-r","args":["-r","--sort=name","-J1","foo","d"],"files":{"d/a.txt":"foo in a\nother\nfoo again\n","d/b.txt":"nothing here\nat all\n","d/c.txt":"bar\nfoo in c\n","d/sub/e.txt":"foo deep\nbar deep\n"}}
+{"id":"gseam-multi-r-n","args":["-r","--sort=name","-J1","-n","-H","foo","d"],"files":{"d/a.txt":"foo in a\nother\nfoo again\n","d/b.txt":"nothing here\nat all\n","d/c.txt":"bar\nfoo in c\n","d/sub/e.txt":"foo deep\nbar deep\n"}}
+{"id":"gseam-multi-r-c","args":["-r","--sort=name","-J1","-c","foo","d"],"files":{"d/a.txt":"foo in a\nother\nfoo again\n","d/b.txt":"nothing here\nat all\n","d/c.txt":"bar\nfoo in c\n","d/sub/e.txt":"foo deep\nbar deep\n"}}
+{"id":"gseam-multi-r-l","args":["-r","--sort=name","-J1","-l","foo","d"],"files":{"d/a.txt":"foo in a\nother\nfoo again\n","d/b.txt":"nothing here\nat all\n","d/c.txt":"bar\nfoo in c\n","d/sub/e.txt":"foo deep\nbar deep\n"}}
+{"id":"gseam-multi-r-L","args":["-r","--sort=name","-J1","-L","foo","d"],"files":{"d/a.txt":"foo in a\nother\nfoo again\n","d/b.txt":"nothing here\nat all\n","d/c.txt":"bar\nfoo in c\n","d/sub/e.txt":"foo deep\nbar deep\n"}}
+{"id":"gseam-multi-r-o","args":["-r","--sort=name","-J1","-o","foo","d"],"files":{"d/a.txt":"foo in a\nother\nfoo again\n","d/b.txt":"nothing here\nat all\n","d/c.txt":"bar\nfoo in c\n","d/sub/e.txt":"foo deep\nbar deep\n"}}
+{"id":"gseam-multi-r-v","args":["-r","--sort=name","-J1","-v","foo","d"],"files":{"d/a.txt":"foo in a\nother\nfoo again\n","d/b.txt":"nothing here\nat all\n","d/c.txt":"bar\nfoo in c\n","d/sub/e.txt":"foo deep\nbar deep\n"}}
+{"id":"gseam-multi-r-y","args":["-r","--sort=name","-J1","-y","foo","d"],"files":{"d/a.txt":"foo in a\nother\nfoo again\n","d/b.txt":"nothing here\nat all\n","d/c.txt":"bar\nfoo in c\n","d/sub/e.txt":"foo deep\nbar deep\n"}}
+{"id":"gseam-multi-r-C1","args":["-r","--sort=name","-J1","-C1","foo","d"],"files":{"d/a.txt":"foo in a\nother\nfoo again\n","d/b.txt":"nothing here\nat all\n","d/c.txt":"bar\nfoo in c\n","d/sub/e.txt":"foo deep\nbar deep\n"}}
+{"id":"gseam-multi-r-heading","args":["-r","--sort=name","-J1","--heading","foo","d"],"files":{"d/a.txt":"foo in a\nother\nfoo again\n","d/b.txt":"nothing here\nat all\n","d/c.txt":"bar\nfoo in c\n","d/sub/e.txt":"foo deep\nbar deep\n"}}
+{"id":"gseam-multi-r-format","args":["-r","--sort=name","-J1","--format=%f:%n:%O%~","foo","d"],"files":{"d/a.txt":"foo in a\nother\nfoo again\n","d/b.txt":"nothing here\nat all\n","d/c.txt":"bar\nfoo in c\n","d/sub/e.txt":"foo deep\nbar deep\n"}}
+{"id":"gseam-multi-r-hex","args":["-r","--sort=name","-J1","--hex","foo","d"],"files":{"d/a.txt":"foo in a\nother\nfoo again\n","d/b.txt":"nothing here\nat all\n","d/c.txt":"bar\nfoo in c\n","d/sub/e.txt":"foo deep\nbar deep\n","d/z.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-multi-r-q","args":["-r","--sort=name","-J1","-q","foo","d"],"files":{"d/a.txt":"foo in a\nother\nfoo again\n","d/b.txt":"nothing here\nat all\n","d/c.txt":"bar\nfoo in c\n","d/sub/e.txt":"foo deep\nbar deep\n"}}
+{"id":"gseam-multi-r-tree","args":["-r","--sort=name","-J1","--tree","-n","foo","d"],"files":{"d/a.txt":"foo in a\nother\nfoo again\n","d/b.txt":"nothing here\nat all\n","d/c.txt":"bar\nfoo in c\n","d/sub/e.txt":"foo deep\nbar deep\n"}}
+{"id":"gseam-multi-r-include","args":["-r","--sort=name","-J1","--include=*.txt","-l","foo","d"],"files":{"d/a.txt":"foo in a\nother\nfoo again\n","d/b.txt":"nothing here\nat all\n","d/c.txt":"bar\nfoo in c\n","d/sub/e.txt":"foo deep\nbar deep\n","d/x.md":"foo\n"}}
+{"id":"gseam-multi-r-max-files","args":["-r","--sort=name","-J1","-m1","-c","foo","d"],"files":{"d/a.txt":"foo in a\nother\nfoo again\n","d/b.txt":"nothing here\nat all\n","d/c.txt":"bar\nfoo in c\n","d/sub/e.txt":"foo deep\nbar deep\n"}}
+{"id":"gseam-multi-r-binary-mixed","args":["-r","--sort=name","-J1","foo","d"],"files":{"d/a.txt":"foo in a\nother\nfoo again\n","d/b.txt":"nothing here\nat all\n","d/c.txt":"bar\nfoo in c\n","d/sub/e.txt":"foo deep\nbar deep\n","d/z.bin":{"hex":"666f6f00626172000a666f6f0a"}}}
+{"id":"gseam-multi-r-j2-sorted","args":["-r","--sort=name","-j2","-c","foo","d"],"files":{"d/a.txt":"foo in a\nother\nfoo again\n","d/b.txt":"nothing here\nat all\n","d/c.txt":"bar\nfoo in c\n","d/sub/e.txt":"foo deep\nbar deep\n"}}
+{"id":"gseam-multi-files-bin-text","args":["-J1","-H","foo","b.bin","a.txt","c.txt"],"files":{"b.bin":{"hex":"666f6f00626172000a666f6f0a"},"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n","c.txt":"foo\n"}}
+{"id":"gseam-multi-files-nomatch","args":["-J1","-H","zzz","a.txt","b.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n","b.txt":"x\n"}}
+{"id":"gseam-multi-files-stdin","args":["-J1","foo","-","a.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"},"stdin":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}
+{"id":"gseam-multi-files-missing","args":["-J1","foo","a.txt","missing.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
+{"id":"gseam-multi-files-ctx-sep","args":["-J1","-C1","foo","a.txt","b.txt"],"files":{"a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n","b.txt":"x\nfoo\ny\n"}}
+{"id":"gseam-multi-files-dirs-skip","args":["-J1","-d","skip","foo","d","a.txt"],"files":{"d/a.txt":"foo in a\nother\nfoo again\n","d/b.txt":"nothing here\nat all\n","d/c.txt":"bar\nfoo in c\n","d/sub/e.txt":"foo deep\nbar deep\n","a.txt":"foo bar\nbar foo\nfoo\nbar\nbaz qux\nFoo Bar\nfoobar\nlast line without match\n"}}
