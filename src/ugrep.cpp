@@ -3057,15 +3057,7 @@ struct Grep {
 #if defined(HAVE_LIBZ) && defined(WITH_DECOMPRESSION_THREAD)
       if (zthread_active)
       {
-        FILE *held = grep.input.file();
-        if (held != NULL)
-        {
-          detach_matchers(held);
-          if (input_owned && held != stdin && held != Static::source && held != grep.file_in)
-            fclose(held);
-        }
-        grep.input.clear();
-        input_owned = false;
+        close_held_input();
         grep.zthread.cancel();
         const char *path = path_slot != NULL ? path_slot : "";
         for (FILE *pipe = grep.zthread.open_next(path); pipe != NULL; pipe = grep.zthread.open_next(path))
@@ -3076,6 +3068,21 @@ struct Grep {
         zthread_active = false;
       }
 #endif
+    }
+
+    // close the stream that Grep::input holds when the facade owns it (a pipe of the decompression thread), detach the
+    // matchers that read it and clear the input: a thread blocked writing to an unread pipe is only woken this way
+    void close_held_input()
+    {
+      FILE *held = grep.input.file();
+      if (held != NULL)
+      {
+        detach_matchers(held);
+        if (input_owned && held != stdin && held != Static::source && held != grep.file_in)
+          fclose(held);
+      }
+      grep.input.clear();
+      input_owned = false;
     }
 
     // Grep::input takes over the pipe of zthread start/open_next: the pipe stays in C++ and is closed by close_input_file
@@ -3875,6 +3882,9 @@ struct Grep {
         return G(c, [&]() -> int
         {
           SeamFacade& f = F(c);
+          // as close_file: the previous part's pipe is closed before open_next waits for the thread, which may be
+          // blocked writing to it
+          f.close_held_input();
           return f.install_pipe(f.grep.zthread.open_next(path), encoding);
         });
       };

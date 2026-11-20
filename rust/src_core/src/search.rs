@@ -807,7 +807,9 @@ pub trait GrepHost {
     /// [`GrepHost::close_file_in`]); a NULL `file_in` is an error of the exception channel. `&mut self`: no [`FileRef`]
     /// of `input_file` is alive.
     fn zthread_start(&mut self, ztstage: usize, pathname: &[u8], find: Option<&[u8]>, encoding: i32) -> bool;
-    /// `Grep::zthread.open_next(pathname)`: as `zthread_start`, true when the next pipe is now `Grep::input`.
+    /// `Grep::zthread.open_next(pathname)`: as `zthread_start`, true when the next pipe is now `Grep::input`. The host
+    /// first closes the previous part's pipe that `Grep::input` holds (as `close_file` does before `open_next`), so the
+    /// thread blocked writing to it is released and the wait for the next part cannot hang.
     fn zthread_open_next(&mut self, pathname: &[u8], encoding: i32) -> bool;
     /// `Grep::zthread.cancel()`.
     fn zthread_cancel(&self);

@@ -262,6 +262,7 @@ typedef struct ugrep_core_search_env {
     // find may be NULL; a NULL file_in is an error of the exception channel.
     // Without HAVE_LIBZ the facade fills stubs (0 / no-op), never NULL slots; the Rust side takes Option as well
     int (*zthread_start)(void *ctx, size_t ztstage, const char *pathname, const char *find, int encoding);
+    // open_next first closes the owned pipe that Grep::input holds (the previous part), as close_file does
     int (*zthread_open_next)(void *ctx, const char *pathname, int encoding);
   void (*zthread_cancel)(void *ctx);
   // the CNF of Grep::matchers (a list of lists of matchers, an element may be NULL): number of alternatives of term
