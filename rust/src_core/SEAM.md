@@ -562,8 +562,11 @@ handle against a fake matcher through the table; the header pins enum last value
   signatures-only harness still builds. The table reaches Rust through the C entry `ugrep_core_matcher_handle_new(const ugrep_core_matcher_table *)`
   (`ffi/search_host.rs`, declared in `src/search_seam.h`, a typed pointer, no `usize`) and goes away with `ugrep_core_matcher_handle_free`.
 - **One handle per C++ matcher:** the `lent` guard of `with_bytes` and the Rust handler slot live in the handle, so they only protect the matcher if no
-  second handle exists for it. The facade keeps one cached handle per matcher (`Grep::matcher`, each `matchers->at(i)`), and `with_bytes` is therefore
-  `unsafe fn`: its contract is "the only handle, no matcher call while the closure runs". `bytes_to_vec` copies immediately and is safe.
+  second handle exists for it. `Grep::matcher` gets one handle from `ugrep_core_matcher_handle_new`, but `GrepHost::matchers_matcher(i)` builds a
+  new handle on every call, so a branch must not hold two handles on one matcher while it uses `with_bytes`. `with_bytes` is therefore `unsafe fn`:
+  its contract is "the only handle, no matcher call while the closure runs". `bytes_to_vec` copies immediately and is safe: `bytes` returns NULL
+  outside the buffer and Rust aborts on NULL. `raw::new_handle` (the only constructor of a handle) and the shift trampoline are `unsafe fn` in `ffi/`, so no safe code builds a handle from
+  an arbitrary table or calls the trampoline with an arbitrary pointer.
 - **Re-entrancy:** a shift event arrives inside `find`, `next_match` or `eol(true)` through the trampoline into `dispatch_shift`, which only borrows the
   handler slot; a handler that replaces itself while running is skipped, not aliased.
 

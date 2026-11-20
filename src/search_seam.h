@@ -129,7 +129,8 @@ typedef struct ugrep_core_matcher_table {
   void (*after)(void *ctx, ugrep_core_buf_context *out);
   size_t (*bef)(void *ctx, size_t len);
   size_t (*aft)(void *ctx, size_t len);
-  // buf_ + offset, len readable bytes, valid until the next call into the matcher
+  // buf_ + offset, len readable bytes, valid until the next call into the matcher; NULL unless [offset, offset + len)
+  // lies inside the buffer (Rust aborts on NULL rather than read outside it)
   const unsigned char *(*bytes)(void *ctx, size_t offset, size_t len);
   void (*set_reserve)(void *ctx, size_t size);
   void (*fuzzy_distance)(void *ctx, unsigned short max);

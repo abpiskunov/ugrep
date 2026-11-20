@@ -4,10 +4,22 @@
 //! it came from (`src/search_seam.h`), stated at each function. Declared from `search.rs` with `#[path]`, so the
 //! signatures-only harness builds it as well.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
 
 use super::{dispatch_shift, HandlerSlot, MatcherHandle, MatcherTable, ShiftEvent};
+
+/// The Rust shift handler the C++ trampoline handler calls for every buffer-shift event (`ugrep_core_shift_fn`).
+pub type ShiftFn = unsafe extern "C" fn(user: *mut c_void, len: usize, num: usize, buf: *const u8);
+
+/// A handle that calls the C++ matcher through `table`.
+///
+/// # Safety
+/// Every entry of `table` must honour `src/search_seam.h` for as long as the handle lives: `ctx` stays valid, and
+/// `bytes` returns either NULL or `len` bytes inside the matcher buffer. The safe methods of the handle rely on it.
+pub(crate) unsafe fn new_handle(table: MatcherTable) -> MatcherHandle {
+    MatcherHandle { table, handler: Box::new(RefCell::new(None)), lent: Cell::new(false) }
+}
 
 /// `len` bytes at `ptr` as a slice (empty for a NULL pointer or a zero length).
 ///
@@ -58,6 +70,7 @@ pub unsafe fn with_bytes<R>(handle: &MatcherHandle, offset: usize, len: usize, f
     }
     let t = handle.t();
     let ptr = (t.bytes)(t.ctx, offset, len);
+    assert!(!ptr.is_null(), "Grep seam: bytes {offset}+{len} lie outside the matcher buffer");
     handle.lent.set(true);
     let _lent = Lent(&handle.lent);
     // SAFETY: the callback returned `len` readable bytes; they stay valid until the next call into the matcher, and
@@ -68,13 +81,18 @@ pub unsafe fn with_bytes<R>(handle: &MatcherHandle, offset: usize, len: usize, f
 /// An owned copy of the matcher buffer bytes `buf_[offset..offset + len]`; nothing borrowed survives the call.
 pub(crate) fn copy_bytes(t: &MatcherTable, offset: usize, len: usize) -> Vec<u8> {
     let ptr = (t.bytes)(t.ctx, offset, len);
-    // SAFETY: the callback just returned `len` readable bytes and the copy is made before anything else runs.
+    assert!(!ptr.is_null(), "Grep seam: bytes {offset}+{len} lie outside the matcher buffer");
+    // SAFETY: a non-NULL result of `bytes` is `len` bytes inside the matcher buffer (`new_handle` contract),
+    // and the copy is made before anything else runs.
     unsafe { bytes(ptr, len) }.to_vec()
 }
 
 /// The C function that the C++ matcher's registered trampoline calls for a buffer-shift event; `user` is the handler
 /// slot address given to `set_rust_handler`, `buf` and `len` the text about to leave the buffer, `num` its lines.
-pub(crate) extern "C" fn rust_shift_trampoline(user: *mut c_void, len: usize, num: usize, buf: *const u8) {
+///
+/// # Safety
+/// `user` must be the slot address from [`slot_user`] of a live handle, and `buf` must point to `len` readable bytes.
+pub(crate) unsafe extern "C" fn rust_shift_trampoline(user: *mut c_void, len: usize, num: usize, buf: *const u8) {
     // SAFETY: `user` is the address of the boxed `HandlerSlot` of a live `MatcherHandle`, which unregisters the
     // trampoline from the matcher before the slot is dropped; the matcher passes `len` readable bytes valid for this
     // call.
@@ -105,6 +123,16 @@ pub(crate) mod fake {
     pub(crate) fn write_value<T>(ptr: *mut T, value: T) {
         // SAFETY: the tests pass the address of a `T` that is valid for the write.
         unsafe { ptr.write(value) }
+    }
+
+    pub(crate) fn handle(table: MatcherTable) -> MatcherHandle {
+        // SAFETY: the fake tables of the tests honour the header for as long as their fake matcher lives.
+        unsafe { new_handle(table) }
+    }
+
+    pub(crate) fn call_shift(shift: ShiftFn, user: *mut c_void, len: usize, num: usize, buf: *const u8) {
+        // SAFETY: the fake passes the slot address it was registered with and its own buffer.
+        unsafe { shift(user, len, num, buf) }
     }
 
     pub(crate) fn with_bytes<R>(handle: &MatcherHandle, offset: usize, len: usize, f: impl FnOnce(&[u8]) -> R) -> R {

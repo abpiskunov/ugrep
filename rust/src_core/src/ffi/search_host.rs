@@ -312,8 +312,9 @@ impl GrepHost for CHost {
     fn matchers_matcher(&self, index: usize) -> Option<MatcherHandle> {
         let mut table = std::mem::MaybeUninit::<MatcherTable>::uninit();
         if (self.0.matchers_matcher)(self.0.ctx, index, table.as_mut_ptr()) != 0 {
-            // SAFETY: a nonzero return means the callback filled the whole table.
-            Some(MatcherHandle::new(unsafe { table.assume_init() }))
+            // SAFETY: a nonzero return means the callback filled the whole table, and the C++ facade's table honours
+            // `src/search_seam.h` while the matcher lives.
+            Some(unsafe { crate::signatures::search::raw::new_handle(table.assume_init()) })
         } else {
             None
         }
@@ -416,12 +417,14 @@ pub unsafe extern "C" fn ugrep_core_search_set_host(ctx: *const SearchContext, e
 /// [`ugrep_core_matcher_handle_free`]. There is one handle per C++ matcher (SEAM.md, "Matcher callback table").
 ///
 /// # Safety
-/// `table` must point to a fully filled `ugrep_core_matcher_table` (`src/search_seam.h`).
+/// `table` must point to a fully filled `ugrep_core_matcher_table` whose entries honour `src/search_seam.h` for as
+/// long as the handle lives.
 #[no_mangle]
 pub unsafe extern "C" fn ugrep_core_matcher_handle_new(table: *const MatcherTable) -> *mut MatcherHandle {
     // SAFETY: the caller guarantees `table` points to a filled table.
     let table = unsafe { crate::signatures::search::raw::read(table) };
-    Box::into_raw(Box::new(MatcherHandle::new(table)))
+    // SAFETY: the caller's table honours `src/search_seam.h` (this function's contract).
+    Box::into_raw(Box::new(unsafe { crate::signatures::search::raw::new_handle(table) }))
 }
 
 /// Free a handle of [`ugrep_core_matcher_handle_new`]; this unregisters a Rust shift handler from the matcher first.

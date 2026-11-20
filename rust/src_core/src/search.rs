@@ -131,7 +131,7 @@ pub trait ShiftHandler {
 
 /// The callback that the registered Rust handler receives its events through: `user` is the handler slot of the handle,
 /// `buf` and `len` the text about to leave the buffer, `num` its number of lines. Mirrors `ugrep_core_shift_fn`.
-pub type ShiftFn = extern "C" fn(user: *mut c_void, len: usize, num: usize, buf: *const u8);
+pub use raw::ShiftFn;
 
 /// The matcher callback table: how Rust calls the C++ matcher. Mirrors `struct ugrep_core_matcher_table` of
 /// `src/search_seam.h` field for field (every field is one word; the layout is pinned by tests there and here). The C++
@@ -220,11 +220,6 @@ impl Drop for MatcherHandle {
 }
 
 impl MatcherHandle {
-    /// A handle that calls the C++ matcher through `table`.
-    pub fn new(table: MatcherTable) -> MatcherHandle {
-        MatcherHandle { table, handler: Box::new(RefCell::new(None)), lent: Cell::new(false) }
-    }
-
     fn t(&self) -> &MatcherTable {
         assert!(!self.lent.get(), "Grep seam: matcher called while its buffer is lent by with_bytes");
         &self.table
@@ -861,7 +856,7 @@ mod tests {
             let m = f(ctx);
             m.calls.borrow_mut().push("find");
             if let Some(shift) = m.shift.get() {
-                shift(m.user.get(), m.buf.len(), 2, m.buf.as_ptr());
+                raw::fake::call_shift(shift, m.user.get(), m.buf.len(), 2, m.buf.as_ptr());
             }
             m.pos.set(m.pos.get() + 1);
             (m.pos.get() < 3) as c_int
@@ -913,7 +908,7 @@ mod tests {
             let m = f(ctx);
             let c = raw::fake::read_value(context);
             if let Some(shift) = m.shift.get() {
-                shift(m.user.get(), c.len, c.num, m.buf.as_ptr());
+                raw::fake::call_shift(shift, m.user.get(), c.len, c.num, m.buf.as_ptr());
             }
         }
         extern "C" fn reset(ctx: *mut c_void) {
@@ -974,7 +969,7 @@ mod tests {
     #[test]
     fn handle_calls_through_the_table() {
         let m = fake();
-        let h = MatcherHandle::new(fake::table(&m, MatcherKind::FUZZY));
+        let h = raw::fake::handle(fake::table(&m, MatcherKind::FUZZY));
         assert_eq!(h.kind(), MatcherKind::FUZZY);
         assert!(h.find());
         assert!(h.find());
@@ -994,7 +989,7 @@ mod tests {
     #[should_panic(expected = "lent by with_bytes")]
     fn matcher_is_not_callable_while_bytes_are_lent() {
         let m = fake();
-        let h = MatcherHandle::new(fake::table(&m, MatcherKind::REFLEX));
+        let h = raw::fake::handle(fake::table(&m, MatcherKind::REFLEX));
         raw::fake::with_bytes(&h, 0, 3, |_| h.find());
     }
 
@@ -1011,7 +1006,7 @@ mod tests {
     #[test]
     fn rust_handler_gets_events_until_reset() {
         let m = fake();
-        let h = MatcherHandle::new(fake::table(&m, MatcherKind::REFLEX));
+        let h = raw::fake::handle(fake::table(&m, MatcherKind::REFLEX));
         let seen = std::rc::Rc::new(RefCell::new(Vec::new()));
         h.set_rust_handler(Box::new(Recorder(seen.clone())));
         h.find();
@@ -1030,7 +1025,7 @@ mod tests {
     fn dropping_the_handle_unregisters_the_rust_handler() {
         let m = fake();
         {
-            let h = MatcherHandle::new(fake::table(&m, MatcherKind::LINE));
+            let h = raw::fake::handle(fake::table(&m, MatcherKind::LINE));
             h.set_rust_handler(Box::new(Recorder(Default::default())));
         }
         assert!(m.shift.get().is_none());
