@@ -397,6 +397,9 @@ impl MatcherHandle {
     /// Copy of the bytes `buf_[offset..offset + len]` of the matcher buffer. Owned, so a later `find` cannot invalidate
     /// it; the copy is the cost of soundness on the hot path, [`raw::with_bytes`] is the zero-copy (unsafe) form.
     pub fn bytes_to_vec(&self, offset: usize, len: usize) -> Bytes {
+        if len == 0 {
+            return Bytes::new();
+        }
         raw::copy_bytes(self, offset, len)
     }
 
@@ -654,6 +657,8 @@ pub struct GrepFlags {
     pub color_cn: Bytes,
     pub match_ms: Bytes,
     pub match_off: Bytes,
+    /// `match_mc` (S4c-5, additive like `match_ms`): the match color of `-y -v`.
+    pub match_mc: Bytes,
 }
 
 /// The callback interface of the Grep seam: everything a search branch uses of the C++ `Grep` object, its `Output`,
@@ -949,7 +954,7 @@ impl SearchContext {
 /// `any_line`) and S4c-6 (`context`, `context_invert`, `epilogue`); see SEAM.md. They
 /// take the context and the matcher handle; what they need of the C++ `Grep` is reached through [`GrepHost`] of `ctx`.
 pub mod branch {
-    use super::{file, CnfResult, GrepHost, HandlerKind, MatcherHandle, RestlineData, SearchContext, SearchStep, HEX_MATCH};
+    use super::{file, CnfResult, GrepHost, HandlerKind, MatcherHandle, RestlineData, SearchContext, SearchStep, HEX_CONTEXT_LINE, HEX_CONTEXT_MATCH, HEX_LINE, HEX_MATCH};
 
     /// `Grep::matches` and `Grep::lineno` of a branch that does not register a shift handler: the branch counts in locals
     /// (no host call per match) and stores them back on every way out, so the members hold what the C++ left in them.
@@ -2054,18 +2059,994 @@ pub mod branch {
     }
 
     /// `Grep::search_plain`: plain matches and `--hex`.
-    pub fn plain(_ctx: &SearchContext, _matcher: &MatcherHandle) -> SearchStep {
-        panic!("Grep seam: branch::plain is not ported")
+    pub fn plain(ctx: &SearchContext, matcher: &MatcherHandle) -> SearchStep {
+        let mut state = OnlyMatchingState::load(ctx);
+        let step = plain_scan(ctx, matcher, &mut state);
+        state.store(ctx);
+        step
     }
 
-    /// `Grep::search_invert`: `-v`.
-    pub fn invert(_ctx: &SearchContext, _matcher: &MatcherHandle) -> SearchStep {
-        panic!("Grep seam: branch::invert is not ported")
+    /// `check_binary(bol, n)` of the bytes at `offset` of the matcher buffer: copies them only when `-W` needs the check.
+    fn check_binary_at(ctx: &SearchContext, matcher: &MatcherHandle, offset: usize, len: usize) -> bool {
+        let f = ctx.flags();
+        if f.hex {
+            return true;
+        }
+        if !f.with_hex {
+            return false;
+        }
+        let bytes = matcher.bytes_to_vec(offset, len);
+        check_binary(ctx, &bytes)
+    }
+
+    /// Echo a multi-line match line by line: the text up to each `\n` with the match colors, then the header of the
+    /// next line. Returns the offset in `data` of the text after the last `\n`. `next_lineno` gives the line number of
+    /// each header.
+    fn echo_lines(h: &dyn GrepHost, f: &super::GrepFlags, ms: &[u8], data: &[u8], first: usize, mut next_lineno: impl FnMut() -> usize) -> usize {
+        let separator_bar = f.separator_bar.as_deref().unwrap_or_default();
+        let mut from = 0;
+        while let Some(p) = data[from..].iter().position(|&c| c == b'\n') {
+            let to = from + p;
+            h.out_str(ms);
+            h.out_str(&data[from..to]);
+            h.out_str(&f.match_off);
+            h.out_chr(b'\n');
+
+            h.out_header_no_matcher(next_lineno(), first + to + 1, separator_bar);
+
+            from = to + 1;
+        }
+        from
+    }
+
+    /// The rest of a line after its last match when `-u` is set: up to the end of the line, then the newline.
+    fn ungroup_tail(ctx: &SearchContext, matcher: &MatcherHandle, color_sl: &[u8], end: usize, eol: usize) {
+        let f = ctx.flags();
+        if eol > end {
+            let mut rest = matcher.bytes_to_vec(end, eol - end);
+            let lf_only = rest[rest.len() - 1] == b'\n';
+            rest.truncate(rest.len() - usize::from(lf_only));
+            ctx.with_host(|h| {
+                if !rest.is_empty() {
+                    h.out_str(color_sl);
+                    h.out_str(&rest);
+                    h.out_str(&f.color_off);
+                }
+                h.out_nl(lf_only);
+            });
+        } else if matcher.hit_end() {
+            ctx.with_host(|h| h.out_nl(false));
+        } else {
+            ctx.with_host(|h| h.out_check_flush());
+        }
+    }
+
+    /// `restline_data = end; restline_size = eol - end; restline_last = last`.
+    fn set_restline(ctx: &SearchContext, end: usize, eol: usize, last: usize) {
+        ctx.with_host(|h| {
+            h.set_restline_data(RestlineData::Buffer(end));
+            h.set_restline_size(eol.wrapping_sub(end));
+            h.set_restline_last(last);
+        });
+    }
+
+    /// The `--hexdump` context after the match: `right` bytes of the line that follow the last column (`-A`).
+    fn hex_right(f: &super::GrepFlags, last: usize) -> usize {
+        f.hex_after
+            .wrapping_mul(f.hex_columns)
+            .wrapping_sub(last.wrapping_sub(1).checked_rem(f.hex_columns).unwrap_or(0))
+            .wrapping_sub(1)
+    }
+
+    fn plain_scan(ctx: &SearchContext, matcher: &MatcherHandle, s: &mut OnlyMatchingState) -> SearchStep {
+        let f = ctx.flags();
+        let cnf = has_cnf(ctx);
+        let separator = f.separator.as_deref().unwrap_or_default();
+        let columns = f.hex_columns;
+        let hex_context = f.hex_after > 0 || f.hex_before > 0;
+        let colorize = f.color.is_some() || f.replace.is_some() || f.tag.is_some();
+
+        // counter for replace field %m matches
+        let mut replace_matching = 0usize;
+
+        // skip accurate line number counting, only count matching lines
+        if !f.line_number && !f.multiline && f.max_line == 0 && f.stats.is_none() {
+            matcher.lineno_skip(true);
+        }
+
+        // register the event handler to update restline on buffer shift, the matcher resets it when a new input source is
+        // assigned
+        matcher.set_shift_handler(HandlerKind::GREP);
+
+        // --hexdump: keep -B NUM+1 before context times hex column bytes in the buffer when shifting
+        if f.hex_before > 0 {
+            matcher.set_reserve(f.hex_before * columns);
+        }
+
+        // the rest of the matching line
+        ctx.with_host(|h| {
+            h.set_restline_data(RestlineData::None);
+            h.set_restline_size(0);
+            h.set_restline_last(0);
+        });
+
+        while matcher.find() {
+            let current_lineno = matcher.lineno();
+
+            if s.counters.lineno != current_lineno || f.ungroup {
+                ctx.with_host(|h| h.restline_output(false, f.hex_after > 0));
+
+                // --range: max line exceeded?
+                if f.max_line > 0 && current_lineno > f.max_line {
+                    break;
+                }
+
+                // --max-count: max number of matches reached?
+                if f.max_count > 0 && s.counters.matches >= f.max_count {
+                    break;
+                }
+
+                // output blocked?
+                if ctx.with_host(|h| h.out_eof()) {
+                    return SearchStep::EXIT;
+                }
+
+                let mut eol = matcher.eol(true); // warning: call eol() before bol() and end()
+                let mut bol = matcher.bol();
+
+                // check CNF AND/OR/NOT matching
+                if cnf {
+                    match file::cnf_matching(ctx, matcher, bol, eol, false) {
+                        CnfResult::EXIT => return SearchStep::EXIT,
+                        CnfResult::YES => {}
+                        _ => continue,
+                    }
+                }
+
+                s.counters.matches += 1;
+
+                // --min-count: require at least min-count matches
+                if f.min_count > 0 && s.counters.matches < f.min_count {
+                    s.counters.lineno = current_lineno;
+                    continue;
+                }
+
+                if s.counters.matches == f.min_count + usize::from(f.min_count == 0) && (!f.files || !cnf) {
+                    // --max-files: max reached?
+                    if !ctx.with_host(|h| h.stats_found_part()) {
+                        return SearchStep::EXIT;
+                    }
+                }
+
+                s.binary = check_binary_at(ctx, matcher, bol, eol.wrapping_sub(bol));
+                ctx.with_host(|h| h.set_binary(s.binary));
+
+                // --hexdump with ABC context: if binary then show hex context
+                if s.binary && hex_context {
+                    let aft = matcher.aft((f.hex_after + f.hex_before) * columns);
+                    // aft() may shift the buffer: take eol and bol from the matcher again
+                    eol = matcher.eol(true);
+                    bol = matcher.bol();
+                    if aft > eol {
+                        eol = aft;
+                    }
+                }
+
+                if ctx.with_host(|h| h.binfile()) || (s.binary && !f.hex && !f.with_hex) {
+                    if binary_match(ctx, &mut s.counters, cnf) {
+                        return SearchStep::DONE;
+                    }
+                    continue;
+                }
+
+                let mut border = matcher.border();
+                let first = matcher.first();
+                let last = matcher.last();
+                let begin = matcher.begin();
+                let end = matcher.end();
+                let size = matcher.size();
+
+                if s.hex && !s.binary {
+                    ctx.with_host(|h| h.out_dump_done());
+                }
+
+                if !f.no_header {
+                    ctx.with_host(|h| h.out_header(current_lineno, first, separator, s.binary));
+                }
+
+                s.hex = s.binary;
+
+                s.counters.lineno = current_lineno;
+
+                if s.binary {
+                    // --hexdump with ABC context: if binary then show hex context
+                    if f.hex_before > 0 {
+                        let bef = matcher.bef(f.hex_before * columns);
+                        if bef < bol {
+                            bol = bef;
+                            border = begin.wrapping_sub(bol);
+                        }
+
+                        let mut left = 0usize;
+                        let (rest_last, rest_size) = ctx.with_host(|h| (h.restline_last(), h.restline_size()));
+                        if rest_last.wrapping_add(rest_size) < first {
+                            left = (f.hex_before * columns + first % columns).wrapping_sub(columns);
+                            if rest_last.wrapping_add(rest_size).wrapping_add(left) > first {
+                                left = first.wrapping_sub(rest_last.wrapping_add(rest_size));
+                            }
+                        }
+
+                        if begin > bol.wrapping_add(left) {
+                            bol = begin.wrapping_sub(left);
+                            border = left;
+                        }
+                    }
+
+                    let line = matcher.bytes_to_vec(bol, border);
+                    let body = matcher.bytes_to_vec(begin, size);
+                    ctx.with_host(|h| {
+                        h.out_dump_hex(HEX_LINE, first.wrapping_sub(border), &line);
+                        h.out_dump_hex(HEX_MATCH, first, &body);
+                    });
+
+                    if f.ungroup {
+                        // --hexdump with ABC context: if binary then show hex context
+                        if f.hex_after > 0 {
+                            let right = hex_right(&f, last);
+                            if end.wrapping_add(right) < eol {
+                                eol = end + right;
+                            }
+                        }
+
+                        let tail = matcher.bytes_to_vec(end, eol.wrapping_sub(end));
+                        ctx.with_host(|h| {
+                            h.out_dump_hex(HEX_LINE, last, &tail);
+                            h.out_dump_done();
+                        });
+                    } else {
+                        set_restline(ctx, end, eol, last);
+                    }
+
+                    s.counters.lineno = s.counters.lineno.wrapping_add(matcher.lines().wrapping_sub(1));
+                } else {
+                    if border > 0 {
+                        let line = matcher.bytes_to_vec(bol, border);
+                        ctx.with_host(|h| {
+                            h.out_str(&f.color_sl);
+                            h.out_str(&line);
+                            h.out_str(&f.color_off);
+                        });
+                    }
+
+                    if let Some(replace) = f.replace.as_deref() {
+                        // output --replace=FORMAT
+                        let matches = s.counters.matches;
+                        ctx.with_host(|h| {
+                            h.out_str(&f.match_ms);
+                            h.out_format(replace, matches, Some(&mut replace_matching), matches > 1, matches > 1);
+                            h.out_str(&f.match_off);
+                        });
+
+                        s.counters.lineno = s.counters.lineno.wrapping_add(matcher.lines().wrapping_sub(1));
+                    } else {
+                        let data = matcher.bytes_to_vec(begin, size);
+                        let mut from = 0;
+
+                        if f.multiline {
+                            // echo multi-line matches line-by-line
+                            let lineno = &mut s.counters.lineno;
+                            from = ctx.with_host(|h| {
+                                echo_lines(h, &f, &f.match_ms, &data, first, || {
+                                    *lineno += 1;
+                                    *lineno
+                                })
+                            });
+                        }
+
+                        ctx.with_host(|h| {
+                            h.out_str(&f.match_ms);
+                            h.out_str(&data[from..]);
+                            h.out_str(&f.match_off);
+                        });
+                    }
+
+                    if f.ungroup {
+                        ungroup_tail(ctx, matcher, &f.color_sl, end, eol);
+                    } else {
+                        set_restline(ctx, end, eol, last);
+                    }
+                }
+
+                // no -u, no --hexdump and no colors: if the match does not span more than one line, then skip to end of the line
+                if !f.ungroup && !colorize && !(s.binary && hex_context) && !f.multiline && !matcher.at_bol() && !matcher.skip(b'\n') {
+                    break;
+                }
+            } else {
+                // --min-count: require at least min-count matches
+                if f.min_count > 0 && s.counters.matches < f.min_count {
+                    continue;
+                }
+
+                let size = matcher.size();
+
+                if size > 0 {
+                    let lines = matcher.lines();
+
+                    if lines > 1 || colorize {
+                        plain_same_line(ctx, matcher, s, &mut replace_matching, current_lineno);
+                    }
+                }
+            }
+        }
+
+        // --min-count: require at least min-count matches
+        if f.min_count > 0 && s.counters.matches < f.min_count {
+            return SearchStep::EXIT;
+        }
+
+        ctx.with_host(|h| {
+            h.restline_output(false, f.hex_after > 0);
+            if s.binary {
+                h.out_dump_done();
+            }
+        });
+
+        SearchStep::DONE
+    }
+
+    /// The match is on the line of the previous match (`lineno == current_lineno`, no `-u`) and spans lines or colors.
+    fn plain_same_line(ctx: &SearchContext, matcher: &MatcherHandle, s: &mut OnlyMatchingState, replace_matching: &mut usize, current_lineno: usize) {
+        let f = ctx.flags();
+        let separator = f.separator.as_deref().unwrap_or_default();
+        let separator_bar = f.separator_bar.as_deref().unwrap_or_default();
+        let columns = f.hex_columns;
+        let hex_context = f.hex_after > 0 || f.hex_before > 0;
+
+        let lines = matcher.lines();
+        let size = matcher.size();
+        let first = matcher.first();
+        let last = matcher.last();
+        let begin = matcher.begin();
+        let data = matcher.bytes_to_vec(begin, size);
+
+        if s.binary {
+            ctx.with_host(|h| {
+                if h.restline_data() != RestlineData::None {
+                    if h.restline_last().wrapping_add(h.restline_size()) > first {
+                        h.set_restline_size(first.wrapping_sub(h.restline_last()));
+                    }
+
+                    // --hexdump with ABC context: if binary then show hex context
+                    if f.hex_after > 0 {
+                        let rest_last = h.restline_last();
+                        let right = hex_right(&f, rest_last);
+                        if right < h.restline_size() {
+                            let bytes = h.restline_bytes();
+                            h.out_dump_hex(HEX_LINE, rest_last, &bytes[..right]);
+
+                            h.restline_advance(right);
+                            h.set_restline_size(h.restline_size() - right);
+                            h.set_restline_last(rest_last + right);
+                        } else {
+                            h.out_dump_hex(HEX_LINE, rest_last, &h.restline_bytes());
+
+                            h.set_restline_data(RestlineData::None);
+                        }
+                    }
+
+                    if h.restline_data() != RestlineData::None {
+                        // --hexdump with ABC context: if binary then show hex context
+                        if f.hex_before > 0 {
+                            let left = (f.hex_before * columns + first % columns).wrapping_sub(columns);
+                            if left < h.restline_size() {
+                                if !f.no_header {
+                                    h.out_header(current_lineno, first, separator_bar, s.binary);
+                                }
+
+                                let skip = h.restline_size() - left;
+                                h.restline_advance(skip);
+                                h.set_restline_last(h.restline_last() + skip);
+                                h.set_restline_size(left);
+                            }
+                        }
+
+                        h.out_dump_hex(HEX_LINE, h.restline_last(), &h.restline_bytes());
+                    }
+
+                    h.set_restline_data(RestlineData::None);
+                }
+
+                h.out_dump_hex(HEX_MATCH, first, &data);
+            });
+        } else {
+            ctx.with_host(|h| {
+                if h.restline_data() != RestlineData::None {
+                    if h.restline_last().wrapping_add(h.restline_size()) > first {
+                        h.set_restline_size(first.wrapping_sub(h.restline_last()));
+                    }
+                    h.out_str(&f.color_sl);
+                    h.out_str(&h.restline_bytes());
+                    h.out_str(&f.color_off);
+                }
+
+                if let Some(replace) = f.replace.as_deref() {
+                    // output --replace=FORMAT
+                    let matches = s.counters.matches;
+                    h.out_str(&f.match_ms);
+                    h.out_format(replace, matches, Some(replace_matching), matches > 1, matches > 1);
+                    h.out_str(&f.match_off);
+                } else {
+                    let mut from = 0;
+
+                    if lines > 1 {
+                        // echo multi-line matches line-by-line
+                        let mut num = 0usize;
+                        let lineno = s.counters.lineno;
+                        from = echo_lines(h, &f, &f.match_ms, &data, first, || {
+                            num += 1;
+                            lineno + num
+                        });
+                    }
+
+                    h.out_str(&f.match_ms);
+                    h.out_str(&data[from..]);
+                    h.out_str(&f.match_off);
+                }
+            });
+        }
+
+        let mut eol = matcher.eol(true); // warning: call eol() before end()
+        let mut end = matcher.end();
+
+        if lines == 1 {
+            // --hexdump with ABC context: if binary then show hex context
+            if s.binary && hex_context {
+                let aft = matcher.aft((f.hex_after + f.hex_before) * columns);
+                if aft > eol {
+                    eol = aft;
+                    end = matcher.end(); // warning: end() position may have shifted with aft()
+                }
+            }
+
+            set_restline(ctx, end, eol, last);
+        } else {
+            s.binary = check_binary_at(ctx, matcher, end, eol.wrapping_sub(end));
+            ctx.with_host(|h| h.set_binary(s.binary));
+
+            // --hexdump with ABC context: if binary then show hex context
+            if s.binary && hex_context {
+                let aft = matcher.aft((f.hex_after + f.hex_before) * columns);
+                if aft > eol {
+                    eol = aft;
+                    end = matcher.end(); // warning: end() position may have shifted with aft()
+                }
+            }
+
+            ctx.with_host(|h| {
+                if s.hex && !s.binary {
+                    h.out_dump_done();
+                } else if !s.hex && s.binary {
+                    h.out_nl(false);
+                }
+
+                if s.hex != s.binary && !f.no_header {
+                    h.out_header(s.counters.lineno + lines - 1, last, separator, s.binary);
+                }
+            });
+
+            s.hex = s.binary;
+
+            if f.ungroup {
+                if s.binary {
+                    // --hexdump with ABC context: if binary then show hex context
+                    if f.hex_after > 0 {
+                        let right = hex_right(&f, last);
+                        if end.wrapping_add(right) < eol {
+                            eol = end + right;
+                        }
+                    }
+
+                    let tail = matcher.bytes_to_vec(end, eol.wrapping_sub(end));
+                    ctx.with_host(|h| {
+                        h.out_dump_hex(HEX_LINE, last, &tail);
+                        h.out_dump_done();
+                    });
+                } else {
+                    ungroup_tail(ctx, matcher, &f.color_sl, end, eol);
+                }
+            } else {
+                set_restline(ctx, end, eol, last);
+            }
+
+            s.counters.lineno += lines - 1;
+        }
+    }
+
+    /// `Grep::matches`, `lineno`, `binary`, `hex` and `stop` read and written in the host: the handlers of `-v` and `-y`
+    /// (`InvertMatchGrepHandler`, `AnyLineGrepHandler`) work on them from inside `find` and the explicit calls.
+    struct Live<'a>(&'a SearchContext);
+
+    impl Live<'_> {
+        fn matches(&self) -> usize {
+            self.0.with_host(|h| h.matches())
+        }
+        fn set_matches(&self, v: usize) {
+            self.0.with_host(|h| h.set_matches(v));
+        }
+        fn lineno(&self) -> usize {
+            self.0.with_host(|h| h.lineno())
+        }
+        fn set_lineno(&self, v: usize) {
+            self.0.with_host(|h| h.set_lineno(v));
+        }
+        fn binary(&self) -> bool {
+            self.0.with_host(|h| h.binary())
+        }
+        fn set_binary(&self, v: bool) {
+            self.0.with_host(|h| h.set_binary(v));
+        }
+        fn hex(&self) -> bool {
+            self.0.with_host(|h| h.hex())
+        }
+        fn set_hex(&self, v: bool) {
+            self.0.with_host(|h| h.set_hex(v));
+        }
+        fn stop(&self) -> bool {
+            self.0.with_host(|h| h.stop())
+        }
+        /// `binfile || (binary && !flag_hex && !flag_with_hex)`: the file is binary and not shown as hex.
+        fn binary_hidden(&self) -> bool {
+            let f = self.0.flags();
+            self.0.with_host(|h| h.binfile() || (h.binary() && !f.hex && !f.with_hex))
+        }
+        /// `flag_binary_without_match ? matches = 0 : out.binary_file_matches()`.
+        fn binary_matches(&self, set_one: bool) {
+            let f = self.0.flags();
+            self.0.with_host(|h| {
+                if f.binary_without_match {
+                    h.set_matches(0);
+                } else {
+                    h.out_binary_file_matches();
+                    if set_one {
+                        h.set_matches(1);
+                    }
+                }
+            });
+        }
+    }
+
+    /// `Grep::search_invert`: `-v` without `-A`, `-B`, `-C`, `-y`.
+    pub fn invert(ctx: &SearchContext, matcher: &MatcherHandle) -> SearchStep {
+        let f = ctx.flags();
+        let cnf = has_cnf(ctx);
+        let live = Live(ctx);
+
+        // register the event handler to output non-matching lines, the matcher resets it when a new input source is assigned
+        matcher.set_shift_handler(HandlerKind::INVERT_MATCH);
+
+        while matcher.find() {
+            let current_lineno = matcher.lineno();
+
+            if live.lineno() != current_lineno {
+                if cnf {
+                    let mut matched = false;
+                    if let Some(step) = cnf_line(ctx, matcher, false, &mut matched) {
+                        return step;
+                    }
+                    // check CNF AND/OR/NOT matching
+                    if !matched {
+                        continue;
+                    }
+                }
+
+                // get the lines before the matched line and output the non-matching lines up to this line
+                let context = matcher.before();
+                if context.len > 0 {
+                    matcher.invoke_handler(context);
+                }
+
+                if live.matches() > 0 && live.binary_hidden() {
+                    break;
+                }
+
+                if live.binary() {
+                    ctx.with_host(|h| h.out_dump_done());
+                }
+
+                // --range: max line exceeded?
+                if f.max_line > 0 && current_lineno > f.max_line {
+                    return SearchStep::DONE;
+                }
+
+                // --max-files: max reached?
+                if live.stop() {
+                    return SearchStep::EXIT;
+                }
+
+                // --max-count: max number of matches reached?
+                if f.max_count > 0 && live.matches() >= f.max_count {
+                    return SearchStep::DONE;
+                }
+
+                // output blocked?
+                if ctx.with_host(|h| h.out_eof()) {
+                    return SearchStep::EXIT;
+                }
+            }
+
+            live.set_lineno(current_lineno.wrapping_add(matcher.lines()).wrapping_sub(1));
+        }
+
+        // get the remaining context after the last match to output
+        let context = matcher.after();
+        if context.len > 0 {
+            matcher.invoke_handler(context);
+        }
+
+        if live.matches() > 0 && live.binary_hidden() {
+            if f.binary_without_match {
+                live.set_matches(0);
+            } else {
+                ctx.with_host(|h| h.out_binary_file_matches());
+            }
+        }
+
+        if live.binary() {
+            ctx.with_host(|h| h.out_dump_done());
+        }
+
+        SearchStep::DONE
     }
 
     /// `Grep::search_any_line`: `-y`.
-    pub fn any_line(_ctx: &SearchContext, _matcher: &MatcherHandle) -> SearchStep {
-        panic!("Grep seam: branch::any_line is not ported")
+    pub fn any_line(ctx: &SearchContext, matcher: &MatcherHandle) -> SearchStep {
+        let f = ctx.flags();
+        let cnf = has_cnf(ctx);
+        let live = Live(ctx);
+        let colorize = f.color.is_some() || f.replace.is_some() || f.tag.is_some();
+        let invert = f.invert_match;
+
+        // counter for replace field %m matches
+        let mut replace_matching = 0usize;
+
+        // to output the rest of the matching line
+        ctx.with_host(|h| {
+            h.set_restline_data(RestlineData::None);
+            h.set_restline_size(0);
+            h.set_restline_last(0);
+        });
+
+        // register the event handler functor to output non-matching lines, the matcher resets it when a new input source is
+        // assigned
+        matcher.set_shift_handler(HandlerKind::ANY_LINE);
+
+        // to output colors with or without -v
+        let colors = AnyColors {
+            hex_line: if invert { HEX_CONTEXT_LINE } else { HEX_LINE },
+            hex_match: if invert { HEX_CONTEXT_MATCH } else { HEX_MATCH },
+            sl: if invert { &f.color_cx } else { &f.color_sl },
+            ms: if invert { &f.match_mc } else { &f.match_ms },
+            separator: if invert { f.separator_dash.as_deref() } else { f.separator.as_deref() }.unwrap_or_default(),
+        };
+
+        while matcher.find() {
+            let current_lineno = matcher.lineno();
+
+            if live.lineno() != current_lineno {
+                ctx.with_host(|h| h.restline_output(invert, false));
+
+                let eol = matcher.eol(true); // warning: call eol() before bol() and end()
+                let bol = matcher.bol();
+
+                // check CNF AND/OR/NOT matching
+                if cnf {
+                    match file::cnf_matching(ctx, matcher, bol, eol, false) {
+                        CnfResult::EXIT => return SearchStep::EXIT,
+                        CnfResult::YES => {}
+                        _ => continue,
+                    }
+                }
+
+                if !invert {
+                    live.set_matches(live.matches() + 1);
+                    let matches = live.matches();
+
+                    // --min-count: require at least min-count matches
+                    if f.min_count > 0 && matches < f.min_count {
+                        live.set_lineno(current_lineno);
+                        continue;
+                    }
+
+                    if matches == f.min_count + usize::from(f.min_count == 0) && (!f.files || !cnf) {
+                        // --max-files: max reached?
+                        if !ctx.with_host(|h| h.stats_found_part()) {
+                            return SearchStep::EXIT;
+                        }
+                    }
+                }
+
+                // --range: max line exceeded?
+                if f.max_line > 0 && current_lineno > f.max_line {
+                    break;
+                }
+
+                // --max-files: max reached?
+                if live.stop() {
+                    return SearchStep::EXIT;
+                }
+
+                // get the lines before the matched line
+                let context = matcher.before();
+
+                if context.len > 0 {
+                    matcher.invoke_handler(context);
+
+                    if live.matches() > 0 && live.binary_hidden() {
+                        live.binary_matches(true);
+
+                        if f.files && cnf && ctx.with_host(|h| h.out_holding()) {
+                            continue;
+                        }
+
+                        return SearchStep::DONE;
+                    }
+                }
+
+                // output blocked?
+                if ctx.with_host(|h| h.out_eof()) {
+                    return SearchStep::EXIT;
+                }
+
+                live.set_binary(check_binary_at(ctx, matcher, bol, eol.wrapping_sub(bol)));
+
+                if live.binary_hidden() {
+                    if f.binary_without_match {
+                        live.set_matches(0);
+                    } else if invert {
+                        live.set_lineno(current_lineno.wrapping_add(matcher.lines()).wrapping_sub(1));
+                        continue;
+                    } else {
+                        ctx.with_host(|h| h.out_binary_file_matches());
+                        live.set_matches(1);
+                    }
+
+                    if f.files && cnf && ctx.with_host(|h| h.out_holding()) {
+                        continue;
+                    }
+
+                    return SearchStep::DONE;
+                }
+
+                any_line_first(ctx, matcher, &live, &colors, &mut replace_matching, LineAt { lineno: current_lineno, bol, eol });
+
+                // --max-count: max number of matches reached?
+                if f.max_count > 0 && live.matches() >= f.max_count {
+                    break;
+                }
+
+                // no -u and no colors: if the match does not span more than one line, then skip to end of the line
+                if !f.ungroup && !colorize && !f.multiline && !matcher.at_bol() && !matcher.skip(b'\n') {
+                    break;
+                }
+            } else if !live.binary_hidden() {
+                // --min-count: require at least min-count matches
+                if f.min_count > 0 && live.matches() < f.min_count {
+                    continue;
+                }
+
+                if matcher.size() > 0 && (matcher.lines() > 1 || colorize) {
+                    any_line_same_line(ctx, matcher, &live, &colors, &mut replace_matching);
+                }
+            }
+        }
+
+        ctx.with_host(|h| h.restline_output(invert, false));
+
+        if f.max_count == 0 || live.matches() < f.max_count {
+            // get the remaining context after the last match to output
+            let context = matcher.after();
+
+            if context.len > 0 {
+                matcher.invoke_handler(context);
+            }
+        }
+
+        // --min-count: require at least min-count matches
+        if f.min_count > 0 && live.matches() < f.min_count {
+            live.set_matches(0);
+        }
+
+        if live.matches() > 0 && live.binary_hidden() {
+            live.binary_matches(false);
+        }
+
+        if live.binary() {
+            ctx.with_host(|h| h.out_dump_done());
+        }
+
+        SearchStep::DONE
+    }
+
+    /// The colors, hex dump modes and separator of `-y` with or without `-v`.
+    struct AnyColors<'a> {
+        hex_line: i16,
+        hex_match: i16,
+        sl: &'a [u8],
+        ms: &'a [u8],
+        separator: &'a [u8],
+    }
+
+    /// The line of the current match: its number and the offsets of its begin and end in the matcher buffer.
+    struct LineAt {
+        lineno: usize,
+        bol: usize,
+        eol: usize,
+    }
+
+    /// The output of the first match of a line of `-y` (the `lineno != current_lineno` part after the checks): header, the
+    /// text before the match, the match, and the rest of the line saved for later.
+    fn any_line_first(ctx: &SearchContext, matcher: &MatcherHandle, live: &Live, c: &AnyColors, replace_matching: &mut usize, line_at: LineAt) {
+        let LineAt { lineno: current_lineno, bol, eol } = line_at;
+        let f = ctx.flags();
+        let border = matcher.border();
+        let first = matcher.first();
+        let last = matcher.last();
+        let begin = matcher.begin();
+        let end = matcher.end();
+        let size = matcher.size();
+        let binary = live.binary();
+
+        if live.hex() && !binary {
+            ctx.with_host(|h| h.out_dump_done());
+        }
+
+        if !f.no_header {
+            ctx.with_host(|h| h.out_header(current_lineno, first, c.separator, binary));
+        }
+
+        live.set_hex(binary);
+
+        let mut lineno = current_lineno;
+        live.set_lineno(lineno);
+
+        if binary {
+            let line = matcher.bytes_to_vec(bol, border);
+            let body = matcher.bytes_to_vec(begin, size);
+            ctx.with_host(|h| {
+                h.out_dump_hex(c.hex_line, first.wrapping_sub(border), &line);
+                h.out_dump_hex(c.hex_match, first, &body);
+            });
+
+            set_restline(ctx, end, eol, last);
+
+            lineno += matcher.lines() - 1;
+        } else {
+            if border > 0 {
+                let line = matcher.bytes_to_vec(bol, border);
+                ctx.with_host(|h| {
+                    h.out_str(c.sl);
+                    h.out_str(&line);
+                    h.out_str(&f.color_off);
+                });
+            }
+
+            if let Some(replace) = f.replace.as_deref() {
+                // output --replace=FORMAT
+                let matches = live.matches();
+                ctx.with_host(|h| {
+                    h.out_str(c.ms);
+                    h.out_format(replace, matches, Some(replace_matching), matches > 1, matches > 1);
+                    h.out_str(&f.match_off);
+                });
+
+                lineno += matcher.lines() - 1;
+            } else {
+                let data = matcher.bytes_to_vec(begin, size);
+                let mut from = 0;
+
+                if f.multiline {
+                    // echo multi-line matches line-by-line
+                    from = ctx.with_host(|h| {
+                        echo_lines(h, &f, c.ms, &data, first, || {
+                            lineno += 1;
+                            lineno
+                        })
+                    });
+                }
+
+                ctx.with_host(|h| {
+                    h.out_str(c.ms);
+                    h.out_str(&data[from..]);
+                    h.out_str(&f.match_off);
+                });
+            }
+
+            set_restline(ctx, end, eol, last);
+        }
+
+        live.set_lineno(lineno);
+    }
+
+    /// The match is on the line of the previous match (`lineno == current_lineno`) and spans lines or colors, for `-y`.
+    fn any_line_same_line(ctx: &SearchContext, matcher: &MatcherHandle, live: &Live, c: &AnyColors, replace_matching: &mut usize) {
+        let f = ctx.flags();
+        let lines = matcher.lines();
+        let size = matcher.size();
+        let first = matcher.first();
+        let last = matcher.last();
+        let begin = matcher.begin();
+        let data = matcher.bytes_to_vec(begin, size);
+        let binary = live.binary();
+        let lineno = live.lineno();
+
+        ctx.with_host(|h| {
+            if h.restline_data() != RestlineData::None {
+                if h.restline_last().wrapping_add(h.restline_size()) > first {
+                    h.set_restline_size(first.wrapping_sub(h.restline_last()));
+                }
+                if binary {
+                    h.out_dump_hex(c.hex_line, h.restline_last(), &h.restline_bytes());
+                } else {
+                    h.out_str(c.sl);
+                    h.out_str(&h.restline_bytes());
+                    h.out_str(&f.color_off);
+                }
+            }
+
+            if binary {
+                h.out_dump_hex(c.hex_match, first, &data);
+            } else if let Some(replace) = f.replace.as_deref() {
+                // output --replace=FORMAT
+                let matches = h.matches();
+                h.out_str(c.ms);
+                h.out_format(replace, matches, Some(replace_matching), matches > 1, matches > 1);
+                h.out_str(&f.match_off);
+            } else {
+                let mut from = 0;
+
+                if lines > 1 {
+                    // echo multi-line matches line-by-line
+                    let mut num = 0usize;
+                    from = echo_lines(h, &f, c.ms, &data, first, || {
+                        num += 1;
+                        lineno + num
+                    });
+                }
+
+                h.out_str(c.ms);
+                h.out_str(&data[from..]);
+                h.out_str(&f.match_off);
+            }
+        });
+
+        let eol = matcher.eol(true); // warning: call eol() before end()
+        let end = matcher.end();
+
+        if lines == 1 {
+            set_restline(ctx, end, eol, last);
+        } else {
+            let binary = check_binary_at(ctx, matcher, end, eol.wrapping_sub(end));
+            live.set_binary(binary);
+            let hex = live.hex();
+
+            ctx.with_host(|h| {
+                if hex && !binary {
+                    h.out_dump_done();
+                } else if !hex && binary {
+                    h.out_nl(false);
+                }
+
+                if hex != binary && !f.no_header {
+                    h.out_header(lineno + lines - 1, last, f.separator.as_deref().unwrap_or_default(), binary);
+                }
+            });
+
+            live.set_hex(binary);
+
+            set_restline(ctx, end, eol, last);
+
+            live.set_lineno(lineno + lines - 1);
+        }
     }
 
     /// `Grep::search_context`: `-A`, `-B`, `-C`.
