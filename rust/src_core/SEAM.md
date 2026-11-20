@@ -432,3 +432,83 @@ Behavior task. Evidence at Prepare: both modes build with MSVC (default and `/p:
   to the baseline, also with output redirected to a file).
 - **Threading.** `OutputBuf` is `Send` (one per worker, never shared); the ordered-mode flush runs under the Rust `OutputSync` lock; the raw `regs`
   and `eof` pointers are used by the owner thread only, `eof` through `AtomicBool::from_ptr`.
+
+## Grep seam (Prepare seam: `Grep::search` split into branch functions; supersedes D-src_core-search-retained for the structure only)
+
+Behavior unchanged, default build stays C++. `Grep::search` is now a thin shell plus one member function per mode branch. Nothing is switched yet:
+the Rust bodies in `signatures::search` are stubs that `panic!` (no `todo!()`), so each later child replaces exactly one branch.
+
+### What crosses and what cannot be switched
+- Crosses (declared in the bridge, `lib.rs`; types in `signatures/search.rs`): the matcher handle (`MatcherHandle`, opaque), the search context
+  (`SearchContext`, Rust-owned, opaque) and one function per branch.
+- **Only RE-flex and PCRE2 matchers cross**: `reflex::Matcher` (`MatcherKind::REFLEX` 1), `PCRE2Matcher` (`PCRE2` 2), `PCRE2UTFMatcher` (`PCRE2_UTF` 3).
+  `FuzzyMatcher`, `LineMatcher` and `BoostPerlMatcher` (and anything else behind `Matcher *`) stay C++ and never get a handle.
+- Cannot be switched: the `Grep` struct itself and its handler classes (`GrepHandler` and subclasses hold `const char *& pathname` bound to the
+  search local), the `goto done_search/exit_search` flow (kept; each branch function ends with the labels that return `SearchStep::DONE/EXIT`),
+  the RE-flex matcher buffer (C++ owned).
+- Moves made: (1) `SearchContext` + `SearchStep` + 12 member declarations in `Grep`; (2) branch bodies moved verbatim into member functions
+  (original indentation kept so the diff reads as a move); (3) shell dispatches with the original conditions; (4) `src/search_tap.hpp`
+  (tap macros, empty unless `CPP2RUST_TAP`) and `to_neutral(const Grep::SearchContext&)` = `[pathname, cost, matched]`.
+
+### `Grep::search` shell
+Prologue (best-match cost, `open_file`, label fix) -> `SearchContext ctx(pathname, cost)` -> `search_setup` -> dispatch chain -> `search_epilogue`
+unless the branch returned `EXIT` -> catch blocks, `exit_search:` (`out.release()`, `close_file(ctx.pathname)`, `Stats::found_file()` if `ctx.matched`).
+
+### Search context (shared locals): `Grep::SearchContext` / Rust `SearchContext`
+Fields: `pathname` (`const char *`, bytes in Rust), `cost` (`uint16_t`), `matched` (`bool`, `Cell<bool>` in Rust).
+Other state read by branches (not in the context; stays in `Grep` members or branch-locals): `lineno`, `heading`, `matches`, `stop`, `binfile`,
+`hex`, `binary`, `restline*`, `partname`, `out`, `matcher`/`matchers`, `matching`/`notmatching`.
+
+### Branches (dispatch function, condition, context fields, handle mapping)
+| Branch | `Grep::` function (Rust `branch::`) | Condition | Context fields | Handle methods used |
+|---|---|---|---|---|
+| setup | `search_setup` (`setup`) | always | none (members `out`, `matchers`, `matching`, `notmatching`) | none |
+| -q/-l/-L | `search_quiet_list` | `flag_quiet \|\| flag_files_with_matches` | `pathname` | find, bol, eol, begin, end, lineno, lines |
+| -c | `search_count` | `flag_count` | `pathname` | find, bol, eol, lineno, lineno_skip, (at_bol, skip: gap) |
+| --format | `search_format` | `flag_format != NULL` | `pathname` | find, bol, eol, begin, end, first, last, size, lines, lineno |
+| -o | `search_only_matching` | `flag_only_matching` without -ABC | `pathname` | find, begin, end, first, last, size, lineno |
+| -o -ABC | `search_only_matching_context` | `-o` with -ABC | `pathname` | as -o plus bol, eol |
+| plain/hex | `search_plain` | no -ABC, -v, -y | `pathname` | find, bol, eol, begin, end, lineno, lineno_skip |
+| -v | `search_invert` | `-v` only | `pathname` | find, bol, eol, lineno |
+| -y | `search_any_line` | `-y` | `pathname` | find, bol, eol, lineno |
+| -ABC | `search_context` | -ABC, no -v | `pathname` | find, bol, eol, lineno, set_handler (shift event) |
+| -ABC -v | `search_context_invert` | -ABC with -v | `pathname` | as -ABC |
+| epilogue | `search_epilogue` | after any non-EXIT branch | `matched` (set true), `pathname` unused | lineno |
+
+Matcher-handle API: `find` (`matcher_find`), `next_match(skip_line)`, `bol`, `eol(inclusive)`, `begin`, `end`, `text_bounds`
+(begin/end/first/last/size/bol/eol/lineno/lines snapshot), `lineno_skip`, `set_shift_listener`/`shift_event` (buffer-shift callback: the C++
+handler forwards `{len, num}` and the buffer), `reset`.
+**Gaps for the Port units** (used by branches but not in the handle yet; adding them changes the signature module and bridge): `at_bol`, `skip`,
+`before`, `after`, `border`, `columno`, `hit_end`, `set_reserve`, `aft`/`bef`.
+
+### Every `Grep` member
+- Nested types: `EXIT_SEARCH`, `Type`, `Entry`, `Job`, `JobQueue` (two variants under `WITH_LOCK_FREE_JOB_QUEUE`), `BinaryHandler`, `StdInHandler`
+  (non-Windows), `GrepHandler`, `OnlyMatchingContextGrepHandler`, `InvertMatchGrepHandler`, `FormatInvertMatchGrepHandler`, `AnyLineGrepHandler`,
+  `ContextGrepHandler`, `InvertContextGrepHandler`, new `SearchContext`, `SearchStep`. Subclasses: `GrepMaster`, `GrepWorker` (retained).
+- Methods: constructor, `~Grep`, `cancel`, `ugrep`, `select`, `recurse`, `compute_cost`, `search` (shell), the 12 `search_*` above,
+  `find_text_preview`, `extract`, `cnf_matching`, `cnf_satisfied`, `open_file`, `filter`, `close_file`, `init_read`, `init_is_binary`,
+  `output_or_save_restline`, `output_restline`, `save_restline`.
+- Fields: `filename`, `partname`, `restline`, `restline_data`, `restline_size`, `restline_last`, `out` (`Output`), `matcher`, `matchers`, `matching`,
+  `notmatching`, `mmap`, `input`, `file_in`, `interactive`, `binfile`, `lineno`, `heading`, `hex`, `binary`, `matches`, `stop`, `bin_handler`,
+  `stdin_handler` (non-Windows), `zthread` (or `zstream`/`stream` under `HAVE_LIBZ`; see the Zthread seam).
+All stay in C++ in this stage; the branch functions read them through `this`.
+
+### Encoding, re-entrancy, thread affinity, owner, errors
+- **Encoding:** paths and text are bytes (`&[u8]`), offsets `usize`, no UTF-8 assumption; `cost` is `u16`.
+- **Re-entrancy:** the C++ matcher fires the shift handler during `find`/`eol(true)` while a branch runs, and the handler reads `ctx.pathname`.
+  Therefore every handle method takes `&self`, branches take `&SearchContext`, `matched` is a `Cell`; no `&mut` is held across a call into C++.
+- **Thread affinity:** a `SearchContext` and `MatcherHandle` are created and used on the one worker thread running `Grep::search`; they are not
+  `Send`/`Sync`-shared. `cancel()` from the TUI thread touches `Grep` members only, never the handle.
+- **Owner side:** `SearchContext` owned by Rust (boxed, created and freed by the shell); matcher object owned by C++ (the handle is a borrowed token);
+  pathname memory owned by the caller of `search`.
+- **Error kinds:** the stubs `panic!` (`panic = "abort"` in the profile); the ported branches report I/O failure as C++ does today (exceptions
+  `EXIT_SEARCH`/`std::exception` caught in the shell), result is a `SearchStep` (`u8`: CONTINUE 0, DONE 1, EXIT 2), not an error.
+
+### Unknown ownership
+- How handle calls reach the C++ matcher (probably a C-ABI callback table like `TerminalEnv`; `token` is a placeholder).
+- Lifetime of the handler registered by `set_shift_listener` relative to `reset`.
+
+### Tap
+`TAP_CALL("src_core.Grep.search_<name>", ctx)` at each branch function, from `src/search_tap.hpp`, compiled out unless `CPP2RUST_TAP`.
+The Rust tap, capture script and replay harness belong to the Behavior task. **Conflict:** the cleanup gate runs `policy-scan --no-tap ... src`,
+which matches `CPP2RUST_TAP` and `cpp2rust_tap`; these macros must be removed again at Cleanup (or the pattern relaxed).
