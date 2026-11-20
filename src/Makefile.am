@@ -55,6 +55,7 @@ ugrep_SOURCES = \
 	query.cpp \
 	screen.hpp \
 	screen.cpp \
+	search_tap.hpp \
 	settings.cpp \
 	stats.hpp \
 	stats.cpp \

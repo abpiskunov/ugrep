@@ -86,6 +86,7 @@ After this, you may want to test ugrep and install it (optional):
 #include "core_rust.hpp"
 #include "zthread_seam.h"
 #include "zstream_seam.h"
+#include "search_tap.hpp"
 #include <reflex/matcher.h>
 #include <reflex/linematcher.h>
 #include <reflex/fuzzymatcher.h>
@@ -2131,6 +2132,31 @@ struct Grep {
   // search a file or archive
   virtual void search(const char *pathname, uint16_t cost);
 
+  // the locals of search() that the search branches share (see rust/src_core/SEAM.md, "Grep seam")
+  struct SearchContext {
+    SearchContext(const char *pathname, uint16_t cost) : pathname(pathname), cost(cost), matched(false) { }
+    const char *pathname; // search() argument pathname (the pointer may be changed, handlers refer to it)
+    uint16_t    cost;     // search() argument cost, used before the branches only
+    bool        matched;  // this file or archive has a match
+  };
+
+  // how a search branch ends: CONTINUE and DONE go on to the epilogue (done_search), EXIT leaves it out (exit_search)
+  enum class SearchStep { CONTINUE, DONE, EXIT };
+
+  // one function per search branch, each replaced by Rust by one later port unit, in the order search() runs them
+  void       search_setup(SearchContext& ctx);                // --files: reset the matching bitmasks
+  SearchStep search_quiet_list(SearchContext& ctx);           // -q, -l, -L
+  SearchStep search_count(SearchContext& ctx);                // -c
+  SearchStep search_format(SearchContext& ctx);               // --format
+  SearchStep search_only_matching(SearchContext& ctx);        // -o
+  SearchStep search_only_matching_context(SearchContext& ctx); // -o with -A, -B or -C
+  SearchStep search_plain(SearchContext& ctx);                // plain matches and --hex
+  SearchStep search_invert(SearchContext& ctx);               // -v
+  SearchStep search_any_line(SearchContext& ctx);             // -y
+  SearchStep search_context(SearchContext& ctx);              // -A, -B, -C
+  SearchStep search_context_invert(SearchContext& ctx);       // -A, -B, -C with -v
+  void       search_epilogue(SearchContext& ctx);             // --files check, --break, --stats
+
   // search input after lineno to populate a string vector with the matching line and lines after up to max lines
   void find_text_preview(const char *filename, const char *partname, size_t from_lineno, size_t max, size_t& lineno, size_t& num, std::vector<std::string>& text);
 
@@ -2965,6 +2991,14 @@ struct Grep {
 #endif
 
 };
+
+#ifdef CPP2RUST_TAP
+// neutral encoder of the search context for the tap of the Grep::search_* dispatch functions: [pathname, cost, matched]
+inline std::string to_neutral(const Grep::SearchContext& ctx)
+{
+  return "[" + cpp2rust::tap::to_neutral(ctx.pathname) + "," + cpp2rust::tap::to_neutral(ctx.cost) + "," + cpp2rust::tap::to_neutral(ctx.matched) + "]";
+}
+#endif
 
 struct GrepWorker;
 
@@ -7382,7 +7416,8 @@ void Grep::search(const char *pathname, uint16_t cost)
   if (pathname == Static::LABEL_STANDARD_INPUT)
     pathname = flag_label;
 
-  bool matched = false;
+  // the locals shared by the search branches, passed by reference to each branch function
+  SearchContext ctx(pathname, cost);
 
   // -z: loop over extracted archive parts, when applicable
   do
@@ -7393,28 +7428,99 @@ void Grep::search(const char *pathname, uint16_t cost)
     try
     {
       // --files: reset the matching[] bitmask used in cnf_matching() for each matcher in matchers
-      if (flag_files && matchers != NULL)
-      {
-        // hold the output
-        out.hold();
+      search_setup(ctx);
 
-        // reset the bit corresponding to each matcher in matchers
-        size_t n = matchers->size();
-        matching.resize(0);
-        matching.resize(n);
+      SearchStep step;
 
-        // reset the bit corresponding to the OR NOT terms of each matcher in matchers
-        notmatching.resize(n);
-        size_t j = 0;
-        for (auto& i : *matchers)
-        {
-          notmatching[j].resize(0);
-          notmatching[j].resize(i.size() > 0 ? i.size() - 1 : 0);
-          ++j;
-        }
-      }
-
+      // dispatch to the branch for the output mode, each branch function ends as its goto labels did
       if (flag_quiet || flag_files_with_matches)
+        step = search_quiet_list(ctx);
+      else if (flag_count)
+        step = search_count(ctx);
+      else if (flag_format != NULL)
+        step = search_format(ctx);
+      else if (flag_only_matching && flag_before_context == 0 && flag_after_context == 0)
+        step = search_only_matching(ctx);
+      else if (flag_only_matching)
+        step = search_only_matching_context(ctx);
+      else if (flag_before_context == 0 && flag_after_context == 0 && !flag_any_line && !flag_invert_match)
+        step = search_plain(ctx);
+      else if (flag_before_context == 0 && flag_after_context == 0 && !flag_any_line)
+        step = search_invert(ctx);
+      else if (flag_any_line)
+        step = search_any_line(ctx);
+      else if (!flag_invert_match)
+        step = search_context(ctx);
+      else
+        step = search_context_invert(ctx);
+
+      // exit_search: the branch left out the epilogue
+      if (step == SearchStep::EXIT)
+        goto exit_search;
+
+      // done_search: the epilogue
+      search_epilogue(ctx);
+    }
+
+    catch (EXIT_SEARCH&)
+    {
+      // --files: cnf_matching() rejected a file, no need to search this file any further
+    }
+
+    catch (...)
+    {
+      // this should never happen
+      warning("exception while searching", ctx.pathname);
+    }
+
+exit_search:
+
+    // flush and release output to allow other workers to output results
+    out.release();
+
+    // close file or -z: loop over next extracted archive parts, when applicable
+  } while (close_file(ctx.pathname));
+
+  // this file or archive has a match
+  if (ctx.matched)
+    Stats::found_file();
+}
+
+// search branch setup: --files resets the matching bitmasks, called before the branch is chosen
+void Grep::search_setup(SearchContext& ctx)
+{
+  TAP_CALL("src_core.Grep.search_setup", ctx);
+
+  // --files: reset the matching[] bitmask used in cnf_matching() for each matcher in matchers
+  if (flag_files && matchers != NULL)
+  {
+    // hold the output
+    out.hold();
+
+    // reset the bit corresponding to each matcher in matchers
+    size_t n = matchers->size();
+    matching.resize(0);
+    matching.resize(n);
+
+    // reset the bit corresponding to the OR NOT terms of each matcher in matchers
+    notmatching.resize(n);
+    size_t j = 0;
+    for (auto& i : *matchers)
+    {
+      notmatching[j].resize(0);
+      notmatching[j].resize(i.size() > 0 ? i.size() - 1 : 0);
+      ++j;
+    }
+  }
+}
+
+// search branch -q, -l, -L (the branch bodies keep the indentation they had inside search(), so the diff reads as a move)
+Grep::SearchStep Grep::search_quiet_list(SearchContext& ctx)
+{
+  const char *& pathname = ctx.pathname;
+
+  TAP_CALL("src_core.Grep.search_quiet_list", ctx);
+
       {
         // option -q, -l, or -L
 
@@ -7506,7 +7612,20 @@ void Grep::search(const char *pathname, uint16_t cost)
           }
         }
       }
-      else if (flag_count)
+
+  return SearchStep::DONE;
+
+exit_search:
+  return SearchStep::EXIT;
+}
+
+// search branch -c
+Grep::SearchStep Grep::search_count(SearchContext& ctx)
+{
+  const char *& pathname = ctx.pathname;
+
+  TAP_CALL("src_core.Grep.search_count", ctx);
+
       {
         // option -c
 
@@ -7668,7 +7787,20 @@ void Grep::search(const char *pathname, uint16_t cost)
           out.nl();
         }
       }
-      else if (flag_format != NULL)
+
+  return SearchStep::DONE;
+
+exit_search:
+  return SearchStep::EXIT;
+}
+
+// search branch --format
+Grep::SearchStep Grep::search_format(SearchContext& ctx)
+{
+  const char *& pathname = ctx.pathname;
+
+  TAP_CALL("src_core.Grep.search_format", ctx);
+
       {
         // option --format
 
@@ -7837,7 +7969,21 @@ void Grep::search(const char *pathname, uint16_t cost)
         if (matches > 0 && flag_format_close != NULL)
           out.format(flag_format_close, pathname, partname, Stats::found_parts(), NULL, matcher, heading, false, Stats::found_parts() > 1);
       }
-      else if (flag_only_matching && flag_before_context == 0 && flag_after_context == 0)
+
+done_search:
+  return SearchStep::DONE;
+
+exit_search:
+  return SearchStep::EXIT;
+}
+
+// search branch -o without -ABC
+Grep::SearchStep Grep::search_only_matching(SearchContext& ctx)
+{
+  const char *& pathname = ctx.pathname;
+
+  TAP_CALL("src_core.Grep.search_only_matching", ctx);
+
       {
         // option -o without -ABC
 
@@ -8028,7 +8174,21 @@ void Grep::search(const char *pathname, uint16_t cost)
         if (hex)
           out.dump.done();
       }
-      else if (flag_only_matching)
+
+done_search:
+  return SearchStep::DONE;
+
+exit_search:
+  return SearchStep::EXIT;
+}
+
+// search branch -o with -ABC
+Grep::SearchStep Grep::search_only_matching_context(SearchContext& ctx)
+{
+  const char *& pathname = ctx.pathname;
+
+  TAP_CALL("src_core.Grep.search_only_matching_context", ctx);
+
       {
         // option -o with -ABC specified
 
@@ -8385,7 +8545,21 @@ void Grep::search(const char *pathname, uint16_t cost)
         if (hex)
           out.dump.done();
       }
-      else if (flag_before_context == 0 && flag_after_context == 0 && !flag_any_line && !flag_invert_match)
+
+done_search:
+  return SearchStep::DONE;
+
+exit_search:
+  return SearchStep::EXIT;
+}
+
+// search branch plain matches and --hex
+Grep::SearchStep Grep::search_plain(SearchContext& ctx)
+{
+  const char *& pathname = ctx.pathname;
+
+  TAP_CALL("src_core.Grep.search_plain", ctx);
+
       {
         // options -ABC, -y, -v are not specified, --hexdump context is supported (including with options -ABC)
 
@@ -8867,7 +9041,21 @@ void Grep::search(const char *pathname, uint16_t cost)
         if (binary)
           out.dump.done();
       }
-      else if (flag_before_context == 0 && flag_after_context == 0 && !flag_any_line)
+
+done_search:
+  return SearchStep::DONE;
+
+exit_search:
+  return SearchStep::EXIT;
+}
+
+// search branch -v
+Grep::SearchStep Grep::search_invert(SearchContext& ctx)
+{
+  const char *& pathname = ctx.pathname;
+
+  TAP_CALL("src_core.Grep.search_invert", ctx);
+
       {
         // option -v without -ABC, -y
 
@@ -8946,7 +9134,21 @@ void Grep::search(const char *pathname, uint16_t cost)
         if (binary)
           out.dump.done();
       }
-      else if (flag_any_line)
+
+done_search:
+  return SearchStep::DONE;
+
+exit_search:
+  return SearchStep::EXIT;
+}
+
+// search branch -y
+Grep::SearchStep Grep::search_any_line(SearchContext& ctx)
+{
+  const char *& pathname = ctx.pathname;
+
+  TAP_CALL("src_core.Grep.search_any_line", ctx);
+
       {
         // option -y
 
@@ -9370,7 +9572,21 @@ void Grep::search(const char *pathname, uint16_t cost)
         if (binary)
           out.dump.done();
       }
-      else if (!flag_invert_match)
+
+done_search:
+  return SearchStep::DONE;
+
+exit_search:
+  return SearchStep::EXIT;
+}
+
+// search branch -A, -B, -C
+Grep::SearchStep Grep::search_context(SearchContext& ctx)
+{
+  const char *& pathname = ctx.pathname;
+
+  TAP_CALL("src_core.Grep.search_context", ctx);
+
       {
         // options -ABC without -v
 
@@ -9756,7 +9972,21 @@ void Grep::search(const char *pathname, uint16_t cost)
         if (binary)
           out.dump.done();
       }
-      else
+
+done_search:
+  return SearchStep::DONE;
+
+exit_search:
+  return SearchStep::EXIT;
+}
+
+// search branch -A, -B, -C with -v
+Grep::SearchStep Grep::search_context_invert(SearchContext& ctx)
+{
+  const char *& pathname = ctx.pathname;
+
+  TAP_CALL("src_core.Grep.search_context_invert", ctx);
+
       {
         // options -ABC with -v
 
@@ -10231,46 +10461,32 @@ void Grep::search(const char *pathname, uint16_t cost)
       }
 
 done_search:
-
-      // --files: check if all CNF conditions are met globally to launch output or reset matches
-      if (flag_files && matchers != NULL)
-        if (!cnf_satisfied())
-          matches = 0;
-
-      // any matches in this file or archive?
-      if (matches > 0)
-        matched = true;
-
-      // --break: add a line break when applicable
-      if (flag_break && (matches > 0 || flag_any_line) && !flag_quiet && !flag_files_with_matches && !flag_count && flag_format == NULL)
-        out.nl();
-
-      if (flag_stats != NULL)
-        Stats::score_matches(matches, matcher->lineno() > 0 ? matcher->lineno() - 1 : 0);
-    }
-
-    catch (EXIT_SEARCH&)
-    {
-      // --files: cnf_matching() rejected a file, no need to search this file any further
-    }
-
-    catch (...)
-    {
-      // this should never happen
-      warning("exception while searching", pathname);
-    }
+  return SearchStep::DONE;
 
 exit_search:
+  return SearchStep::EXIT;
+}
 
-    // flush and release output to allow other workers to output results
-    out.release();
+// search epilogue: --files check, --break and --stats, run when the branch did not leave through exit_search
+void Grep::search_epilogue(SearchContext& ctx)
+{
+  TAP_CALL("src_core.Grep.search_epilogue", ctx);
 
-    // close file or -z: loop over next extracted archive parts, when applicable
-  } while (close_file(pathname));
+  // --files: check if all CNF conditions are met globally to launch output or reset matches
+  if (flag_files && matchers != NULL)
+    if (!cnf_satisfied())
+      matches = 0;
 
-  // this file or archive has a match
-  if (matched)
-    Stats::found_file();
+  // any matches in this file or archive?
+  if (matches > 0)
+    ctx.matched = true;
+
+  // --break: add a line break when applicable
+  if (flag_break && (matches > 0 || flag_any_line) && !flag_quiet && !flag_files_with_matches && !flag_count && flag_format == NULL)
+    out.nl();
+
+  if (flag_stats != NULL)
+    Stats::score_matches(matches, matcher->lineno() > 0 ? matcher->lineno() - 1 : 0);
 }
 
 // search input after lineno to populate a string vector with the matching line and lines after up to max lines. used by the TUI
