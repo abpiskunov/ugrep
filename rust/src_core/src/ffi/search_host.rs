@@ -91,6 +91,7 @@ pub fn flags_from_settings() -> GrepFlags {
         color_cn: cstr(s.color_cn.as_ptr()).unwrap_or_default(),
         match_ms: cstr(s.match_ms.as_ptr()).unwrap_or_default(),
         match_off: cstr(s.match_off.as_ptr()).unwrap_or_default(),
+        match_mc: cstr(s.match_mc.as_ptr()).unwrap_or_default(),
     }
 }
 
