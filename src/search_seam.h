@@ -219,6 +219,7 @@ typedef struct ugrep_core_search_env {
   void (*out_utf8strn)(void *ctx, const unsigned char *s, size_t len, size_t k);
   void (*out_num)(void *ctx, size_t i, int width);
   // out.header(pathname, partname, heading, lineno, matcher, byte_offset, sep, newline)
+  // newline: bit 0 = newline, bit 1 = pass a NULL matcher (-o echo lines)
   void (*out_header)(void *ctx, size_t lineno, size_t byte_offset, const unsigned char *sep, size_t sep_len, int newline);
   // out.format(format, matches)
   void (*out_format_count)(void *ctx, const unsigned char *format, size_t len, size_t matches);

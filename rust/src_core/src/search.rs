@@ -650,6 +650,10 @@ pub struct GrepFlags {
     pub color_sl: Bytes,
     pub color_cx: Bytes,
     pub color_off: Bytes,
+    /// `color_cn`, `match_ms` and `match_off` (S4c-4, additive like `color_se`).
+    pub color_cn: Bytes,
+    pub match_ms: Bytes,
+    pub match_off: Bytes,
 }
 
 /// The callback interface of the Grep seam: everything a search branch uses of the C++ `Grep` object, its `Output`,
@@ -845,6 +849,9 @@ pub trait GrepHost {
     fn out_nl(&self, lf_only: bool);
     /// `out.header(pathname, partname, heading, lineno, matcher, byte_offset, sep, newline)`.
     fn out_header(&self, lineno: usize, byte_offset: usize, sep: &[u8], newline: bool);
+    /// `out.header(pathname, partname, heading, lineno, NULL, byte_offset, sep, false)`: with a NULL matcher the column
+    /// number of `-k` is 1 (S4c-4, additive: the `-o` multi-line echo passes NULL).
+    fn out_header_no_matcher(&self, lineno: usize, byte_offset: usize, sep: &[u8]);
     /// `out.header(pathname, partname)`.
     fn out_header_file(&self);
     fn out_binary_file_matches(&self);
@@ -942,7 +949,7 @@ impl SearchContext {
 /// `any_line`) and S4c-6 (`context`, `context_invert`, `epilogue`); see SEAM.md. They
 /// take the context and the matcher handle; what they need of the C++ `Grep` is reached through [`GrepHost`] of `ctx`.
 pub mod branch {
-    use super::{file, CnfResult, GrepHost, HandlerKind, MatcherHandle, SearchContext, SearchStep};
+    use super::{file, CnfResult, GrepHost, HandlerKind, MatcherHandle, RestlineData, SearchContext, SearchStep, HEX_MATCH};
 
     /// `Grep::matches` and `Grep::lineno` of a branch that does not register a shift handler: the branch counts in locals
     /// (no host call per match) and stores them back on every way out, so the members hold what the C++ left in them.
@@ -1487,14 +1494,563 @@ pub mod branch {
         format_finish(ctx, c.matches, cnf)
     }
 
+    /// The members the `-o` branches write besides `matches` and `lineno`: `binary` and `hex`. They are kept in locals
+    /// and stored on every way out; the restline members stay in the host, the shift handler works on them.
+    struct OnlyMatchingState {
+        counters: Counters,
+        binary: bool,
+        hex: bool,
+    }
+
+    impl OnlyMatchingState {
+        fn load(ctx: &SearchContext) -> OnlyMatchingState {
+            let counters = Counters::load(ctx);
+            ctx.with_host(|h| OnlyMatchingState { counters, binary: h.binary(), hex: h.hex() })
+        }
+
+        fn store(&self, ctx: &SearchContext) {
+            self.counters.store(ctx);
+            ctx.with_host(|h| {
+                h.set_binary(self.binary);
+                h.set_hex(self.hex);
+            });
+        }
+    }
+
+    /// `check_binary(s, n)`: `-X`, or `-W` and the match is binary.
+    fn check_binary(ctx: &SearchContext, bytes: &[u8]) -> bool {
+        let f = ctx.flags();
+        if f.hex {
+            return true;
+        }
+        if !f.with_hex {
+            return false;
+        }
+        // the UTF-8 check of C++ reads whole SIMD words past the end, as it does in the matcher buffer: pad the copy
+        let mut padded = Vec::with_capacity(bytes.len() + 64);
+        padded.extend_from_slice(bytes);
+        padded.resize(bytes.len() + 64, 0);
+        ctx.with_host(|h| h.is_binary(&padded[..bytes.len()]))
+    }
+
+    /// `utf8nlen(s, n)`: the number of UTF-8-encoded characters, without validity checking.
+    fn utf8nlen(s: &[u8]) -> usize {
+        s.iter().filter(|&&c| c & 0xc0 != 0x80).count()
+    }
+
+    /// `utf8skipn(s, n, k)`: the offset after advancing `k` UTF-8-encoded characters of the first `n` bytes of `s`.
+    fn utf8skipn(s: &[u8], n: usize, k: usize) -> usize {
+        let (mut p, mut n, mut k) = (0usize, n, k);
+        while n > 0 && k > 0 {
+            n -= 1;
+            p += 1;
+            k -= usize::from(s.get(p).is_some_and(|&c| c & 0xc0 != 0x80));
+        }
+        p
+    }
+
     /// `Grep::search_only_matching`: `-o` without `-A`, `-B`, `-C`.
-    pub fn only_matching(_ctx: &SearchContext, _matcher: &MatcherHandle) -> SearchStep {
-        panic!("Grep seam: branch::only_matching is not ported")
+    pub fn only_matching(ctx: &SearchContext, matcher: &MatcherHandle) -> SearchStep {
+        let mut state = OnlyMatchingState::load(ctx);
+        let step = only_matching_scan(ctx, matcher, &mut state);
+        state.store(ctx);
+        step
+    }
+
+    /// What `search_only_matching` and `search_only_matching_context` do for a match that is binary and not shown as hex:
+    /// `--binary-files=without-match` or "Binary file matches". `true` leaves the file (`goto done_search`), `false` is a
+    /// `continue` of the `--files` hold.
+    fn binary_match(ctx: &SearchContext, c: &mut Counters, cnf: bool) -> bool {
+        let f = ctx.flags();
+        ctx.with_host(|h| {
+            if f.binary_without_match {
+                c.matches = 0;
+            } else {
+                h.out_binary_file_matches();
+                c.matches = 1;
+            }
+            !(f.files && cnf && h.out_holding())
+        })
+    }
+
+    /// What the part of `-o` and `-o -ABC` before the output of a match decides: the loop goes on with the output (`Go`),
+    /// takes the next match (`Continue`), stops (`Break`) or the branch ends with a step (`Leave`).
+    enum Gate {
+        Go,
+        Continue,
+        Break,
+        Leave(SearchStep),
+    }
+
+    fn match_gate(ctx: &SearchContext, matcher: &MatcherHandle, c: &mut Counters, current_lineno: usize, binary: bool, cnf: bool) -> Gate {
+        let f = ctx.flags();
+
+        // --range: max line exceeded?
+        if f.max_line > 0 && current_lineno > f.max_line {
+            return Gate::Break;
+        }
+
+        // output blocked?
+        if ctx.with_host(|h| h.out_eof()) {
+            return Gate::Leave(SearchStep::EXIT);
+        }
+
+        if cnf {
+            // check CNF AND/OR/NOT matching
+            let mut matched = false;
+            if let Some(step) = cnf_line(ctx, matcher, false, &mut matched) {
+                return Gate::Leave(step);
+            }
+            if !matched {
+                return Gate::Continue;
+            }
+        }
+
+        if c.lineno != current_lineno || f.ungroup {
+            c.lineno = current_lineno;
+
+            c.matches += 1;
+
+            // --min-count: require at least min-count matches
+            if f.min_count > 0 && c.matches < f.min_count {
+                return Gate::Continue;
+            }
+
+            // --max-count: max number of matches reached?
+            if f.max_count > 0 && c.matches > f.max_count {
+                return Gate::Break;
+            }
+
+            if c.matches == f.min_count + usize::from(f.min_count == 0) && (!f.files || !cnf) {
+                // --max-files: max reached?
+                if !ctx.with_host(|h| h.stats_found_part()) {
+                    return Gate::Leave(SearchStep::EXIT);
+                }
+            }
+        }
+
+        if ctx.with_host(|h| h.binfile()) || (binary && !f.hex && !f.with_hex) {
+            return if binary_match(ctx, c, cnf) { Gate::Leave(SearchStep::DONE) } else { Gate::Continue };
+        }
+
+        Gate::Go
+    }
+
+    fn only_matching_scan(ctx: &SearchContext, matcher: &MatcherHandle, s: &mut OnlyMatchingState) -> SearchStep {
+        let f = ctx.flags();
+        let cnf = has_cnf(ctx);
+        let separator = f.separator.as_deref().unwrap_or_default();
+        let separator_bar = f.separator_bar.as_deref().unwrap_or_default();
+
+        // counter for replace field %m matches
+        let mut replace_matching = 0usize;
+        let mut nl = false;
+
+        // skip accurate line number counting, only count matching lines
+        if !f.line_number && !f.multiline && f.max_line == 0 && f.stats.is_none() {
+            matcher.lineno_skip(true);
+        }
+
+        while matcher.find() {
+            let begin = matcher.begin();
+            let size = matcher.size();
+            let data = matcher.bytes_to_vec(begin, size);
+
+            s.binary = check_binary(ctx, &data);
+
+            ctx.with_host(|h| {
+                if s.hex && !s.binary {
+                    h.out_dump_done();
+                } else if !s.hex && s.binary && nl {
+                    h.out_nl(false);
+                    nl = false;
+                }
+
+                if nl {
+                    h.out_nl(false);
+                    nl = false;
+                }
+            });
+
+            let current_lineno = matcher.lineno();
+
+            match match_gate(ctx, matcher, &mut s.counters, current_lineno, s.binary, cnf) {
+                Gate::Go => {}
+                Gate::Continue => continue,
+                Gate::Break => break,
+                Gate::Leave(step) => return step,
+            }
+
+            let first = matcher.first();
+
+            if !f.no_header {
+                ctx.with_host(|h| h.out_header(current_lineno, first, separator, s.binary));
+            }
+
+            // --min-count: require at least min-count matches
+            if f.min_count > 0 && s.counters.matches < f.min_count {
+                continue;
+            }
+
+            s.hex = s.binary;
+
+            if s.binary {
+                if f.hex || f.with_hex {
+                    ctx.with_host(|h| {
+                        h.out_dump_next(first);
+                        h.out_dump_hex(HEX_MATCH, first, &data);
+                    });
+                } else {
+                    if binary_match(ctx, &mut s.counters, cnf) {
+                        return SearchStep::DONE;
+                    }
+                    continue;
+                }
+
+                s.counters.lineno = s.counters.lineno.wrapping_add(matcher.lines().wrapping_sub(1));
+            } else if let Some(replace) = f.replace.as_deref() {
+                // output --replace=FORMAT
+                let matches = s.counters.matches;
+                ctx.with_host(|h| {
+                    h.out_str(&f.match_ms);
+                    h.out_format(replace, matches, Some(&mut replace_matching), matches > 1, matches > 1);
+                    h.out_str(&f.match_off);
+                });
+            } else {
+                let mut rest: &[u8] = &data;
+                let lineno = &mut s.counters.lineno;
+                ctx.with_host(|h| {
+                    if f.multiline {
+                        // echo multi-line matches line-by-line
+                        let mut from = 0;
+                        while let Some(p) = rest[from..].iter().position(|&c| c == b'\n') {
+                            let to = from + p;
+                            h.out_str(&f.match_ms);
+                            h.out_str(&rest[from..to]);
+                            h.out_str(&f.match_off);
+                            h.out_chr(b'\n');
+
+                            *lineno += 1;
+                            h.out_header_no_matcher(*lineno, first + to + 1, separator_bar);
+
+                            from = to + 1;
+                        }
+                        rest = &rest[from..];
+                    }
+
+                    if !rest.is_empty() {
+                        let lf_only = rest[rest.len() - 1] == b'\n';
+                        let n = rest.len() - usize::from(lf_only);
+                        if n > 0 {
+                            h.out_str(&f.match_ms);
+                            h.out_str(&rest[..n]);
+                            h.out_str(&f.match_off);
+                        }
+                        h.out_nl(lf_only);
+                    } else {
+                        nl = true;
+                    }
+                });
+            }
+        }
+
+        // --min-count: require at least min-count matches
+        if f.min_count > 0 && s.counters.matches < f.min_count {
+            return SearchStep::EXIT;
+        }
+
+        ctx.with_host(|h| {
+            if nl {
+                h.out_nl(false);
+            }
+            if s.hex {
+                h.out_dump_done();
+            }
+        });
+
+        SearchStep::DONE
+    }
+
+    /// The end of a line that `-o -ABC` shows: the rest of the line after the last match, and the number of matches that
+    /// did not fit, then the newline (`width` is what is left of the context width).
+    fn only_matching_context_tail(h: &dyn GrepHost, f: &super::GrepFlags, width: usize, count: usize) {
+        if h.restline_size() > 0 {
+            let rest = h.restline_bytes();
+            h.out_str(&f.color_cx);
+            if utf8nlen(&rest) > width.wrapping_add(3) {
+                h.out_utf8strn(&rest, width);
+                h.out_str(&f.color_off);
+                h.out_str(&f.color_se);
+                h.out_str(b"...");
+            } else {
+                h.out_str(&rest);
+            }
+            h.out_str(&f.color_off);
+            h.set_restline_size(0);
+        }
+
+        if count > 0 {
+            h.out_str(&f.color_se);
+            h.out_str(b"...");
+            h.out_str(&f.color_off);
+            h.out_str(&f.color_cn);
+            h.out_str(b"[+");
+            h.out_num(count, 0);
+            h.out_str(b" more]");
+            h.out_str(&f.color_off);
+        }
+
+        h.out_nl(false);
     }
 
     /// `Grep::search_only_matching_context`: `-o` with `-A`, `-B` or `-C`.
-    pub fn only_matching_context(_ctx: &SearchContext, _matcher: &MatcherHandle) -> SearchStep {
-        panic!("Grep seam: branch::only_matching_context is not ported")
+    pub fn only_matching_context(ctx: &SearchContext, matcher: &MatcherHandle) -> SearchStep {
+        let mut state = OnlyMatchingState::load(ctx);
+        let step = only_matching_context_scan(ctx, matcher, &mut state);
+        state.store(ctx);
+        step
+    }
+
+    fn only_matching_context_scan(ctx: &SearchContext, matcher: &MatcherHandle, s: &mut OnlyMatchingState) -> SearchStep {
+        let f = ctx.flags();
+        let cnf = has_cnf(ctx);
+        let separator = f.separator.as_deref().unwrap_or_default();
+        let separator_bar = f.separator_bar.as_deref().unwrap_or_default();
+
+        let full_width = f.before_context + f.after_context;
+        let mut count = 0usize;
+        let mut width = full_width;
+        let mut nl = false;
+
+        // skip accurate line number counting, only count matching lines
+        if !f.line_number && !f.multiline && f.max_line == 0 && f.stats.is_none() {
+            matcher.lineno_skip(true);
+        }
+
+        // register the event handler to update restline on buffer shift, the matcher resets it when a new input source is
+        // assigned
+        matcher.set_shift_handler(HandlerKind::ONLY_MATCHING_CONTEXT);
+
+        // the rest of the matching line
+        ctx.with_host(|h| {
+            h.set_restline_data(RestlineData::None);
+            h.set_restline_size(0);
+            h.set_restline_last(0);
+        });
+
+        while matcher.find() {
+            let begin = matcher.begin();
+            let size = matcher.size();
+            let data = matcher.bytes_to_vec(begin, size);
+
+            s.binary = check_binary(ctx, &data);
+
+            ctx.with_host(|h| {
+                if s.hex && !s.binary {
+                    h.out_dump_done();
+                } else if !s.hex && s.binary && nl {
+                    h.out_nl(false);
+                    nl = false;
+                }
+
+                if nl {
+                    only_matching_context_tail(h, &f, width, count);
+
+                    count = 0;
+                    width = full_width;
+                    nl = false;
+                }
+            });
+
+            let current_lineno = matcher.lineno();
+
+            match match_gate(ctx, matcher, &mut s.counters, current_lineno, s.binary, cnf) {
+                Gate::Go => {}
+                Gate::Continue => continue,
+                Gate::Break => break,
+                Gate::Leave(step) => return step,
+            }
+
+            let first = matcher.first();
+            let last = matcher.last();
+
+            if !f.no_header {
+                ctx.with_host(|h| h.out_header(current_lineno, first, separator, s.binary));
+            }
+
+            // --min-count: require at least min-count matches
+            if f.min_count > 0 && s.counters.matches < f.min_count {
+                continue;
+            }
+
+            s.hex = s.binary;
+
+            if s.binary {
+                if f.hex || f.with_hex {
+                    ctx.with_host(|h| {
+                        h.out_dump_next(first);
+                        h.out_dump_hex(HEX_MATCH, first, &data);
+                    });
+                } else {
+                    if binary_match(ctx, &mut s.counters, cnf) {
+                        return SearchStep::DONE;
+                    }
+                    continue;
+                }
+
+                s.counters.lineno = s.counters.lineno.wrapping_add(matcher.lines().wrapping_sub(1));
+                continue;
+            }
+
+            ctx.with_host(|h| {
+                if h.restline_size() > 0 {
+                    if first.wrapping_sub(h.restline_last()) < h.restline_size() {
+                        h.set_restline_size(first.wrapping_sub(h.restline_last()));
+                    }
+
+                    let rest = h.restline_bytes();
+                    let after = utf8nlen(&rest).min(width);
+
+                    width -= after;
+
+                    if after > 0 {
+                        h.out_str(&f.color_cx);
+                        h.out_utf8strn(&rest, after);
+                        h.out_str(&f.color_off);
+                    }
+
+                    h.set_restline_size(0);
+                }
+            });
+
+            if width == 0 {
+                count += 1;
+            } else {
+                let mut pos = 0usize;
+                let mut size = size;
+
+                loop {
+                    // check for additional lines in the match output
+                    let mut rest = 0usize;
+                    let to = data[pos..pos + size].iter().position(|&c| c == b'\n');
+                    if let Some(p) = to {
+                        rest = size;
+                        size = p;
+                        rest -= size;
+                    }
+
+                    // length of the match is the number of UTF-8-encoded Unicode characters
+                    let piece = &data[pos..pos + size];
+                    let length = utf8nlen(piece);
+                    let mut fit_length = length;
+
+                    if fit_length > width {
+                        if fit_length > width + 4 {
+                            fit_length = width;
+                        }
+                        width = 0;
+                    } else {
+                        width -= fit_length;
+                    }
+
+                    if !nl {
+                        let bol = matcher.bol();
+                        let border = matcher.border();
+                        let before_bytes = matcher.bytes_to_vec(bol, border);
+                        let margin = utf8nlen(&before_bytes);
+                        let mut before = f.before_context * fit_length / (f.before_context + f.after_context);
+
+                        before = f.before_context.saturating_sub(before);
+
+                        if margin > before {
+                            let skip = utf8skipn(&before_bytes, border, margin - before);
+                            // the C++ gives utf8strn `border` bytes from the skipped position, up to the end of the match
+                            let window = matcher.bytes_to_vec(bol + skip, border.min(border + data.len() - skip));
+                            ctx.with_host(|h| {
+                                h.out_str(&f.color_se);
+                                h.out_str(b"...");
+                                h.out_str(&f.color_off);
+                                h.out_str(&f.color_cx);
+                                h.out_utf8strn(&window, before);
+                                h.out_str(&f.color_off);
+                            });
+                            width = width.wrapping_sub(before);
+                        } else {
+                            ctx.with_host(|h| {
+                                if border > 0 {
+                                    h.out_str(&f.color_cx);
+                                    h.out_str(&before_bytes);
+                                    h.out_str(&f.color_off);
+                                }
+                            });
+                            if margin >= 3 {
+                                width = width.wrapping_sub(margin - 3);
+                            } else {
+                                width = width.wrapping_add(3 - margin);
+                            }
+                        }
+                    }
+
+                    ctx.with_host(|h| {
+                        h.out_str(&f.match_ms);
+                        if fit_length == length {
+                            h.out_str(piece);
+                        } else {
+                            h.out_utf8strn(piece, fit_length);
+                            h.out_str(b"[+");
+                            h.out_num(length - fit_length, 0);
+                            h.out_chr(b']');
+                        }
+                        h.out_str(&f.match_off);
+                    });
+
+                    // no more additional lines to output?
+                    let Some(p) = to else { break };
+
+                    ctx.with_host(|h| h.out_nl(false));
+
+                    // output header and repeat to output a multiline match after previous newline
+                    if !f.no_header {
+                        let lineno = s.counters.lineno + 1;
+                        s.counters.lineno = lineno;
+                        ctx.with_host(|h| h.out_header(lineno, first + p, separator_bar, false));
+                    }
+
+                    pos += p + 1;
+                    size = rest - 1;
+                    width = full_width;
+
+                    nl = true;
+                }
+
+                let eol = matcher.eol(false); // warning: call eol() before bol() and end()
+                let end = matcher.end();
+
+                ctx.with_host(|h| {
+                    h.set_restline_data(RestlineData::Buffer(end));
+                    h.set_restline_size(eol.wrapping_sub(end));
+                    h.set_restline_last(last);
+                });
+            }
+
+            nl = true;
+        }
+
+        // --min-count: require at least min-count matches
+        if f.min_count > 0 && s.counters.matches < f.min_count {
+            return SearchStep::EXIT;
+        }
+
+        ctx.with_host(|h| {
+            if nl {
+                only_matching_context_tail(h, &f, width, count);
+            }
+            if s.hex {
+                h.out_dump_done();
+            }
+        });
+
+        SearchStep::DONE
     }
 
     /// `Grep::search_plain`: plain matches and `--hex`.
@@ -2752,6 +3308,7 @@ mod tests {
                 self.st.borrow_mut().out.extend_from_slice(if lf_only { b"<LF>" } else { b"<CRLF>" });
             }
             fn out_header(&self, _: usize, _: usize, _: &[u8], _: bool) {}
+            fn out_header_no_matcher(&self, _: usize, _: usize, _: &[u8]) {}
             fn out_header_file(&self) {}
             fn out_binary_file_matches(&self) {}
             fn out_format_count(&self, _: &[u8], _: usize) {}
