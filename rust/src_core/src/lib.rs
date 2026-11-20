@@ -281,6 +281,83 @@ mod ffi {
         end: usize,
     }
 
+    /// Positions of the current match of a matcher handle, offsets from the start of the matcher buffer
+    /// (`signatures::search::TextBounds`).
+    struct MatcherBounds {
+        begin: usize,
+        end: usize,
+        first: usize,
+        last: usize,
+        size: usize,
+        bol: usize,
+        eol: usize,
+        lineno: usize,
+        lines: usize,
+    }
+
+    /// The buffer-shift event of `reflex::AbstractMatcher::Handler` (`signatures::search::ShiftEvent`); the shifted
+    /// out text `buf[..len]` is passed next to it.
+    struct MatcherShiftEvent {
+        len: usize,
+        num: usize,
+    }
+
+    extern "Rust" {
+        /// The handle of a RE-flex or PCRE2 matcher that C++ owns (`signatures::search::MatcherHandle`). Only the
+        /// kinds `MatcherKind::REFLEX`, `PCRE2` and `PCRE2_UTF` cross; other matcher kinds stay C++.
+        type MatcherHandle;
+        /// The Rust-owned locals shared by the `Grep::search` branches (`signatures::search::SearchContext`).
+        type SearchContext;
+
+        /// Seam function `src_core.matcher_handle_new`: `kind` is a `MatcherKind` value, `token` identifies the C++ matcher.
+        fn matcher_handle_new(kind: u8, token: usize) -> Box<MatcherHandle>;
+        /// Seam function `src_core.matcher_find`: `matcher->find()`. Every handle function takes `&MatcherHandle`:
+        /// the C++ matcher mutates, and its shift handler re-enters while `find` or `eol` runs.
+        fn matcher_find(handle: &MatcherHandle) -> bool;
+        /// Seam function `src_core.matcher_next_match`: the loop step, optionally skipping the rest of the line.
+        fn matcher_next_match(handle: &MatcherHandle, skip_line: bool) -> bool;
+        /// Seam function `src_core.matcher_bol`.
+        fn matcher_bol(handle: &MatcherHandle) -> usize;
+        /// Seam function `src_core.matcher_eol`: `eol(inclusive)`.
+        fn matcher_eol(handle: &MatcherHandle, inclusive: bool) -> usize;
+        /// Seam function `src_core.matcher_begin`.
+        fn matcher_begin(handle: &MatcherHandle) -> usize;
+        /// Seam function `src_core.matcher_end`.
+        fn matcher_end(handle: &MatcherHandle) -> usize;
+        /// Seam function `src_core.matcher_text_bounds`.
+        fn matcher_text_bounds(handle: &MatcherHandle) -> MatcherBounds;
+        /// Seam function `src_core.matcher_lineno_skip`.
+        fn matcher_lineno_skip(handle: &MatcherHandle, on: bool);
+        /// Seam function `src_core.matcher_set_shift_listener`: C++ keeps the handler object.
+        fn matcher_set_shift_listener(handle: &MatcherHandle, enabled: bool);
+        /// Seam function `src_core.matcher_shift_event`: the C++ handler forwards the buffer shift (C++ calls Rust).
+        fn matcher_shift_event(handle: &MatcherHandle, event: &MatcherShiftEvent, buf: &[u8]);
+        /// Seam function `src_core.matcher_reset`.
+        fn matcher_reset(handle: &MatcherHandle);
+
+        /// Seam function `src_core.search_context_new`: `Grep::SearchContext(pathname, cost)`.
+        fn search_context_new(pathname: &[u8], cost: u16) -> Box<SearchContext>;
+        /// Seam function `src_core.search_context_pathname`.
+        fn search_context_pathname(ctx: &SearchContext) -> &[u8];
+        /// Seam function `src_core.search_context_matched`.
+        fn search_context_matched(ctx: &SearchContext) -> bool;
+
+        /// Seam functions `src_core.search_*`, one per branch of `Grep::search`; the `u8` result is a `SearchStep`
+        /// (CONTINUE 0, DONE 1, EXIT 2). The context is shared: the shift handler reads it while a branch runs.
+        fn search_setup(ctx: &SearchContext);
+        fn search_quiet_list(ctx: &SearchContext, matcher: &MatcherHandle) -> u8;
+        fn search_count(ctx: &SearchContext, matcher: &MatcherHandle) -> u8;
+        fn search_format(ctx: &SearchContext, matcher: &MatcherHandle) -> u8;
+        fn search_only_matching(ctx: &SearchContext, matcher: &MatcherHandle) -> u8;
+        fn search_only_matching_context(ctx: &SearchContext, matcher: &MatcherHandle) -> u8;
+        fn search_plain(ctx: &SearchContext, matcher: &MatcherHandle) -> u8;
+        fn search_invert(ctx: &SearchContext, matcher: &MatcherHandle) -> u8;
+        fn search_any_line(ctx: &SearchContext, matcher: &MatcherHandle) -> u8;
+        fn search_context(ctx: &SearchContext, matcher: &MatcherHandle) -> u8;
+        fn search_context_invert(ctx: &SearchContext, matcher: &MatcherHandle) -> u8;
+        fn search_epilogue(ctx: &SearchContext, matcher: &MatcherHandle);
+    }
+
     extern "Rust" {
         /// Seam function `src_core.set_color`: `color` is the `char[COLORLEN]` the C++ passes.
         fn core_set_color(colors: &[u8], parameter: &[u8], color: &mut [u8]);
@@ -618,4 +695,126 @@ fn output_format_invert(
     ctx: &ffi::OutputCtx,
 ) -> ffi::OutputFormatResult {
     output_format::format_invert(&output_ffi::format_opts(), format, (pathname, partname), line, args, ctx)
+}
+
+// the Grep search seam (see SEAM.md, "Grep seam"): the opaque handles and the stub bodies of signatures::search
+use signatures::search::{self as grep_search, MatcherHandle, SearchContext};
+
+fn matcher_handle_new(kind: u8, token: usize) -> Box<MatcherHandle> {
+    Box::new(MatcherHandle::new(grep_search::MatcherKind(kind), token))
+}
+
+fn matcher_find(handle: &MatcherHandle) -> bool {
+    handle.find()
+}
+
+fn matcher_next_match(handle: &MatcherHandle, skip_line: bool) -> bool {
+    handle.next_match(skip_line)
+}
+
+fn matcher_bol(handle: &MatcherHandle) -> usize {
+    handle.bol()
+}
+
+fn matcher_eol(handle: &MatcherHandle, inclusive: bool) -> usize {
+    handle.eol(inclusive)
+}
+
+fn matcher_begin(handle: &MatcherHandle) -> usize {
+    handle.begin()
+}
+
+fn matcher_end(handle: &MatcherHandle) -> usize {
+    handle.end()
+}
+
+fn matcher_text_bounds(handle: &MatcherHandle) -> ffi::MatcherBounds {
+    let b = handle.text_bounds();
+    ffi::MatcherBounds {
+        begin: b.begin,
+        end: b.end,
+        first: b.first,
+        last: b.last,
+        size: b.size,
+        bol: b.bol,
+        eol: b.eol,
+        lineno: b.lineno,
+        lines: b.lines,
+    }
+}
+
+fn matcher_lineno_skip(handle: &MatcherHandle, on: bool) {
+    handle.lineno_skip(on)
+}
+
+fn matcher_set_shift_listener(handle: &MatcherHandle, enabled: bool) {
+    handle.set_shift_listener(enabled)
+}
+
+fn matcher_shift_event(handle: &MatcherHandle, event: &ffi::MatcherShiftEvent, buf: &[u8]) {
+    handle.shift_event(grep_search::ShiftEvent { len: event.len, num: event.num }, buf)
+}
+
+fn matcher_reset(handle: &MatcherHandle) {
+    handle.reset()
+}
+
+fn search_context_new(pathname: &[u8], cost: u16) -> Box<SearchContext> {
+    Box::new(SearchContext::new(pathname, cost))
+}
+
+fn search_context_pathname(ctx: &SearchContext) -> &[u8] {
+    &ctx.pathname
+}
+
+fn search_context_matched(ctx: &SearchContext) -> bool {
+    ctx.matched.get()
+}
+
+fn search_setup(ctx: &SearchContext) {
+    grep_search::branch::setup(ctx)
+}
+
+fn search_quiet_list(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
+    grep_search::branch::quiet_list(ctx, matcher).0
+}
+
+fn search_count(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
+    grep_search::branch::count(ctx, matcher).0
+}
+
+fn search_format(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
+    grep_search::branch::format(ctx, matcher).0
+}
+
+fn search_only_matching(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
+    grep_search::branch::only_matching(ctx, matcher).0
+}
+
+fn search_only_matching_context(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
+    grep_search::branch::only_matching_context(ctx, matcher).0
+}
+
+fn search_plain(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
+    grep_search::branch::plain(ctx, matcher).0
+}
+
+fn search_invert(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
+    grep_search::branch::invert(ctx, matcher).0
+}
+
+fn search_any_line(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
+    grep_search::branch::any_line(ctx, matcher).0
+}
+
+fn search_context(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
+    grep_search::branch::context(ctx, matcher).0
+}
+
+fn search_context_invert(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
+    grep_search::branch::context_invert(ctx, matcher).0
+}
+
+fn search_epilogue(ctx: &SearchContext, matcher: &MatcherHandle) {
+    grep_search::branch::epilogue(ctx, matcher)
 }
