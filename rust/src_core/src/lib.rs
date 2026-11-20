@@ -54,6 +54,8 @@ pub mod zthread_sys;
 pub mod zthread_core;
 #[path = "ffi/zthread.rs"]
 pub mod zthread_ffi;
+#[path = "ffi/search_host.rs"]
+pub mod search_host_ffi;
 
 use signatures as sig;
 
@@ -303,8 +305,8 @@ mod ffi {
     }
 
     extern "Rust" {
-        /// The handle of a RE-flex or PCRE2 matcher that C++ owns (`signatures::search::MatcherHandle`). Only the
-        /// kinds `MatcherKind::REFLEX`, `PCRE2` and `PCRE2_UTF` cross; other matcher kinds stay C++.
+        /// The handle of a matcher that C++ owns, of any kind (`signatures::search::MatcherHandle`): `MatcherKind::REFLEX`,
+        /// `PCRE2`, `LINE`, `FUZZY` or `BOOST`.
         type MatcherHandle;
         /// The Rust-owned locals shared by the `Grep::search` branches (`signatures::search::SearchContext`).
         type SearchContext;
@@ -334,6 +336,25 @@ mod ffi {
         fn matcher_shift_event(handle: &MatcherHandle, event: &MatcherShiftEvent, buf: &[u8]);
         /// Seam function `src_core.matcher_reset`.
         fn matcher_reset(handle: &MatcherHandle);
+        /// Seam functions `src_core.matcher_*`: the remaining `reflex::AbstractMatcher` accessors the branches use.
+        fn matcher_first(handle: &MatcherHandle) -> usize;
+        fn matcher_last(handle: &MatcherHandle) -> usize;
+        fn matcher_size(handle: &MatcherHandle) -> usize;
+        fn matcher_lineno(handle: &MatcherHandle) -> usize;
+        fn matcher_lines(handle: &MatcherHandle) -> usize;
+        fn matcher_columno(handle: &MatcherHandle) -> usize;
+        fn matcher_at_bol(handle: &MatcherHandle) -> bool;
+        fn matcher_hit_end(handle: &MatcherHandle) -> bool;
+        fn matcher_skip(handle: &MatcherHandle, c: u8) -> bool;
+        fn matcher_border(handle: &MatcherHandle) -> usize;
+        fn matcher_before(handle: &MatcherHandle) -> usize;
+        fn matcher_after(handle: &MatcherHandle) -> usize;
+        fn matcher_bef(handle: &MatcherHandle) -> usize;
+        fn matcher_aft(handle: &MatcherHandle) -> usize;
+        fn matcher_set_reserve(handle: &MatcherHandle, size: usize);
+        /// Seam functions `src_core.matcher_fuzzy_*`: the `-Zbest` calls of a `FuzzyMatcher`.
+        fn matcher_fuzzy_distance(handle: &MatcherHandle, max: u16);
+        fn matcher_fuzzy_edits(handle: &MatcherHandle) -> u16;
 
         /// Seam function `src_core.search_context_new`: `Grep::SearchContext(pathname, cost)`.
         fn search_context_new(pathname: &[u8], cost: u16) -> Box<SearchContext>;
@@ -757,6 +778,74 @@ fn matcher_shift_event(handle: &MatcherHandle, event: &ffi::MatcherShiftEvent, b
 
 fn matcher_reset(handle: &MatcherHandle) {
     handle.reset()
+}
+
+fn matcher_first(handle: &MatcherHandle) -> usize {
+    handle.first()
+}
+
+fn matcher_last(handle: &MatcherHandle) -> usize {
+    handle.last()
+}
+
+fn matcher_size(handle: &MatcherHandle) -> usize {
+    handle.size()
+}
+
+fn matcher_lineno(handle: &MatcherHandle) -> usize {
+    handle.lineno()
+}
+
+fn matcher_lines(handle: &MatcherHandle) -> usize {
+    handle.lines()
+}
+
+fn matcher_columno(handle: &MatcherHandle) -> usize {
+    handle.columno()
+}
+
+fn matcher_at_bol(handle: &MatcherHandle) -> bool {
+    handle.at_bol()
+}
+
+fn matcher_hit_end(handle: &MatcherHandle) -> bool {
+    handle.hit_end()
+}
+
+fn matcher_skip(handle: &MatcherHandle, c: u8) -> bool {
+    handle.skip(c)
+}
+
+fn matcher_border(handle: &MatcherHandle) -> usize {
+    handle.border()
+}
+
+fn matcher_before(handle: &MatcherHandle) -> usize {
+    handle.before()
+}
+
+fn matcher_after(handle: &MatcherHandle) -> usize {
+    handle.after()
+}
+
+fn matcher_bef(handle: &MatcherHandle) -> usize {
+    handle.bef()
+}
+
+fn matcher_aft(handle: &MatcherHandle) -> usize {
+    handle.aft()
+}
+
+fn matcher_set_reserve(handle: &MatcherHandle, size: usize) {
+    handle.set_reserve(size)
+}
+
+fn matcher_fuzzy_distance(handle: &MatcherHandle, max: u16) {
+    handle.fuzzy_distance(max)
+}
+
+fn matcher_fuzzy_edits(handle: &MatcherHandle) -> u16 {
+    handle.fuzzy_edits()
 }
 
 fn search_context_new(pathname: &[u8], cost: u16) -> Box<SearchContext> {

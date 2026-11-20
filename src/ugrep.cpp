@@ -86,7 +86,6 @@ After this, you may want to test ugrep and install it (optional):
 #include "core_rust.hpp"
 #include "zthread_seam.h"
 #include "zstream_seam.h"
-#include "search_tap.hpp"
 #include <reflex/matcher.h>
 #include <reflex/linematcher.h>
 #include <reflex/fuzzymatcher.h>
@@ -2991,14 +2990,6 @@ struct Grep {
 #endif
 
 };
-
-#ifdef CPP2RUST_TAP
-// neutral encoder of the search context for the tap of the Grep::search_* dispatch functions: [pathname, cost, matched]
-inline std::string to_neutral(const Grep::SearchContext& ctx)
-{
-  return "[" + cpp2rust::tap::to_neutral(ctx.pathname) + "," + cpp2rust::tap::to_neutral(ctx.cost) + "," + cpp2rust::tap::to_neutral(ctx.matched) + "]";
-}
-#endif
 
 struct GrepWorker;
 
@@ -7489,8 +7480,6 @@ exit_search:
 // search branch setup: --files resets the matching bitmasks, called before the branch is chosen
 void Grep::search_setup(SearchContext& ctx)
 {
-  TAP_CALL("src_core.Grep.search_setup", ctx);
-
   // --files: reset the matching[] bitmask used in cnf_matching() for each matcher in matchers
   if (flag_files && matchers != NULL)
   {
@@ -7518,8 +7507,6 @@ void Grep::search_setup(SearchContext& ctx)
 Grep::SearchStep Grep::search_quiet_list(SearchContext& ctx)
 {
   const char *& pathname = ctx.pathname;
-
-  TAP_CALL("src_core.Grep.search_quiet_list", ctx);
 
       {
         // option -q, -l, or -L
@@ -7623,8 +7610,6 @@ exit_search:
 Grep::SearchStep Grep::search_count(SearchContext& ctx)
 {
   const char *& pathname = ctx.pathname;
-
-  TAP_CALL("src_core.Grep.search_count", ctx);
 
       {
         // option -c
@@ -7798,8 +7783,6 @@ exit_search:
 Grep::SearchStep Grep::search_format(SearchContext& ctx)
 {
   const char *& pathname = ctx.pathname;
-
-  TAP_CALL("src_core.Grep.search_format", ctx);
 
       {
         // option --format
@@ -7981,8 +7964,6 @@ exit_search:
 Grep::SearchStep Grep::search_only_matching(SearchContext& ctx)
 {
   const char *& pathname = ctx.pathname;
-
-  TAP_CALL("src_core.Grep.search_only_matching", ctx);
 
       {
         // option -o without -ABC
@@ -8186,8 +8167,6 @@ exit_search:
 Grep::SearchStep Grep::search_only_matching_context(SearchContext& ctx)
 {
   const char *& pathname = ctx.pathname;
-
-  TAP_CALL("src_core.Grep.search_only_matching_context", ctx);
 
       {
         // option -o with -ABC specified
@@ -8557,8 +8536,6 @@ exit_search:
 Grep::SearchStep Grep::search_plain(SearchContext& ctx)
 {
   const char *& pathname = ctx.pathname;
-
-  TAP_CALL("src_core.Grep.search_plain", ctx);
 
       {
         // options -ABC, -y, -v are not specified, --hexdump context is supported (including with options -ABC)
@@ -9054,8 +9031,6 @@ Grep::SearchStep Grep::search_invert(SearchContext& ctx)
 {
   const char *& pathname = ctx.pathname;
 
-  TAP_CALL("src_core.Grep.search_invert", ctx);
-
       {
         // option -v without -ABC, -y
 
@@ -9146,8 +9121,6 @@ exit_search:
 Grep::SearchStep Grep::search_any_line(SearchContext& ctx)
 {
   const char *& pathname = ctx.pathname;
-
-  TAP_CALL("src_core.Grep.search_any_line", ctx);
 
       {
         // option -y
@@ -9585,8 +9558,6 @@ Grep::SearchStep Grep::search_context(SearchContext& ctx)
 {
   const char *& pathname = ctx.pathname;
 
-  TAP_CALL("src_core.Grep.search_context", ctx);
-
       {
         // options -ABC without -v
 
@@ -9984,8 +9955,6 @@ exit_search:
 Grep::SearchStep Grep::search_context_invert(SearchContext& ctx)
 {
   const char *& pathname = ctx.pathname;
-
-  TAP_CALL("src_core.Grep.search_context_invert", ctx);
 
       {
         // options -ABC with -v
@@ -10470,8 +10439,6 @@ exit_search:
 // search epilogue: --files check, --break and --stats, run when the branch did not leave through exit_search
 void Grep::search_epilogue(SearchContext& ctx)
 {
-  TAP_CALL("src_core.Grep.search_epilogue", ctx);
-
   // --files: check if all CNF conditions are met globally to launch output or reset matches
   if (flag_files && matchers != NULL)
     if (!cnf_satisfied())
