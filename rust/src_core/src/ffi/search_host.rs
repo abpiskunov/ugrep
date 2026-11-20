@@ -5,10 +5,17 @@
 //! without NUL, results of bytes are returned by pointer with the length written through an out parameter and stay
 //! valid until the next callback. All callbacks are called on the searching thread only.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ffi::c_void;
-use std::os::raw::c_int;
+use std::ffi::CString;
+use std::os::raw::{c_char, c_int};
+use std::rc::Rc;
 
-use crate::signatures::search::{GrepFlags, GrepHost, MatcherHandle, MatcherTable, RestlineData, SearchContext};
+use crate::signatures::search::raw;
+use crate::signatures::search::{
+    CnfBits, CnfResult, FileRef, FileSource, GrepFlags, GrepHost, InputHandle, MatcherHandle, MatcherTable, OwnedFile, RestlineData, SearchContext,
+};
 use crate::signatures::Bytes;
 
 /// The flags are not in the table: they are Rust-owned (`ugrep_settings`, `ffi/settings.rs`), so no callback is needed.
@@ -36,6 +43,9 @@ pub fn flags_from_settings() -> GrepFlags {
         brk: s.flag_break != 0,
         color: cstr(s.flag_color),
         count: s.flag_count,
+        decompress: s.flag_decompress,
+        devices_action: s.flag_devices_action,
+        encoding_type: s.flag_encoding_type,
         files: s.flag_files,
         files_with_matches: s.flag_files_with_matches,
         format: cstr(s.flag_format),
@@ -54,9 +64,11 @@ pub fn flags_from_settings() -> GrepFlags {
         max_files: s.flag_max_files,
         max_line: s.flag_max_line,
         min_count: s.flag_min_count,
+        min_line: s.flag_min_line,
         mode: s.flag_mode,
         multiline: s.flag_multiline,
         no_header: s.flag_no_header,
+        no_messages: s.flag_no_messages,
         null: s.flag_null,
         only_matching: s.flag_only_matching,
         quiet: s.flag_quiet,
@@ -66,9 +78,11 @@ pub fn flags_from_settings() -> GrepFlags {
         separator_dash: cstr(s.flag_separator_dash),
         stats: cstr(s.flag_stats),
         tag: cstr(s.flag_tag),
+        text: s.flag_text != 0,
         ungroup: s.flag_ungroup != 0,
         with_filename: s.flag_with_filename,
         with_hex: s.flag_with_hex,
+        zmax: s.flag_zmax,
     }
 }
 
@@ -85,6 +99,7 @@ pub enum Member {
     Binary,
     RestlineSize,
     RestlineLast,
+    Interactive,
 }
 
 /// How the C++ facade decodes `restline_data_get` and `restline_data_set`: 0 NULL, 1 offset in the matcher buffer,
@@ -116,6 +131,7 @@ pub enum OutOp {
     HeaderFile,
     BinaryFileMatches,
     DumpDone,
+    Launch,
 }
 
 /// Mirrors `struct ugrep_core_search_env` of `src/search_seam.h`; the order of the fields and of the enum values is
@@ -162,10 +178,62 @@ pub struct GrepEnv {
     pub stats_found: extern "C" fn(*mut c_void, c_int) -> c_int,
     pub stats_found_parts: extern "C" fn(*mut c_void) -> usize,
     pub stats_score_matches: extern "C" fn(*mut c_void, usize, usize),
+    // the file members of Grep (S4c-2): FILE* and reflex::Input* are opaque pointers
+    pub filename: extern "C" fn(*mut c_void, *mut usize) -> *const u8,
+    pub file_in: extern "C" fn(*mut c_void) -> *mut c_void,
+    pub set_file_in: extern "C" fn(*mut c_void, *mut c_void),
+    pub input: extern "C" fn(*mut c_void) -> *mut c_void,
+    pub input_file: extern "C" fn(*mut c_void) -> *mut c_void,
+    pub input_set_file: extern "C" fn(*mut c_void, *mut c_void, c_int, c_int),
+    pub input_clear: extern "C" fn(*mut c_void),
+    pub input_get: extern "C" fn(*mut c_void, *mut u8, usize) -> usize,
+    pub source: extern "C" fn(*mut c_void) -> *mut c_void,
+    pub stdin_file: extern "C" fn(*mut c_void) -> *mut c_void,
+    pub filter_magic_scan: extern "C" fn(*mut c_void, *mut c_void) -> usize,
+    pub warning: extern "C" fn(*mut c_void, *const c_char, *const c_char),
+    /// The zthread slots are `Option`: a facade built without `HAVE_LIBZ` may leave them NULL (the facade fills stubs,
+    /// but a NULL must never be UB).
+    pub zthread_start:     Option<extern "C" fn(*mut c_void, usize, *const c_char, *const c_char, c_int) -> c_int>,
+        pub zthread_open_next: Option<extern "C" fn(*mut c_void, *const c_char, c_int) -> c_int>,
+    pub zthread_cancel: Option<extern "C" fn(*mut c_void)>,
+    pub cnf_alts: extern "C" fn(*mut c_void, usize) -> usize,
+    pub cnf_alt_matcher: extern "C" fn(*mut c_void, usize, usize, *mut MatcherTable) -> c_int,
+    pub cnf_bit_get: extern "C" fn(*mut c_void, c_int, usize, usize) -> c_int,
+    pub cnf_bit_set: extern "C" fn(*mut c_void, c_int, usize, usize),
+    /// 1 when a callback of the facade threw: the exception is stored on the C++ side (SEAM.md, "Exception channel").
+    pub error_pending: extern "C" fn(*mut c_void) -> c_int,
+    pub restline_set: extern "C" fn(*mut c_void, *const u8, usize),
+    pub input_encoding: extern "C" fn(*mut c_void) -> c_int,
+    pub encoding_null_data: extern "C" fn(*mut c_void) -> c_int,
+    pub flag_filter: extern "C" fn(*mut c_void, *mut usize) -> *const u8,
+    /// `flag_filter_magic_label[index]`, NULL past the last.
+    pub flag_filter_magic_label: extern "C" fn(*mut c_void, usize, *mut usize) -> *const u8,
+    pub file_open: extern "C" fn(*mut c_void, *const c_char) -> *mut c_void,
+    pub file_close: extern "C" fn(*mut c_void, *mut c_void),
+    pub file_read_error: extern "C" fn(*mut c_void, *mut c_void, *const c_char) -> c_int,
+    pub file_set_binary: extern "C" fn(*mut c_void, *mut c_void),
+    pub file_nonblock_regular: extern "C" fn(*mut c_void, *mut c_void),
+    pub file_probe_interactive: extern "C" fn(*mut c_void, *mut c_void) -> c_int,
+    pub file_seek_set: extern "C" fn(*mut c_void, *mut c_void) -> c_int,
+    pub stdin_drain_check: extern "C" fn(*mut c_void) -> c_int,
+    /// Returns 0 when the pipe could not be created; else 1 and the reading end (maybe NULL) through the last pointer.
+    pub filter_spawn: extern "C" fn(*mut c_void, *mut c_void, *const c_char, *const c_char, *mut *mut c_void) -> c_int,
+    pub is_binary: extern "C" fn(*mut c_void, *const u8, usize) -> c_int,
+    /// `close_file` of the pipe in `Grep::input`, and of `Grep::file_in`: cancel an active zthread on the stream, fclose
+    /// unless stdin or `Static::source`, clear `Grep::input` and detach the matchers that read the stream.
+    pub close_input_file: extern "C" fn(*mut c_void),
+    pub close_file_in: extern "C" fn(*mut c_void),
 }
 
 /// The C++ facade behind the callbacks table.
-struct CHost(GrepEnv);
+type AltCache = RefCell<HashMap<(usize, usize), Option<Rc<MatcherHandle>>>>;
+struct CHost(GrepEnv, AltCache);
+
+/// A NUL-terminated copy for the `const char *` arguments; a NUL inside the bytes ends the string, as in C++.
+fn c_string(s: &[u8]) -> CString {
+    let end = s.iter().position(|&b| b == 0).unwrap_or(s.len());
+    CString::new(&s[..end]).unwrap_or_default()
+}
 
 fn bytes_of(ptr: *const u8, len: usize) -> Bytes {
     if ptr.is_null() {
@@ -187,6 +255,16 @@ impl CHost {
 
     fn op(&self, op: OutOp) {
         (self.0.out_op)(self.0.ctx, op)
+    }
+
+    /// The `FILE*` that a callback receives for a [`FileSource`] (NULL for `None`); an owned file is given up.
+    fn source_ptr(&self, file: Option<FileSource>) -> *mut c_void {
+        match file {
+            None => std::ptr::null_mut(),
+            Some(FileSource::Stdin) => (self.0.stdin_file)(self.0.ctx),
+            Some(FileSource::Source) => (self.0.source)(self.0.ctx),
+            Some(FileSource::Owned(file)) => raw::file_into_ptr(file),
+        }
     }
 }
 
@@ -256,14 +334,14 @@ impl GrepHost for CHost {
         match (self.0.restline_data_get)(self.0.ctx, &mut offset) {
             RESTLINE_NONE => RestlineData::None,
             RESTLINE_BUFFER => RestlineData::Buffer(offset),
-            _ => RestlineData::Saved,
+            _ => RestlineData::Saved(offset),
         }
     }
     fn set_restline_data(&self, data: RestlineData) {
         let (kind, offset) = match data {
             RestlineData::None => (RESTLINE_NONE, 0),
             RestlineData::Buffer(offset) => (RESTLINE_BUFFER, offset),
-            RestlineData::Saved => (RESTLINE_SAVED, 0),
+            RestlineData::Saved(offset) => (RESTLINE_SAVED, offset),
         };
         (self.0.restline_data_set)(self.0.ctx, kind, offset)
     }
@@ -274,6 +352,9 @@ impl GrepHost for CHost {
         let mut len = 0usize;
         let ptr = (self.0.restline_bytes)(self.0.ctx, &mut len);
         bytes_of(ptr, len)
+    }
+    fn restline_set(&self, bytes: &[u8]) {
+        (self.0.restline_set)(self.0.ctx, bytes.as_ptr(), bytes.len())
     }
     fn handler_output_before_context(&self) {
         (self.0.handler_op)(self.0.ctx, HandlerOp::OutputBeforeContext, 0, 0, 0, 0)
@@ -297,11 +378,188 @@ impl GrepHost for CHost {
         (self.0.restline_save)(self.0.ctx)
     }
 
-    fn cnf_matching(&self, bol: usize, eol: usize, acquire: bool) -> bool {
-        (self.0.cnf_matching)(self.0.ctx, bol, eol, acquire as c_int) != 0
+    fn cnf_matching(&self, bol: usize, eol: usize, acquire: bool) -> CnfResult {
+        CnfResult((self.0.cnf_matching)(self.0.ctx, bol, eol, acquire as c_int) as u8)
     }
-    fn cnf_satisfied(&self, acquire: bool) -> bool {
-        (self.0.cnf_satisfied)(self.0.ctx, acquire as c_int) != 0
+    fn cnf_satisfied(&self, acquire: bool) -> CnfResult {
+        CnfResult((self.0.cnf_satisfied)(self.0.ctx, acquire as c_int) as u8)
+    }
+    fn out_launch(&self) {
+        self.op(OutOp::Launch)
+    }
+    fn cnf_alts(&self, term: usize) -> usize {
+        (self.0.cnf_alts)(self.0.ctx, term)
+    }
+    fn cnf_alt_matcher(&self, term: usize, alt: usize) -> Option<Rc<MatcherHandle>> {
+        if let Some(cached) = self.1.borrow().get(&(term, alt)) {
+            return cached.clone();
+        }
+        let mut table = std::mem::MaybeUninit::<MatcherTable>::uninit();
+        let handle = if (self.0.cnf_alt_matcher)(self.0.ctx, term, alt, table.as_mut_ptr()) != 0 {
+            // SAFETY: a nonzero return means the callback filled the whole table, as for `matchers_matcher`.
+            Some(Rc::new(unsafe { raw::new_handle(table.assume_init()) }))
+        } else {
+            None
+        };
+        // a failed callback (pending error) is not cached
+        if !self.error_pending() {
+            self.1.borrow_mut().insert((term, alt), handle.clone());
+        }
+        handle
+    }
+    fn cnf_bit_get(&self, which: CnfBits, k: usize, l: usize) -> bool {
+        (self.0.cnf_bit_get)(self.0.ctx, which as c_int, k, l) != 0
+    }
+    fn cnf_bit_set(&self, which: CnfBits, k: usize, l: usize) {
+        (self.0.cnf_bit_set)(self.0.ctx, which as c_int, k, l)
+    }
+    fn error_pending(&self) -> bool {
+        (self.0.error_pending)(self.0.ctx) != 0
+    }
+
+    fn filename(&self) -> Option<Bytes> {
+        let mut len = 0usize;
+        let ptr = (self.0.filename)(self.0.ctx, &mut len);
+        if ptr.is_null() {
+            None
+        } else {
+            Some(bytes_of(ptr, len))
+        }
+    }
+    fn interactive(&self) -> bool {
+        self.get(Member::Interactive) != 0
+    }
+    fn set_interactive(&self, interactive: bool) {
+        self.set(Member::Interactive, interactive as usize)
+    }
+    fn file_in(&self) -> Option<FileRef<'_>> {
+        // SAFETY: the facade returns the `FILE*` of `Grep::file_in` (or NULL), which C++ keeps open while the host is borrowed.
+        unsafe { raw::file_ref((self.0.file_in)(self.0.ctx)) }
+    }
+    fn set_file_in(&mut self, file: Option<FileSource>) {
+        let ptr = self.source_ptr(file);
+        (self.0.set_file_in)(self.0.ctx, ptr)
+    }
+    fn close_input_file(&mut self) {
+        (self.0.close_input_file)(self.0.ctx)
+    }
+    fn close_file_in(&mut self) {
+        (self.0.close_file_in)(self.0.ctx)
+    }
+    fn input(&self) -> InputHandle {
+        // SAFETY: the facade returns the address of `Grep::input`, which lives as long as the `Grep`.
+        unsafe { raw::input_handle((self.0.input)(self.0.ctx) as *const c_void) }
+    }
+    fn input_file(&self) -> Option<FileRef<'_>> {
+        // SAFETY: the facade returns `Grep::input.file()` (or NULL), owned by C++.
+        unsafe { raw::file_ref((self.0.input_file)(self.0.ctx)) }
+    }
+    fn input_encoding(&self) -> i32 {
+        (self.0.input_encoding)(self.0.ctx)
+    }
+    fn input_set_file(&mut self, file: FileSource, encoding: i32) {
+        let owned = matches!(file, FileSource::Owned(_));
+        let ptr = self.source_ptr(Some(file));
+        (self.0.input_set_file)(self.0.ctx, ptr, encoding, c_int::from(owned))
+    }
+    fn input_set_file_in(&mut self, encoding: i32) {
+        let ptr = (self.0.file_in)(self.0.ctx);
+        (self.0.input_set_file)(self.0.ctx, ptr, encoding, 0)
+    }
+    fn input_clear(&mut self) {
+        (self.0.input_clear)(self.0.ctx)
+    }
+    fn input_get(&self, buf: &mut [u8]) -> usize {
+        (self.0.input_get)(self.0.ctx, buf.as_mut_ptr(), buf.len())
+    }
+    fn source(&self) -> Option<FileRef<'_>> {
+        // SAFETY: the facade returns `Static::source` (or NULL), owned by C++.
+        unsafe { raw::file_ref((self.0.source)(self.0.ctx)) }
+    }
+    fn stdin_file(&self) -> FileRef<'_> {
+        // SAFETY: the facade returns `stdin`, which C++ never closes; the facade turns NULL into an error before it gets here.
+        unsafe { raw::file_ref((self.0.stdin_file)(self.0.ctx)) }.expect("stdin is not NULL")
+    }
+    fn encoding_null_data(&self) -> i32 {
+        (self.0.encoding_null_data)(self.0.ctx)
+    }
+    fn flag_filter(&self) -> Bytes {
+        let mut len = 0usize;
+        let ptr = (self.0.flag_filter)(self.0.ctx, &mut len);
+        bytes_of(ptr, len)
+    }
+    fn flag_filter_magic_label(&self, index: usize) -> Option<Bytes> {
+        let mut len = 0usize;
+        let ptr = (self.0.flag_filter_magic_label)(self.0.ctx, index, &mut len);
+        if ptr.is_null() {
+            None
+        } else {
+            Some(bytes_of(ptr, len))
+        }
+    }
+    fn filter_magic_scan(&self, file: &FileRef<'_>) -> usize {
+        (self.0.filter_magic_scan)(self.0.ctx, raw::file_ptr(file))
+    }
+    fn warning(&self, message: &[u8], arg: &[u8]) {
+        let (message, arg) = (c_string(message), c_string(arg));
+        (self.0.warning)(self.0.ctx, message.as_ptr(), arg.as_ptr())
+    }
+    fn file_open(&self, pathname: &[u8]) -> Option<OwnedFile> {
+        let pathname = c_string(pathname);
+        // SAFETY: the facade returns the `FILE*` of `fopen` (or NULL), which the caller has to close.
+        unsafe { raw::owned_file((self.0.file_open)(self.0.ctx, pathname.as_ptr())) }
+    }
+    fn file_close(&self, file: OwnedFile) {
+        (self.0.file_close)(self.0.ctx, raw::file_into_ptr(file))
+    }
+    fn file_read_error(&self, file: &FileRef<'_>, pathname: &[u8]) -> bool {
+        let pathname = c_string(pathname);
+        (self.0.file_read_error)(self.0.ctx, raw::file_ptr(file), pathname.as_ptr()) != 0
+    }
+    fn file_set_binary(&self, file: &FileRef<'_>) {
+        (self.0.file_set_binary)(self.0.ctx, raw::file_ptr(file))
+    }
+    fn file_nonblock_regular(&self, file: &FileRef<'_>) {
+        (self.0.file_nonblock_regular)(self.0.ctx, raw::file_ptr(file))
+    }
+    fn file_probe_interactive(&self, file: &FileRef<'_>) -> bool {
+        (self.0.file_probe_interactive)(self.0.ctx, raw::file_ptr(file)) != 0
+    }
+    fn file_seek_set(&self, file: &FileRef<'_>) -> bool {
+        (self.0.file_seek_set)(self.0.ctx, raw::file_ptr(file)) != 0
+    }
+    fn stdin_drain_check(&self) -> bool {
+        (self.0.stdin_drain_check)(self.0.ctx) != 0
+    }
+    fn filter_spawn(&self, file: FileSource, pathname: &[u8], command: &[u8]) -> Option<OwnedFile> {
+        let (pathname, command) = (c_string(pathname), c_string(command));
+        let mut out: *mut c_void = std::ptr::null_mut();
+        if (self.0.filter_spawn)(self.0.ctx, self.source_ptr(Some(file)), pathname.as_ptr(), command.as_ptr(), &mut out) != 0 {
+            // SAFETY: the facade returns the `FILE*` of `fdopen` (or NULL), which the caller has to close.
+            unsafe { raw::owned_file(out) }
+        } else {
+            None
+        }
+    }
+    fn is_binary(&self, bytes: &[u8]) -> bool {
+        (self.0.is_binary)(self.0.ctx, bytes.as_ptr(), bytes.len()) != 0
+    }
+    fn zthread_start(&mut self, ztstage: usize, pathname: &[u8], find: Option<&[u8]>, encoding: i32) -> bool {
+        let Some(start) = self.0.zthread_start else { return false };
+        let pathname = c_string(pathname);
+        let find = find.map(c_string);
+        let find_ptr = find.as_ref().map_or(std::ptr::null(), |f| f.as_ptr());
+        start(self.0.ctx, ztstage, pathname.as_ptr(), find_ptr, encoding) != 0
+    }
+    fn zthread_open_next(&mut self, pathname: &[u8], encoding: i32) -> bool {
+        let Some(open_next) = self.0.zthread_open_next else { return false };
+        let pathname = c_string(pathname);
+        open_next(self.0.ctx, pathname.as_ptr(), encoding) != 0
+    }
+    fn zthread_cancel(&self) {
+        if let Some(cancel) = self.0.zthread_cancel {
+            cancel(self.0.ctx)
+        }
     }
     fn matchers_len(&self) -> Option<usize> {
         match (self.0.matchers_len)(self.0.ctx) {
@@ -309,15 +567,9 @@ impl GrepHost for CHost {
             n => Some(n),
         }
     }
-    fn matchers_matcher(&self, index: usize) -> Option<MatcherHandle> {
-        let mut table = std::mem::MaybeUninit::<MatcherTable>::uninit();
-        if (self.0.matchers_matcher)(self.0.ctx, index, table.as_mut_ptr()) != 0 {
-            // SAFETY: a nonzero return means the callback filled the whole table, and the C++ facade's table honours
-            // `src/search_seam.h` while the matcher lives.
-            Some(unsafe { crate::signatures::search::raw::new_handle(table.assume_init()) })
-        } else {
-            None
-        }
+    fn matchers_matcher(&self, index: usize) -> Option<Rc<MatcherHandle>> {
+        // the first alternative of the AND term: the one cached handle of that matcher
+        self.cnf_alt_matcher(index, 0)
     }
     fn matchers_reset(&self) {
         (self.0.matchers_reset)(self.0.ctx)
@@ -408,7 +660,7 @@ impl GrepHost for CHost {
 pub unsafe extern "C" fn ugrep_core_search_set_host(ctx: *const SearchContext, env: *const GrepEnv) {
     // SAFETY: the caller guarantees both pointers are valid.
     let (ctx, env) = unsafe { (&*ctx, *env) };
-    ctx.set_host(Box::new(CHost(env)));
+    ctx.set_host(Box::new(CHost(env, RefCell::new(HashMap::new()))));
     ctx.set_flags(flags_from_settings());
 }
 
@@ -457,6 +709,7 @@ mod tests {
             Member::Binary,
             Member::RestlineSize,
             Member::RestlineLast,
+            Member::Interactive,
         ];
         for (i, m) in members.iter().enumerate() {
             assert_eq!(*m as i32, i as i32);
@@ -471,6 +724,7 @@ mod tests {
             OutOp::HeaderFile,
             OutOp::BinaryFileMatches,
             OutOp::DumpDone,
+            OutOp::Launch,
         ];
         for (i, o) in ops.iter().enumerate() {
             assert_eq!(*o as i32, i as i32);
@@ -522,10 +776,50 @@ mod tests {
             offset_of!(GrepEnv, stats_found),
             offset_of!(GrepEnv, stats_found_parts),
             offset_of!(GrepEnv, stats_score_matches),
+            offset_of!(GrepEnv, filename),
+            offset_of!(GrepEnv, file_in),
+            offset_of!(GrepEnv, set_file_in),
+            offset_of!(GrepEnv, input),
+            offset_of!(GrepEnv, input_file),
+            offset_of!(GrepEnv, input_set_file),
+            offset_of!(GrepEnv, input_clear),
+            offset_of!(GrepEnv, input_get),
+            offset_of!(GrepEnv, source),
+            offset_of!(GrepEnv, stdin_file),
+            offset_of!(GrepEnv, filter_magic_scan),
+            offset_of!(GrepEnv, warning),
+            offset_of!(GrepEnv, zthread_start),
+            offset_of!(GrepEnv, zthread_open_next),
+            offset_of!(GrepEnv, zthread_cancel),
+            offset_of!(GrepEnv, cnf_alts),
+            offset_of!(GrepEnv, cnf_alt_matcher),
+            offset_of!(GrepEnv, cnf_bit_get),
+            offset_of!(GrepEnv, cnf_bit_set),
+            offset_of!(GrepEnv, error_pending),
+            offset_of!(GrepEnv, restline_set),
+            offset_of!(GrepEnv, input_encoding),
+            offset_of!(GrepEnv, encoding_null_data),
+            offset_of!(GrepEnv, flag_filter),
+            offset_of!(GrepEnv, flag_filter_magic_label),
+            offset_of!(GrepEnv, file_open),
+            offset_of!(GrepEnv, file_close),
+            offset_of!(GrepEnv, file_read_error),
+            offset_of!(GrepEnv, file_set_binary),
+            offset_of!(GrepEnv, file_nonblock_regular),
+            offset_of!(GrepEnv, file_probe_interactive),
+            offset_of!(GrepEnv, file_seek_set),
+            offset_of!(GrepEnv, stdin_drain_check),
+            offset_of!(GrepEnv, filter_spawn),
+            offset_of!(GrepEnv, is_binary),
+            offset_of!(GrepEnv, close_input_file),
+            offset_of!(GrepEnv, close_file_in),
         ];
         for (i, o) in offsets.iter().enumerate() {
             assert_eq!(*o, i * w, "field {i}");
         }
+        assert_eq!(offsets.len(), 68);
         assert_eq!(size_of::<GrepEnv>(), offsets.len() * w);
+        // an Option of a fn pointer is a pointer: the zthread slots may be NULL
+        assert_eq!(size_of::<Option<extern "C" fn(*mut c_void)>>(), w);
     }
 }

@@ -35,6 +35,22 @@ extern "C" {
 #define UGREP_CORE_STEP_DONE     1
 #define UGREP_CORE_STEP_EXIT     2
 
+// result of the env cnf_matching and cnf_satisfied: 0 no, 1 yes, 2 EXIT_SEARCH was thrown (stop searching this file).
+// The C++ throws Grep::EXIT_SEARCH in both members; no exception crosses the seam, the facade catches it and returns
+// UGREP_CORE_CNF_EXIT, and whoever calls the seam rethrows it. The values equal the SearchStep numbers on purpose.
+#define UGREP_CORE_CNF_NO   0
+#define UGREP_CORE_CNF_YES  1
+#define UGREP_CORE_CNF_EXIT 2
+
+// the reflex::Input::Handler the matcher table registers on matcher->in (Grep::bin_handler, Grep::stdin_handler)
+#define UGREP_CORE_INPUT_HANDLER_NONE   0
+#define UGREP_CORE_INPUT_HANDLER_BINARY 1 // Grep::bin_handler: NUL bytes set binfile
+#define UGREP_CORE_INPUT_HANDLER_STDIN  2 // Grep::stdin_handler: slow TTY or pipe input (not on Windows)
+
+// cnf_bit_get / cnf_bit_set: which bitmask of Grep
+#define UGREP_CORE_CNF_MATCHING    0 // matching[k]
+#define UGREP_CORE_CNF_NOTMATCHING 1 // notmatching[k][l]
+
 // HandlerKind: the buffer-shift handler class set_shift_handler registers on the matcher
 #define UGREP_CORE_HANDLER_NONE                 0
 #define UGREP_CORE_HANDLER_GREP                 1   // GrepHandler
@@ -52,10 +68,10 @@ extern "C" {
 #define UGREP_CORE_HEX_CONTEXT_MATCH 2
 #define UGREP_CORE_HEX_CONTEXT_LINE  3
 
-// restline_data_get / restline_data_set kinds
+// restline_data_get / restline_data_set kinds; for _BUFFER the offset is into the matcher buffer, for _SAVED into restline
 #define UGREP_CORE_RESTLINE_NONE   0 // restline_data == NULL
-#define UGREP_CORE_RESTLINE_BUFFER 1 // offset into the matcher buffer
-#define UGREP_CORE_RESTLINE_SAVED  2 // restline.c_str()
+#define UGREP_CORE_RESTLINE_BUFFER 1 // buf_ + offset
+#define UGREP_CORE_RESTLINE_SAVED  2 // restline.c_str() + offset (offset > 0 after restline_data += n)
 
 // the bool and size_t members of Grep: member_get / member_set
 typedef enum ugrep_core_member {
@@ -67,7 +83,8 @@ typedef enum ugrep_core_member {
   UGREP_CORE_MEMBER_HEX,
   UGREP_CORE_MEMBER_BINARY,
   UGREP_CORE_MEMBER_RESTLINE_SIZE,
-  UGREP_CORE_MEMBER_RESTLINE_LAST
+  UGREP_CORE_MEMBER_RESTLINE_LAST,
+  UGREP_CORE_MEMBER_INTERACTIVE // the file being searched is a TTY or pipe
 } ugrep_core_member;
 
 // Output operations without argument: out_op
@@ -80,7 +97,8 @@ typedef enum ugrep_core_out_op {
   UGREP_CORE_OUT_NL_LF,               // out.nl(true)
   UGREP_CORE_OUT_HEADER_FILE,         // out.header(pathname, partname)
   UGREP_CORE_OUT_BINARY_FILE_MATCHES, // out.binary_file_matches(pathname, partname)
-  UGREP_CORE_OUT_DUMP_DONE            // out.dump.done()
+  UGREP_CORE_OUT_DUMP_DONE,           // out.dump.done()
+  UGREP_CORE_OUT_LAUNCH               // out.launch()
 } ugrep_core_out_op;
 
 // the methods of the registered handler (ContextGrepHandler, InvertContextGrepHandler): handler_op(ctx, op, a, b, c, d)
@@ -144,6 +162,25 @@ typedef struct ugrep_core_matcher_table {
   void (*invoke_handler)(void *ctx, const ugrep_core_buf_context *context);
   // matcher->reset(): back to the start of the input, destroys the registered handler
   void (*reset)(void *ctx);
+  // the file members of Grep (S4c-2):
+  // matcher->input(*(const reflex::Input*)host_input): host_input is the pointer of the env input callback
+  void (*input)(void *ctx, const void *host_input);
+  // matcher->buffer(base, size): the matcher reads from memory (the mmap of the input); size is passed as is
+  void (*buffer)(void *ctx, const unsigned char *base, size_t size);
+  // matcher->buffer(): buffer all input, returns 0 on a read error
+  int (*buffer_all)(void *ctx);
+  // matcher->avail(len): bytes available from begin() on, reading more input to make len available
+  size_t (*avail)(void *ctx, size_t len);
+  // matcher->begin() as a pointer: the start of the matched text (txt_), not an offset; NULL unless len bytes from it
+  // lie inside the buffer data
+  const unsigned char *(*begin_ptr)(void *ctx, size_t len);
+  // matcher->in.set_handler(&handler): UGREP_CORE_INPUT_HANDLER_*, NONE sets NULL
+  void (*set_input_handler)(void *ctx, int handler_kind);
+  // matcher->buffer(src_bol, src_eol - src_bol + 1).find() != 0 where src is the ctx of another table (the matcher of
+  // Grep::matcher) and the offsets are into its buffer: buffers one line of src and searches it in one call, so this
+  // matcher is never left pointing into the buffer of src. An offset pair that is not src_bol <= src_eol <= the end of the
+  // data of src is an error of the channel and returns 0. cnf_matching tests a line with the other matchers this way
+  int (*find_in_line)(void *ctx, void *src_ctx, size_t bol, size_t eol);
 } ugrep_core_matcher_table;
 
 // what stays in C++ and is called back by Rust; the flags are Rust-owned (ugrep_settings) and are not in the table
@@ -156,7 +193,7 @@ typedef struct ugrep_core_search_env {
   // output_restline (kind 0) or output_or_save_restline (kind 1)
   void (*restline_output)(void *ctx, int kind, int invert, int hex_context);
   void (*restline_save)(void *ctx);
-  // returns UGREP_CORE_RESTLINE_*, the offset in the matcher buffer through *offset for _BUFFER
+  // returns UGREP_CORE_RESTLINE_*, the offset through *offset for _BUFFER and _SAVED
   int (*restline_data_get)(void *ctx, size_t *offset);
   void (*restline_data_set)(void *ctx, int kind, size_t offset);
   // restline_data += n
@@ -164,7 +201,8 @@ typedef struct ugrep_core_search_env {
   // restline_data[0..restline_size], NULL when restline_data is NULL
   const unsigned char *(*restline_bytes)(void *ctx, size_t *len);
   void (*handler_op)(void *ctx, ugrep_core_handler_op op, size_t a, size_t b, size_t c, size_t d);
-  // cnf_matching(bol, eol, acquire) and cnf_satisfied(acquire)
+  // cnf_matching(bol, eol, acquire) and cnf_satisfied(acquire): UGREP_CORE_CNF_*. bol and eol are offsets from the start of
+  // the buffer of Grep::matcher (the facade makes the pointers); EXIT_SEARCH is caught and returned as UGREP_CORE_CNF_EXIT
   int (*cnf_matching)(void *ctx, size_t bol, size_t eol, int acquire);
   int (*cnf_satisfied)(void *ctx, int acquire);
   // matchers->size(), or (size_t)-1 when matchers is NULL
@@ -194,6 +232,86 @@ typedef struct ugrep_core_search_env {
   int (*stats_found)(void *ctx, int what);
   size_t (*stats_found_parts)(void *ctx);
   void (*stats_score_matches)(void *ctx, size_t matches, size_t lines);
+  // the file members of Grep (S4c-2); FILE* and reflex::Input* cross as opaque void pointers, strings are NUL-terminated
+  // Grep::filename, NULL when unset, length through *len
+  const unsigned char *(*filename)(void *ctx, size_t *len);
+  // Grep::file_in
+  void *(*file_in)(void *ctx);
+  void (*set_file_in)(void *ctx, void *file);
+  // &Grep::input, the host-owned reflex::Input, to give to the matcher table input
+  void *(*input)(void *ctx);
+  // Grep::input.file()
+  void *(*input_file)(void *ctx);
+  // Grep::input = reflex::Input(file, encoding), encoding is flag_encoding_type; owned != 0 when Rust gave the stream up
+  // (FileSource::Owned): only such a stream is fclosed by close_input_file, never stdin, Static::source or file_in
+  void (*input_set_file)(void *ctx, void *file, int encoding, int owned);
+  // Grep::input.clear()
+  void (*input_clear)(void *ctx);
+  // Grep::input.get(buf, len): the number of bytes read (the drain of stdin)
+  size_t (*input_get)(void *ctx, unsigned char *buf, size_t len);
+  // Static::source and stdin
+  void *(*source)(void *ctx);
+  void *(*stdin_file)(void *ctx);
+  // reflex::Matcher(Static::filter_magic_pattern, file).scan(), then rewind(file) as Grep::filter does
+  size_t (*filter_magic_scan)(void *ctx, void *file);
+  // warning(message, arg), the process-wide C++ warning
+  void (*warning)(void *ctx, const char *message, const char *arg);
+  // Grep::zthread.start(ztstage, pathname, Grep::file_in, find) / open_next / cancel (WITH_DECOMPRESSION_THREAD): the pipe
+  //   FILE* is installed by the facade into Grep::input (reflex::Input(pipe, encoding), input_owned = true) and 1 is returned,
+    // else 0; the pipe never reaches Rust (an unread pipe held by Rust would deadlock the drain of close_file_in).
+    // find may be NULL; a NULL file_in is an error of the exception channel.
+    // Without HAVE_LIBZ the facade fills stubs (0 / no-op), never NULL slots; the Rust side takes Option as well
+    int (*zthread_start)(void *ctx, size_t ztstage, const char *pathname, const char *find, int encoding);
+    // open_next first closes the owned pipe that Grep::input holds (the previous part), as close_file does
+    int (*zthread_open_next)(void *ctx, const char *pathname, int encoding);
+  void (*zthread_cancel)(void *ctx);
+  // the CNF of Grep::matchers (a list of lists of matchers, an element may be NULL): number of alternatives of term
+  size_t (*cnf_alts)(void *ctx, size_t term);
+  // fills the table of the matcher at (term, alt), returns 0 when that element is NULL
+  int (*cnf_alt_matcher)(void *ctx, size_t term, size_t alt, ugrep_core_matcher_table *table);
+  // UGREP_CORE_CNF_MATCHING / _NOTMATCHING bit k (and l): get, and set to true; out of range: get 0, set is an error
+  int (*cnf_bit_get)(void *ctx, int which, size_t k, size_t l);
+  void (*cnf_bit_set)(void *ctx, int which, size_t k, size_t l);
+  // Exception channel: every callback of the facade (env and matcher tables) runs under catch (...), stores the
+  // exception as a std::exception_ptr in the facade and returns a neutral value (0, NULL, false). 1 while one is pending.
+  // Rust stops (EXIT) and returns; the C++ caller of the bridge rethrows it. No exception unwinds through a Rust frame.
+  int (*error_pending)(void *ctx);
+  // restline = bytes, restline_data = restline.c_str(); restline_size is not changed (the primitive of save_restline)
+  void (*restline_set)(void *ctx, const unsigned char *s, size_t len);
+  // Grep::input.file_encoding() (what mmap.file(input, ...) checks), and reflex::Input::file_encoding::null_data
+  int (*input_encoding)(void *ctx);
+  int (*encoding_null_data)(void *ctx);
+  // flag_filter (--filter, a std::string; length 0 when unset) and flag_filter_magic_label[index] (NULL past the last)
+  const unsigned char *(*flag_filter)(void *ctx, size_t *len);
+  const unsigned char *(*flag_filter_magic_label)(void *ctx, size_t index, size_t *len);
+  // fopenw_s(&file, pathname, "rb"): NULL on failure, after warning("cannot read", pathname) (errno of the open)
+  void *(*file_open)(void *ctx, const char *pathname);
+  // fclose(file)
+  void (*file_close)(void *ctx, void *file);
+  // ferror(file): nonzero after warning("cannot read", pathname) (errno of the stream)
+  int (*file_read_error)(void *ctx, void *file, const char *pathname);
+  // _setmode(fileno(file), _O_BINARY) on Windows, nothing elsewhere
+  void (*file_set_binary)(void *ctx, void *file);
+  // Linux: fstat S_ISREG then fcntl O_NONBLOCK (EAGAIN for /proc files); nothing elsewhere
+  void (*file_nonblock_regular)(void *ctx, void *file);
+  // non-Windows: file is a character device, pipe or socket made non-blocking (interactive); Windows: 0
+  int (*file_probe_interactive)(void *ctx, void *file);
+  // fseek(file, 0, SEEK_SET) == 0
+  int (*file_seek_set)(void *ctx, void *file);
+  // WITH_STDIN_DRAIN and not Windows: !feof(stdin) && fseek(stdin, 0, SEEK_END) < 0 && errno != EINVAL, else 0
+  int (*stdin_drain_check)(void *ctx);
+  // the OS part of Grep::filter (pipe, fork or CreateProcess): returns 0 when the pipe could not be created (warned,
+  // file closed), else 1 with the reading end (fdopen, may be NULL) in *out; file is closed unless it is stdin
+  int (*filter_spawn)(void *ctx, void *file, const char *pathname, const char *command, void **out);
+  // is_binary(bytes, len) of ugrep.cpp
+  int (*is_binary)(void *ctx, const unsigned char *bytes, size_t len);
+  // close_file of Grep: both cancel a zthread that reads the stream, fclose it (never stdin or Static::source), clear
+  // Grep::input and detach the matchers of the facade that read the stream (their input is cleared). close_input_file acts
+  // on Grep::input.file() (the decompression pipe); close_file_in on Grep::file_in, which is NULL afterwards, and first
+  // cancels an active zthread (started, open_next has not returned NULL since) and drains open_next to NULL. Rust never
+  // gets the stream, so it cannot close it twice or use it after the close
+  void (*close_input_file)(void *ctx);
+  void (*close_file_in)(void *ctx);
 } ugrep_core_search_env;
 
 // layout pins: the Rust tests pin the same numbers (search.rs, ffi/search_host.rs)
@@ -204,6 +322,8 @@ UGREP_CORE_ASSERT(UGREP_CORE_HANDLER_RUST == 255);
 UGREP_CORE_ASSERT(UGREP_CORE_HEX_CONTEXT_LINE == 3);
 UGREP_CORE_ASSERT(UGREP_CORE_RESTLINE_SAVED == 2);
 UGREP_CORE_ASSERT(UGREP_CORE_MEMBER_RESTLINE_LAST == 8);
+UGREP_CORE_ASSERT(UGREP_CORE_MEMBER_INTERACTIVE == 9);
+UGREP_CORE_ASSERT(UGREP_CORE_OUT_LAUNCH == 9);
 UGREP_CORE_ASSERT(UGREP_CORE_OUT_DUMP_DONE == 8);
 UGREP_CORE_ASSERT(UGREP_CORE_HANDLER_OP_ADD_BEFORE_CONTEXT_MATCH == 3);
 UGREP_CORE_ASSERT(sizeof(ugrep_core_text_bounds) == 9 * sizeof(size_t));
@@ -215,12 +335,28 @@ UGREP_CORE_ASSERT(offsetof(ugrep_core_matcher_table, find) == 2 * sizeof(size_t)
 UGREP_CORE_ASSERT(offsetof(ugrep_core_matcher_table, bytes) == 23 * sizeof(size_t));
 UGREP_CORE_ASSERT(offsetof(ugrep_core_matcher_table, set_shift_handler) == 28 * sizeof(size_t));
 UGREP_CORE_ASSERT(offsetof(ugrep_core_matcher_table, reset) == 31 * sizeof(size_t));
-UGREP_CORE_ASSERT(sizeof(ugrep_core_matcher_table) == 32 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_matcher_table, input) == 32 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_matcher_table, begin_ptr) == 36 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_matcher_table, set_input_handler) == 37 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_matcher_table, find_in_line) == 38 * sizeof(size_t));
+UGREP_CORE_ASSERT(sizeof(ugrep_core_matcher_table) == 39 * sizeof(size_t));
 UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, member_get) == 1 * sizeof(size_t));
 UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, handler_op) == 10 * sizeof(size_t));
 UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, matchers_matcher) == 14 * sizeof(size_t));
 UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, stats_score_matches) == 30 * sizeof(size_t));
-UGREP_CORE_ASSERT(sizeof(ugrep_core_search_env) == 31 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, filename) == 31 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, zthread_cancel) == 45 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, cnf_bit_set) == 49 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, error_pending) == 50 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, restline_set) == 51 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, flag_filter) == 54 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, filter_spawn) == 64 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, is_binary) == 65 * sizeof(size_t));
+UGREP_CORE_ASSERT(offsetof(ugrep_core_search_env, close_file_in) == 67 * sizeof(size_t));
+UGREP_CORE_ASSERT(sizeof(ugrep_core_search_env) == 68 * sizeof(size_t));
+UGREP_CORE_ASSERT(UGREP_CORE_CNF_EXIT == UGREP_CORE_STEP_EXIT);
+UGREP_CORE_ASSERT(UGREP_CORE_INPUT_HANDLER_STDIN == 2);
+UGREP_CORE_ASSERT(UGREP_CORE_CNF_NOTMATCHING == 1);
 
 // attach the table to the Rust SearchContext (src_core::SearchContext, passed as an opaque pointer) and read the flags
 void ugrep_core_search_set_host(const void *search_context, const ugrep_core_search_env *env);

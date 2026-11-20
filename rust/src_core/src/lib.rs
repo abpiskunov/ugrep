@@ -318,6 +318,11 @@ mod ffi {
         type MatcherHandle;
         /// The Rust-owned locals shared by the `Grep::search` branches (`signatures::search::SearchContext`).
         type SearchContext;
+        /// The Rust state that lives as long as the C++ `Grep` (the mmap mapping, reused across files and unmapped when
+        /// the `Grep` is destroyed): the facade creates it with `grep_state_new` and holds it in a `rust::Box`.
+        type GrepState;
+        /// Seam function `src_core.grep_state_new`.
+        fn grep_state_new() -> Box<GrepState>;
 
         /// Seam function `src_core.matcher_find`: `matcher->find()`. Every handle function takes `&MatcherHandle`:
         /// the C++ matcher mutates, and its shift handler re-enters while `find` or `eol` runs.
@@ -388,6 +393,19 @@ mod ffi {
         fn search_context(ctx: &SearchContext, matcher: &MatcherHandle) -> u8;
         fn search_context_invert(ctx: &SearchContext, matcher: &MatcherHandle) -> u8;
         fn search_epilogue(ctx: &SearchContext, matcher: &MatcherHandle);
+        // the file members of Grep (S4c-2a, stubs): 0 no, 1 yes, 2 EXIT_SEARCH for the two cnf functions; a pending
+        // exception of the facade (`GrepHost::error_pending`) also gives 2, and the C++ caller rethrows it
+        fn search_cnf_matching(ctx: &SearchContext, matcher: &MatcherHandle, bol: usize, eol: usize, acquire: bool) -> u8;
+        fn search_cnf_satisfied(ctx: &SearchContext, acquire: bool) -> u8;
+        /// `is_stdin` is `pathname == Static::LABEL_STANDARD_INPUT` of C++ (pointer identity).
+        fn search_open_file(ctx: &SearchContext, pathname: &[u8], find: &[u8], has_find: bool, is_stdin: bool) -> bool;
+        fn search_filter(ctx: &SearchContext, pathname: &[u8]) -> bool;
+        fn search_close_file(ctx: &SearchContext, pathname: &[u8]) -> bool;
+        fn search_init_read(state: &GrepState, ctx: &SearchContext, matcher: &MatcherHandle) -> bool;
+        fn search_init_is_binary(ctx: &SearchContext, matcher: &MatcherHandle) -> bool;
+        fn search_output_or_save_restline(ctx: &SearchContext, matcher: &MatcherHandle, invert: bool, hex_context: bool);
+        fn search_output_restline(ctx: &SearchContext, matcher: &MatcherHandle, invert: bool, hex_context: bool);
+        fn search_save_restline(ctx: &SearchContext);
     }
 
     extern "Rust" {
@@ -730,7 +748,7 @@ fn output_format_invert(
 }
 
 // the Grep search seam (see SEAM.md, "Grep seam"): the opaque handles and the stub bodies of signatures::search
-use signatures::search::{self as grep_search, MatcherHandle, SearchContext};
+use signatures::search::{self as grep_search, GrepState, MatcherHandle, SearchContext};
 
 fn matcher_find(handle: &MatcherHandle) -> bool {
     handle.find()
@@ -882,45 +900,113 @@ fn search_setup(ctx: &SearchContext) {
 }
 
 fn search_quiet_list(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::quiet_list(ctx, matcher).0
+    step_code(ctx, grep_search::branch::quiet_list(ctx, matcher))
 }
 
 fn search_count(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::count(ctx, matcher).0
+    step_code(ctx, grep_search::branch::count(ctx, matcher))
 }
 
 fn search_format(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::format(ctx, matcher).0
+    step_code(ctx, grep_search::branch::format(ctx, matcher))
 }
 
 fn search_only_matching(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::only_matching(ctx, matcher).0
+    step_code(ctx, grep_search::branch::only_matching(ctx, matcher))
 }
 
 fn search_only_matching_context(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::only_matching_context(ctx, matcher).0
+    step_code(ctx, grep_search::branch::only_matching_context(ctx, matcher))
 }
 
 fn search_plain(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::plain(ctx, matcher).0
+    step_code(ctx, grep_search::branch::plain(ctx, matcher))
 }
 
 fn search_invert(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::invert(ctx, matcher).0
+    step_code(ctx, grep_search::branch::invert(ctx, matcher))
 }
 
 fn search_any_line(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::any_line(ctx, matcher).0
+    step_code(ctx, grep_search::branch::any_line(ctx, matcher))
 }
 
 fn search_context(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::context(ctx, matcher).0
+    step_code(ctx, grep_search::branch::context(ctx, matcher))
 }
 
 fn search_context_invert(ctx: &SearchContext, matcher: &MatcherHandle) -> u8 {
-    grep_search::branch::context_invert(ctx, matcher).0
+    step_code(ctx, grep_search::branch::context_invert(ctx, matcher))
 }
 
 fn search_epilogue(ctx: &SearchContext, matcher: &MatcherHandle) {
     grep_search::branch::epilogue(ctx, matcher)
+}
+
+/// The result of a search branch: EXIT (2) when a facade callback left an exception pending, as `cnf_code`.
+fn step_code(ctx: &SearchContext, step: grep_search::SearchStep) -> u8 {
+    if ctx.error_pending() {
+        grep_search::SearchStep::EXIT.0
+    } else {
+        step.0
+    }
+}
+
+/// The result of a file member that returns a bool: false (stop, the neutral value) when a facade callback left an
+/// exception pending; the C++ caller rethrows it.
+fn bool_code(ctx: &SearchContext, result: bool) -> bool {
+    result && !ctx.error_pending()
+}
+
+fn grep_state_new() -> Box<GrepState> {
+    Box::new(GrepState::new())
+}
+
+/// The result of a cnf function: EXIT (2) when a facade callback left an exception pending.
+fn cnf_code(ctx: &SearchContext, result: grep_search::CnfResult) -> u8 {
+    if ctx.error_pending() {
+        grep_search::CnfResult::EXIT.0
+    } else {
+        result.0
+    }
+}
+
+fn search_cnf_matching(ctx: &SearchContext, matcher: &MatcherHandle, bol: usize, eol: usize, acquire: bool) -> u8 {
+    cnf_code(ctx, grep_search::file::cnf_matching(ctx, matcher, bol, eol, acquire))
+}
+
+fn search_cnf_satisfied(ctx: &SearchContext, acquire: bool) -> u8 {
+    cnf_code(ctx, grep_search::file::cnf_satisfied(ctx, acquire))
+}
+
+fn search_open_file(ctx: &SearchContext, pathname: &[u8], find: &[u8], has_find: bool, is_stdin: bool) -> bool {
+    bool_code(ctx, grep_search::file::open_file(ctx, pathname, has_find.then_some(find), is_stdin))
+}
+
+fn search_filter(ctx: &SearchContext, pathname: &[u8]) -> bool {
+    bool_code(ctx, grep_search::file::filter(ctx, pathname))
+}
+
+fn search_close_file(ctx: &SearchContext, pathname: &[u8]) -> bool {
+    bool_code(ctx, grep_search::file::close_file(ctx, pathname))
+}
+
+fn search_init_read(state: &GrepState, ctx: &SearchContext, matcher: &MatcherHandle) -> bool {
+    bool_code(ctx, grep_search::file::init_read(state, ctx, matcher))
+}
+
+fn search_init_is_binary(ctx: &SearchContext, matcher: &MatcherHandle) -> bool {
+    bool_code(ctx, grep_search::file::init_is_binary(ctx, matcher))
+}
+
+fn search_output_or_save_restline(ctx: &SearchContext, matcher: &MatcherHandle, invert: bool, hex_context: bool) {
+    grep_search::file::output_or_save_restline(ctx, matcher, invert, hex_context)
+}
+
+fn search_output_restline(ctx: &SearchContext, matcher: &MatcherHandle, invert: bool, hex_context: bool) {
+    grep_search::file::output_restline(ctx, matcher, invert, hex_context)
+}
+
+fn search_save_restline(ctx: &SearchContext) {
+    grep_search::file::save_restline(ctx)
 }

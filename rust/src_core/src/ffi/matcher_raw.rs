@@ -6,6 +6,8 @@
 
 use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
+use std::marker::PhantomData;
+use std::ptr::NonNull;
 
 use super::{dispatch_shift, HandlerSlot, MatcherHandle, MatcherTable, ShiftEvent};
 
@@ -79,12 +81,158 @@ pub unsafe fn with_bytes<R>(handle: &MatcherHandle, offset: usize, len: usize, f
 }
 
 /// An owned copy of the matcher buffer bytes `buf_[offset..offset + len]`; nothing borrowed survives the call.
-pub(crate) fn copy_bytes(t: &MatcherTable, offset: usize, len: usize) -> Vec<u8> {
+pub(crate) fn copy_bytes(handle: &MatcherHandle, offset: usize, len: usize) -> Vec<u8> {
+    let t = handle.t();
     let ptr = (t.bytes)(t.ctx, offset, len);
     assert!(!ptr.is_null(), "Grep seam: bytes {offset}+{len} lie outside the matcher buffer");
     // SAFETY: a non-NULL result of `bytes` is `len` bytes inside the matcher buffer (`new_handle` contract),
     // and the copy is made before anything else runs.
     unsafe { bytes(ptr, len) }.to_vec()
+}
+
+/// An owned copy of `len` bytes at `ptr` (the matched text of `begin_ptr`); nothing borrowed survives the call.
+///
+/// # Safety
+/// `ptr` must address `len` readable bytes (the contract of a non-NULL `begin_ptr` result).
+pub(crate) unsafe fn copy_begin(ptr: *const u8, len: usize) -> Vec<u8> {
+    // SAFETY: the caller guarantees `ptr` addresses `len` readable bytes; the copy is made before anything else runs.
+    unsafe { bytes(ptr, len) }.to_vec()
+}
+
+/// `len` bytes from the begin of the match of `handle`, copied out; `None` when `begin_ptr` returns NULL.
+pub(crate) fn begin_bytes(handle: &MatcherHandle, len: usize) -> Option<Vec<u8>> {
+    let t = handle.t();
+    let ptr = (t.begin_ptr)(t.ctx, len);
+    if ptr.is_null() {
+        None
+    } else {
+        // SAFETY: the table contract (`new_handle`): a non-NULL `begin_ptr` result addresses `len` readable bytes inside
+        // the matcher buffer data, and nothing runs before the copy.
+        Some(unsafe { copy_begin(ptr, len) })
+    }
+}
+
+/// A buffer over static data, for the tests.
+#[cfg(test)]
+pub(crate) fn static_buffer(data: &'static [u8]) -> BufferPtr {
+    // SAFETY: `data` is readable for `'static` and never modified.
+    unsafe { buffer_ptr(data.as_ptr(), data.len()) }
+}
+
+/// A `FILE*` that C++ still owns (`Grep::file_in`, `Static::source`, `stdin`, the file of `Grep::input`), borrowed for as
+/// long as the host borrow lasts. It is never NULL, not `Copy`, and cannot be closed, consumed or stored: only the calls that
+/// use a file take it. The field is private to this module, so the port modules (`search::file`, `search::branch`)
+/// cannot forge one.
+#[derive(Debug, PartialEq, Eq)]
+pub struct FileRef<'a> {
+    ptr: NonNull<c_void>,
+    _host: PhantomData<&'a ()>,
+}
+
+/// A `FILE*` that the holder must close: made only by `file_open` and `filter_spawn`.
+/// Never NULL (a failed call returns `None`), not `Copy` or `Clone`; `file_close`, `filter_spawn` and `set_file_in` take it
+/// by value, so a double close does not compile. A stream that the host owns (`Grep::file_in`, the file of
+/// `Grep::input`) is closed by the host primitives `close_input_file` and `close_file_in`, never handed to Rust.
+/// Dropping it leaks the stream (no unsafe in `Drop`), which is safe.
+/// (no unsafe in `Drop`), which is safe.
+#[derive(Debug, PartialEq, Eq)]
+pub struct OwnedFile(NonNull<c_void>);
+
+impl OwnedFile {
+    /// The borrowed view for the calls that only use the file.
+    pub fn as_file(&self) -> FileRef<'_> {
+        FileRef { ptr: self.0, _host: PhantomData }
+    }
+}
+/// `reflex::Input*` of C++ (`&Grep::input`), opaque to Rust and made only here ([`input_handle`]).
+#[derive(Debug, PartialEq, Eq)]
+pub struct InputHandle(*const c_void);
+
+/// Memory that a matcher reads from after [`MatcherHandle::buffer`], with the size to pass (the C++ passes `size + 1`
+/// for an mmap, which counts the terminating NUL). Made only here ([`buffer_ptr`], unsafe); not `Copy`.
+#[derive(Debug, PartialEq, Eq)]
+pub struct BufferPtr {
+    ptr: *const u8,
+    size: usize,
+}
+
+/// The Rust state that lives as long as the C++ `Grep` (see `GrepState` in `search.rs`). `mapping` is private: it is set
+/// only by [`set_mapping`] (unsafe), so safe code cannot make a later unmapping touch memory the state does not own.
+#[derive(Debug, Default)]
+pub struct GrepState {
+    mapping: RefCell<Option<(usize, usize)>>,
+}
+
+impl GrepState {
+    pub fn new() -> GrepState {
+        GrepState::default()
+    }
+
+    /// The mapping reused across files: `(base address, mapped size)`, `None` when nothing is mapped.
+    pub fn mapping(&self) -> Option<(usize, usize)> {
+        *self.mapping.borrow()
+    }
+}
+
+/// Record the mapping that the state unmaps (or reuses with `MAP_FIXED`) when the `Grep` goes.
+///
+/// # Safety
+/// `mapping` must be `None` or `(base, size)` of a live mapping that the caller made and that nothing else unmaps.
+pub unsafe fn set_mapping(state: &GrepState, mapping: Option<(usize, usize)>) {
+    *state.mapping.borrow_mut() = mapping;
+}
+
+/// A borrowed handle of a `FILE*` that C++ keeps owning; `None` for NULL.
+///
+/// # Safety
+/// `ptr` must be NULL or a `FILE*` that stays valid and owned by C++ for `'a`.
+pub(crate) unsafe fn file_ref<'a>(ptr: *mut c_void) -> Option<FileRef<'a>> {
+    NonNull::new(ptr).map(|ptr| FileRef { ptr, _host: PhantomData })
+}
+
+/// An owned handle of a `FILE*` that the caller now has to close; `None` for NULL.
+///
+/// # Safety
+/// `ptr` must be NULL or an open `FILE*` that nothing else closes.
+pub(crate) unsafe fn owned_file(ptr: *mut c_void) -> Option<OwnedFile> {
+    NonNull::new(ptr).map(OwnedFile)
+}
+
+/// The `FILE*` of a borrowed file, for the callbacks of the facade.
+pub(crate) fn file_ptr(file: &FileRef<'_>) -> *mut c_void {
+    file.ptr.as_ptr()
+}
+
+/// The `FILE*` of a file that is given up (closed, consumed or handed to C++ by the callback).
+pub(crate) fn file_into_ptr(file: OwnedFile) -> *mut c_void {
+    file.0.as_ptr()
+}
+/// The handle of the host-owned `reflex::Input` (`&Grep::input`).
+///
+/// # Safety
+/// `ptr` must be the address of the `reflex::Input` of the `Grep`, valid while the handle is used.
+pub(crate) unsafe fn input_handle(ptr: *const c_void) -> InputHandle {
+    InputHandle(ptr)
+}
+
+/// The address of the `reflex::Input` of a handle.
+pub(crate) fn input_ptr(handle: &InputHandle) -> *const c_void {
+    handle.0
+}
+
+/// The base and size of a buffer, for `MatcherHandle::buffer`.
+pub(crate) fn buffer_parts(memory: &BufferPtr) -> (*const u8, usize) {
+    (memory.ptr, memory.size)
+}
+
+/// Memory for [`MatcherHandle::buffer`]; the mmap port makes these in `ffi/`. Only the tests make one until then.
+///
+/// # Safety
+/// `ptr` must address `size` readable bytes (the C++ counts the terminating NUL in an mmap) that stay valid and
+/// unmodified until the matcher reads from something else or is destroyed.
+#[cfg(test)]
+pub(crate) unsafe fn buffer_ptr(ptr: *const u8, size: usize) -> BufferPtr {
+    BufferPtr { ptr, size }
 }
 
 /// The C function that the C++ matcher's registered trampoline calls for a buffer-shift event; `user` is the handler

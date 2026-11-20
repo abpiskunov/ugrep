@@ -545,7 +545,7 @@ All stay in C++ in this stage; the branch functions read them through `this`.
 handle of the matcher), the `kind`, and one `extern "C"` function pointer per handle method: `find`, `next_match`, `bol`, `eol`, `begin`, `end`,
 `text_bounds`, `first`, `last`, `size`, `lineno`, `lines`, `columno`, `at_bol`, `hit_end`, `skip`, `border`, `before`, `after`, `bef`, `aft`, `bytes`,
 `set_reserve`, `fuzzy_distance`, `fuzzy_edits`, `lineno_skip`, `set_shift_handler` (handler construction by `HandlerKind`), `set_rust_handler`
-(trampoline registration) and `invoke_handler`, plus `reset`: 32 words. The facade fills one table per matcher; `GrepEnv.matchers_matcher(index)` fills
+(trampoline registration) and `invoke_handler`, plus `reset`: 32 words (38 after "Grep file members" below). The facade fills one table per matcher; `GrepEnv.matchers_matcher(index)` fills
 it for `matchers->at(index)`, and the C entry `ugrep_core_matcher_handle_new(table)` copies it for `Grep::matcher` (one handle per matcher). Rust tests pin the layout and run the
 handle against a fake matcher through the table; the header pins enum last values, `offsetof` and `sizeof` with `static_assert`.
 - **Buffer bytes:** `MatcherHandle` has no method returning `&[u8]`. `bytes_to_vec` returns an owned copy (a cost for the performance task on the hot
@@ -573,3 +573,75 @@ handle against a fake matcher through the table; the header pins enum last value
 ### Unknown ownership
 - None for the matcher calls: they go through the table above. Open for the Port that fills the facade: the concrete C++ functions behind each table
   entry (S4c-2 fills them with the first switched branch).
+
+## Grep file members (Prepare seam S4c-2a; C++ bodies stay active, default build C++, Rust is panic stubs)
+
+Members: `cnf_matching`, `cnf_satisfied`, `open_file`, `filter`, `close_file`, `init_read`, `init_is_binary`, `output_or_save_restline`,
+`output_restline`, `save_restline`. Rust entry points: `grep_search::file::*` (panic stubs) behind cxx bridge functions `search_cnf_matching`,
+`search_cnf_satisfied`, `search_open_file(ctx, pathname, find, has_find, is_stdin)`, `search_filter`, `search_close_file`,
+`search_init_read(state: &GrepState, ctx, matcher)`, `search_init_is_binary`, `search_output_or_save_restline`, `search_output_restline`,
+`search_save_restline` (lib.rs). `GrepState` (`grep_state_new()`) is the Grep-lifetime Rust state (the mmap mapping); the facade owner creates it with
+the Grep and drops it with the Grep (Drop unmaps in the mmap port).
+
+- **Facade:** `Grep::SeamFacade` in `src/ugrep.cpp` fills `ugrep_core_search_env` (68 words) and the matcher table (39 words) with non-capturing
+  lambdas. `matcher_kind()` picks the kind by `dynamic_cast` (FuzzyMatcher, LineMatcher, PCRE2 under `HAVE_PCRE2` or Boost under `HAVE_BOOST_REGEX`,
+  Matcher); one template (`fill_matcher_table`) serves all kinds. Nothing instantiates it in the default build. `bind(pathname)` sets a slot the
+  handlers refer to by reference, so handlers made before `bind()` work; one facade per Grep on the search thread, destroyed before the matchers it
+  handed out. `clear_handler` clears only the handler pointers that are this matcher's own.
+- **Env slots added** (appended, old offsets unchanged; 68 total): filename, interactive (get/set), file_in (get/set), input (file/set/clear/get),
+  source, stdin_file, filter_magic_scan, warning, zthread_start/open_next/cancel, cnf_alts, cnf_alt_matcher, cnf_bit_get/set, then the review gaps:
+  error_pending, restline_set, input_encoding, encoding_null_data, flag_filter, flag_filter_magic_label, file_open, file_close, file_read_error,
+  file_set_binary, file_nonblock_regular, file_probe_interactive, file_seek_set, stdin_drain_check, filter_spawn, is_binary, close_input_file, close_file_in. **No mmap slot**: mmap is
+  ported to Rust (operator answer); `Static::filter_magic_pattern` is only used through `filter_magic_scan`.
+- **zthread slots are never NULL:** with `HAVE_LIBZ` and `WITH_DECOMPRESSION_THREAD` they forward to `Grep::zthread`; otherwise (Base-Release has no
+  `HAVE_LIBZ`) they are stubs (`start`/`open_next` return 0, `cancel` no-op) and the Rust mirror reads them as `Option<extern "C" fn>`. Rust calls
+  them only when `flag_decompress` is set, which needs `HAVE_LIBZ`.
+- **Matcher-table slots added** (39 total): input, buffer, buffer_all, avail, begin_ptr(ctx, len) (pointer to the match start, NULL unless `len` bytes lie
+  inside the data; `begin` stays an offset), set_input_handler (bin/stdin handler through `in.set_handler`), find_in_line(ctx, src_ctx, bol, eol)
+  (`matcher->buffer(src_bol, eol - bol + 1).find() != 0` in one call: cnf_matching tests a line of the buffer of `Grep::matcher` with another matcher, which is
+  never left pointing into that buffer, so no stale pointer survives a shift of the source buffer). Pins in `search_seam.h` and the Rust layout tests agree
+  (`input`=32, `begin_ptr`=36, `set_input_handler`=37, `find_in_line`=38; env `filename`=31, `cnf_bit_set`=49, `error_pending`=50, `is_binary`=65).
+- **Pending error at the bridges:** the 12 branch bridges return `EXIT` (2) and the bool file bridges (`search_open_file`, `search_filter`,
+  `search_close_file`, `search_init_read`, `search_init_is_binary`) return false when `error_pending` is set, as the cnf bridges do; the C++ caller rethrows.
+- **Exception channel (cpp-rust-error-handling):** an exception must not unwind through a Rust frame. Every facade callback (env and matcher table)
+  runs under `guard()`: `catch (...)` stores a `std::exception_ptr`, the callback returns a neutral value (0/NULL/false) and later callbacks do
+  nothing. Rust reads `error_pending` after callbacks, stops with `EXIT` (`cnf_matching`/`cnf_satisfied` return 2) and returns; the C++ caller of the
+  bridge calls `rethrow()`. `EXIT_SEARCH` of `cnf_matching`/`cnf_satisfied` is the protocol exception: caught inside the callback and returned as
+  `UGREP_CORE_CNF_EXIT` (2 == `STEP_EXIT`); the C++ members still throw it for the active C++ path. 0 = no, 1 = yes. Panics abort.
+- **No path to UB:** the handle types `BufferPtr`, `FileRef`, `OwnedFile`, `InputHandle` and `GrepState` are defined in `ffi/matcher_raw.rs` (module `raw`), with
+  private fields that the port modules (`search::file`, `search::branch`), which are not descendants of `raw`, cannot reach; they are built only by `unsafe`
+  `raw` constructors. File ownership is split: `FileRef<'_>` is a borrowed, never-NULL `FILE*` that C++ still owns (the getters `file_in`/`input_file`/`source`/`stdin_file` return it, as `Option` except `stdin_file`); it can only be passed to the by-reference calls (`filter_magic_scan`, `input_set_file`, `file_read_error`, `file_set_binary`, `file_nonblock_regular`, `file_probe_interactive`, `file_seek_set`). `OwnedFile` is made only by `file_open` and `filter_spawn` (zthread pipes never reach Rust: `zthread_start(&mut self, ztstage, pathname, find, encoding) -> bool` and `zthread_open_next(&mut self, pathname, encoding) -> bool` install the pipe into `Grep::input` as owned; no `take_file_in`: a stream the host owns is never handed to Rust), is never NULL (failure is `None`; there is no public NULL), is neither `Copy` nor `Clone`, and is the only type `file_close` accepts (a double close does not compile). `FileSource` (`Owned(OwnedFile)`, `Stdin` or `Source` for `Static::source`, the TUI pipe of `-Q`; the last two are never closed) is what `set_file_in` and `filter_spawn` take. `zthread_start(ztstage, pathname, find)` takes no file: the facade starts the thread on `Grep::file_in` (NULL is an error of the channel). `set_file_in`, `close_input_file`, `close_file_in` and `input_set_file` take `&mut self`, reached through `SearchContext::with_host_mut`, so no `FileRef` of `file_in`/`input_file` can be alive across them (no unsafe); `set_file_in` overwrites without closing. The host owns every close (see "close_file port sequence"). `input_set_file(&mut self, FileSource, encoding)` hands the stream to the host, which keeps it open for `Grep::input`, and `input_set_file_in(&mut self, encoding)` builds `Input(Grep::file_in)` with the stream staying owned by `file_in`. `bytes_to_vec` copies through `&MatcherHandle`. The facade NULL-checks every `FILE*` callback and turns NULL into `std::out_of_range` on the exception channel. `BufferPtr` is not `Copy`. `GrepState::mapping` is private and
+  set only by the `unsafe` `raw::set_mapping`. `SeamFacade` owns the state as a `rust::Box<ugrep_rust::GrepState>` (created in its constructor, freed
+  once by RAII).
+  `copy_begin` is `unsafe`; `begin_ptr` takes `len`. The facade checks every offset and index Rust passes (cnf bol/eol <= buffer end, restline
+  offsets and sizes against the data they index, `invoke_handler`, `add_before_context_line`, `add_before_context_match` (starts at or after the end of the previous match of the line and ends inside
+  the before line), `cnf_bit_*`, `find_in_line`); a bad value is a
+  `std::out_of_range` on the exception channel, never an access out of bounds.
+- **Restlines:** `restline_data_get` returns BUFFER (offset in the buffer of `Grep::matcher`), SAVED (offset in `Grep::restline`) or NONE. `restline_set`
+  is the primitive of `save_restline` (`restline = bytes; restline_data = restline.c_str()`, `restline_size` unchanged), so Rust does not recurse into
+  `save_restline`.
+- **filter:** the OS part (pipe, fork or CreateProcess) is split from `Grep::filter` into `Grep::filter_spawn` (same code, behavior unchanged) and
+  reached by the `filter_spawn` slot; on failure `file_in` is cleared and 0 is returned, which Rust handles as `None`.
+- **open_file/close_file/init_read gaps found by walking the bodies:** `is_stdin` (pointer identity with `LABEL_STANDARD_INPUT`), `fopenw_s` with its
+  errno-sensitive warning (`file_open`), `_setmode` (Windows), the Linux `O_NONBLOCK` regular-file path, the interactive probe, `ferror` + warning,
+  `fclose(input.file())`, the stdin drain, `input_encoding` and `encoding_null_data` for the mmap check, `buffer_all` (Boost), `is_binary`.
+- **Build facts:** `WITH_DECOMPRESSION_THREAD` and `WITH_NO_MMAP` are defined unconditionally in `ugrep.hpp`, so the non-thread zstream branch of
+  `open_file`/`close_file` is dead in this build and is not bridged. Built: Base-Release. Pcre-Release (`HAVE_PCRE2`, `HAVE_LIBZ`) builds and links with
+  the sibling codec folders present (checked in the operator review); the Integrating sandbox has no codec sources, so it was not rebuilt there.
+  `HAVE_BOOST_REGEX` is in no build configuration of the project: the Boost branch is unverified by compilation.
+- **cnf offsets** are relative to the buffer base of `Grep::matcher`; Rust derives pointers from `begin_ptr`.
+  `matchers_matcher(index)` is the first matcher of AND term `index` and goes through the same handle cache as `cnf_alt_matcher(index, 0)` (one handle per
+  C++ matcher); `cnf_alts`/`cnf_alt_matcher`/`cnf_bit_*` give the full walk; the CHost caches
+  `cnf_alt_matcher` handles.
+- **close_file port sequence (S4c-2b)** with the host primitives, in the order of the C++ `close_file`:
+  1. `file_in` is not stdin/`Static::source` and `file_read_error(&file_in, pathname)` (`ferror` + warning), by `FileRef`, before any close.
+  2. `flag_decompress`: `with_host_mut(|h| h.close_input_file())` (C++: `fclose(input.file()); input.clear()`, then `zthread.cancel()` when `out.eof`;
+     the primitive does the cancel after the fclose as the C++ does),      then `with_host_mut(|h| h.zthread_open_next(pathname, flag_encoding_type))`; `true`: the facade
+          installed the next pipe into `Grep::input` (owned), return true. No pipe ever reaches Rust.
+  3. `stdin_drain_check()` and the `-q`/`-l`/`-m` flags: drain with `input_get` until 0.
+  4. `with_host_mut(|h| h.close_file_in())` (C++: `if (file_in != NULL && file_in != stdin && file_in != Static::source) { fclose(file_in); file_in = NULL; }
+     input.clear();`). When the output is blocked (`out.eof`) and `flag_decompress`, the primitive first cancels the zthread that reads `file_in`;
+     an unconditional cancel is not done, because Zthread keeps `stop` on reuse and would stop the next archive. Return false.
+  Both primitives also detach every matcher of the facade whose `in.file()` is the closed stream (`in.clear()`), so no matcher keeps a dangling `FILE*`.
+  `Grep::file_in` is NULL afterwards, also for stdin/`Static::source` (not closed). Env slots `close_input_file`=66, `close_file_in`=67 (68 words). The facade tracks `input_owned` (set by `input_set_file(.., owned)`, true only for `FileSource::Owned`; `close_input_file` fcloses only such a stream, never stdin, `Static::source` or `file_in`) and `zthread_active` (set when `zthread_start`/`open_next` install a pipe, cleared when `open_next` returns NULL); `close_file_in` on an active zthread first closes the pipe held by `Grep::input` (detach matchers, fclose when `input_owned`, clear: a thread blocked writing to an unread pipe is not woken by cancel), then cancels and drains `open_next` to NULL (closing each pipe) before the fclose of `file_in`.
+- **Open for S4c-2b:** the switch and deletion of the C++ bodies; the facade's matcher tracking covers matchers handed out through the tables.

@@ -2525,6 +2525,19 @@ struct Grep {
         // skip over the ':'
         ++command;
 
+        return filter_spawn(in, pathname, command);
+      }
+    }
+
+    return true;
+  }
+
+  // the OS part of --filter (the retained C++ of the seam, called by filter() and by the facade): create the pipe and run
+  // the command, return false when the pipe cannot be created (warned, in closed unless stdin, in set to NULL)
+  bool filter_spawn(FILE*& in, const char *pathname, const char *command)
+  {
+    {
+      {
         int fd[2];
 
 #ifdef OS_WIN_OR_MINGW
@@ -2954,6 +2967,1168 @@ struct Grep {
     temp.swap(restline);
     restline_data = restline.c_str();
   }
+
+  // The facade of the Grep seam (src/search_seam.h, rust/src_core/SEAM.md "Grep file members"): fills the host table
+  // ugrep_core_search_env and the matcher tables of every matcher kind for the Rust side. It only forwards to the members
+  // of Grep above, which stay active: nothing in the default build creates a facade yet, the port task of the file members
+  // does. One facade per Grep, used on the thread that runs Grep::search, destroyed before the matchers it handed out.
+  //
+  // Exception channel: no exception unwinds through a Rust frame. Every callback runs under guard(): a catch (...) stores
+  // the exception as a std::exception_ptr, the callback returns a neutral value (0, NULL, false) and the callbacks that
+  // follow do nothing. Rust sees error_pending, returns EXIT and the C++ caller of the bridge calls rethrow(). The one
+  // exception that is part of the protocol, EXIT_SEARCH of cnf_matching and cnf_satisfied, is caught inside the callback and
+  // returned as UGREP_CORE_CNF_EXIT. Every offset and index Rust passes is checked against the data it indexes; a value
+  // out of range is an error of the channel (std::out_of_range), never an access out of bounds.
+  struct SeamFacade {
+
+    explicit SeamFacade(Grep& grep)
+      :
+        grep(grep),
+        path_slot(NULL),
+        context_handler(NULL),
+        invert_context_handler(NULL),
+        state(ugrep_rust::grep_state_new())
+    { }
+
+    SeamFacade(const SeamFacade&) = delete;
+    SeamFacade& operator=(const SeamFacade&) = delete;
+
+    ~SeamFacade()
+    {
+      for (auto& i : matcher_ctxs)
+        if (i.handler)
+          i.matcher->set_handler(NULL);
+    }
+
+    // the pathname of the search the handlers refer to by reference: they refer to the slot, which can be set (again) at
+    // any time, also after the handlers were made
+    void bind(const char *search_pathname)
+    {
+      path_slot = search_pathname;
+    }
+
+    // run a callback: a pending error skips it, an exception is stored and the neutral value R() is returned
+    template<typename Fn>
+    auto guard(Fn&& fn) -> decltype(fn())
+    {
+      typedef decltype(fn()) R;
+      if (error)
+        return R();
+      try
+      {
+        return fn();
+      }
+      catch (...)
+      {
+        error = std::current_exception();
+        return R();
+      }
+    }
+
+    // a value from Rust is out of range: an error of the channel
+    static void check(bool in_range, const char *what)
+    {
+      if (!in_range)
+        throw std::out_of_range(what);
+    }
+
+    // a FILE* from Rust is never NULL where a stream is used: NULL is an error of the channel
+    static FILE *stream(void *file, const char *what)
+    {
+      check(file != NULL, what);
+      return static_cast<FILE*>(file);
+    }
+
+    // the C++ cancels the decompression threads when the output is blocked (out.eof) before it opens the next file; an
+    // unconditional cancel would stop the threads that the next archive reuses
+    void cancel_zthread_if_blocked()
+    {
+#if defined(HAVE_LIBZ) && defined(WITH_DECOMPRESSION_THREAD)
+      if (flag_decompress && grep.out.eof)
+        grep.zthread.cancel();
+#endif
+    }
+
+    // an active decompression thread still holds file_in: close the pipe held by Grep::input first (a thread blocked
+    // writing to an unread pipe is not woken by cancel), then take every pending pipe until open_next returns NULL, so
+    // that the stream is not closed under the thread
+    void drain_zthread()
+    {
+#if defined(HAVE_LIBZ) && defined(WITH_DECOMPRESSION_THREAD)
+      if (zthread_active)
+      {
+        // no cancel: closing the held pipe releases a writer blocked on it, the loop below takes the remaining parts,
+        // and a cancelled thread stays stopped for every later file of this Grep (D-zthread-races)
+        close_held_input();
+        const char *path = path_slot != NULL ? path_slot : "";
+        for (FILE *pipe = grep.zthread.open_next(path); pipe != NULL; pipe = grep.zthread.open_next(path))
+        {
+          detach_matchers(pipe);
+          fclose(pipe);
+        }
+        zthread_active = false;
+      }
+#endif
+    }
+
+    // close the stream that Grep::input holds when the facade owns it (a pipe of the decompression thread), detach the
+    // matchers that read it and clear the input: a thread blocked writing to an unread pipe is only woken this way
+    void close_held_input()
+    {
+      FILE *held = grep.input.file();
+      if (held != NULL)
+      {
+        detach_matchers(held);
+        if (input_owned && held != stdin && held != Static::source && held != grep.file_in)
+          fclose(held);
+      }
+      grep.input.clear();
+      input_owned = false;
+    }
+
+    // Grep::input takes over the pipe of zthread start/open_next: the pipe stays in C++ and is closed by close_input_file
+    int install_pipe(FILE *pipe, int encoding)
+    {
+      // the caller has closed the previously held input (close_held_input), so nothing is overwritten unclosed
+      zthread_active = pipe != NULL;
+      if (pipe == NULL)
+        return 0;
+      grep.input = reflex::Input(pipe, static_cast<reflex::Input::file_encoding_type>(encoding));
+      input_owned = true;
+      return 1;
+    }
+
+    // no matcher of the facade keeps reading a stream that is about to be closed: its input is cleared
+    void detach_matchers(FILE *file)
+    {
+      for (auto& i : matcher_ctxs)
+        if (i.matcher->in.file() == file)
+          i.matcher->in.clear();
+    }
+
+    // the C++ caller of the bridge calls this after every call: rethrow the stored exception, once
+    void rethrow()
+    {
+      if (error)
+      {
+        std::exception_ptr e;
+        std::swap(e, error);
+        std::rethrow_exception(e);
+      }
+    }
+
+    // read access to the protected buffer state of a matcher: the buffer base buf_ and the end of its data end_
+    struct Peek : public reflex::AbstractMatcher {
+      static const char *base(reflex::AbstractMatcher& matcher) { return matcher.*(&Peek::buf_); }
+      static size_t end(reflex::AbstractMatcher& matcher) { return matcher.*(&Peek::end_); }
+    };
+
+    // a shift handler that calls the Rust shift function
+    struct RustHandler : public reflex::AbstractMatcher::Handler {
+      RustHandler(void *user, ugrep_core_shift_fn shift) : user(user), shift(shift) { }
+      virtual void operator()(reflex::AbstractMatcher&, const char *buf, size_t len, size_t num) override
+      {
+        shift(user, len, num, reinterpret_cast<const unsigned char*>(buf));
+      }
+      void             *user;
+      ugrep_core_shift_fn shift;
+    };
+
+    // the matcher table ctx: one per matcher handed out, owns its shift handler
+    struct MatcherCtx {
+      MatcherCtx(SeamFacade *facade, reflex::AbstractMatcher *matcher) : facade(facade), matcher(matcher) { }
+      SeamFacade                                        *facade;
+      reflex::AbstractMatcher                           *matcher;
+      std::unique_ptr<reflex::AbstractMatcher::Handler>  handler;
+    };
+
+    // the context of a matcher, created on first use, the address stays valid
+    MatcherCtx *matcher_ctx(reflex::AbstractMatcher *matcher)
+    {
+      for (auto& i : matcher_ctxs)
+        if (i.matcher == matcher)
+          return &i;
+      matcher_ctxs.emplace_back(this, matcher);
+      return &matcher_ctxs.back();
+    }
+
+    template<typename M>
+    static bool is_kind(reflex::AbstractMatcher *matcher)
+    {
+      return dynamic_cast<M*>(matcher) != NULL;
+    }
+
+    // UGREP_CORE_MATCHER_* of a matcher, 0 for none of the kinds ugrep creates; FuzzyMatcher derives from Matcher: test it first
+    static size_t matcher_kind(reflex::AbstractMatcher *matcher)
+    {
+      if (is_kind<reflex::FuzzyMatcher>(matcher))
+        return UGREP_CORE_MATCHER_FUZZY;
+      if (is_kind<reflex::LineMatcher>(matcher))
+        return UGREP_CORE_MATCHER_LINE;
+#ifdef HAVE_PCRE2
+      if (is_kind<reflex::PCRE2Matcher>(matcher))
+        return UGREP_CORE_MATCHER_PCRE2;
+#elif defined(HAVE_BOOST_REGEX)
+      if (is_kind<reflex::BoostPerlMatcher>(matcher))
+        return UGREP_CORE_MATCHER_BOOST;
+#endif
+      if (is_kind<reflex::Matcher>(matcher))
+        return UGREP_CORE_MATCHER_REFLEX;
+      return 0;
+    }
+
+    static MatcherCtx& mctx(void *ctx) { return *static_cast<MatcherCtx*>(ctx); }
+    static reflex::AbstractMatcher& am(void *ctx) { return *mctx(ctx).matcher; }
+    static size_t offset(void *ctx, const char *ptr) { return ptr - Peek::base(am(ctx)); }
+
+    // guard a callback of the facade (env ctx) or of a matcher table (MatcherCtx)
+    template<typename Fn>
+    static auto G(void *ctx, Fn&& fn) -> decltype(fn()) { return F(ctx).guard(fn); }
+    template<typename Fn>
+    static auto GM(void *ctx, Fn&& fn) -> decltype(fn()) { return mctx(ctx).facade->guard(fn); }
+
+    // destroy the shift handler of a matcher, the matcher forgets it first; the context handler pointers are only
+    // reset when they are this matcher's handler
+    void clear_handler(MatcherCtx& mc)
+    {
+      mc.matcher->set_handler(NULL);
+      if (mc.handler.get() == context_handler)
+        context_handler = NULL;
+      if (mc.handler.get() == invert_context_handler)
+        invert_context_handler = NULL;
+      mc.handler.reset();
+    }
+
+    // construct and register the UGREP_CORE_HANDLER_* class on the matcher, NONE only unregisters
+    void set_shift_handler(MatcherCtx& mc, int kind)
+    {
+      clear_handler(mc);
+      const char *& path = path_slot;
+      switch (kind)
+      {
+        case UGREP_CORE_HANDLER_GREP:
+          mc.handler.reset(new GrepHandler(grep, path));
+          break;
+        case UGREP_CORE_HANDLER_ONLY_MATCHING_CONTEXT:
+          mc.handler.reset(new OnlyMatchingContextGrepHandler(grep, path));
+          break;
+        case UGREP_CORE_HANDLER_INVERT_MATCH:
+          mc.handler.reset(new InvertMatchGrepHandler(grep, path));
+          break;
+        case UGREP_CORE_HANDLER_FORMAT_INVERT_MATCH:
+          mc.handler.reset(new FormatInvertMatchGrepHandler(grep, path));
+          break;
+        case UGREP_CORE_HANDLER_ANY_LINE:
+          mc.handler.reset(new AnyLineGrepHandler(grep, path));
+          break;
+        case UGREP_CORE_HANDLER_CONTEXT:
+          context_handler = new ContextGrepHandler(grep, path);
+          mc.handler.reset(context_handler);
+          break;
+        case UGREP_CORE_HANDLER_INVERT_CONTEXT:
+          invert_context_handler = new InvertContextGrepHandler(grep, path);
+          mc.handler.reset(invert_context_handler);
+          break;
+        default:
+          break;
+      }
+      if (mc.handler)
+        mc.matcher->set_handler(mc.handler.get());
+    }
+
+    // fill the table of a matcher of any kind, returns false for a NULL matcher or a kind that ugrep does not create
+    bool fill_matcher_table(reflex::AbstractMatcher *matcher, ugrep_core_matcher_table *table)
+    {
+      if (matcher == NULL)
+        return false;
+      size_t kind = matcher_kind(matcher);
+      if (kind == 0)
+        return false;
+
+      memset(table, 0, sizeof(*table));
+      table->ctx = matcher_ctx(matcher);
+      table->kind = kind;
+      table->find = [](void *c) -> int { return GM(c, [&]() -> int { return am(c).find() != 0; }); };
+      table->next_match = [](void *c, int skip_line) -> int
+      {
+        return GM(c, [&]() -> int { return (skip_line == 0 || am(c).skip('\n')) && am(c).find() != 0; });
+      };
+      table->bol = [](void *c) -> size_t { return GM(c, [&]() -> size_t { return offset(c, am(c).bol()); }); };
+      table->eol = [](void *c, int inclusive) -> size_t
+      {
+        return GM(c, [&]() -> size_t { return offset(c, am(c).eol(inclusive != 0)); });
+      };
+      table->begin = [](void *c) -> size_t { return GM(c, [&]() -> size_t { return offset(c, am(c).begin()); }); };
+      table->end = [](void *c) -> size_t { return GM(c, [&]() -> size_t { return offset(c, am(c).end()); }); };
+      table->text_bounds = [](void *c, ugrep_core_text_bounds *out)
+      {
+        memset(out, 0, sizeof(*out));
+        GM(c, [&]()
+        {
+          reflex::AbstractMatcher& m = am(c);
+          out->eol = offset(c, m.eol()); // eol() before bol(), begin() and end()
+          out->bol = offset(c, m.bol());
+          out->begin = offset(c, m.begin());
+          out->end = offset(c, m.end());
+          out->first = m.first();
+          out->last = m.last();
+          out->size = m.size();
+          out->lineno = m.lineno();
+          out->lines = m.lines();
+        });
+      };
+      table->first = [](void *c) -> size_t { return GM(c, [&]() -> size_t { return am(c).first(); }); };
+      table->last = [](void *c) -> size_t { return GM(c, [&]() -> size_t { return am(c).last(); }); };
+      table->size = [](void *c) -> size_t { return GM(c, [&]() -> size_t { return am(c).size(); }); };
+      table->lineno = [](void *c) -> size_t { return GM(c, [&]() -> size_t { return am(c).lineno(); }); };
+      table->lines = [](void *c) -> size_t { return GM(c, [&]() -> size_t { return am(c).lines(); }); };
+      table->columno = [](void *c) -> size_t { return GM(c, [&]() -> size_t { return am(c).columno(); }); };
+      table->at_bol = [](void *c) -> int { return GM(c, [&]() -> int { return am(c).at_bol(); }); };
+      table->hit_end = [](void *c) -> int { return GM(c, [&]() -> int { return am(c).hit_end(); }); };
+      table->skip = [](void *c, int ch) -> int
+      {
+        return GM(c, [&]() -> int { return am(c).skip(static_cast<char>(ch)); });
+      };
+      table->border = [](void *c) -> size_t { return GM(c, [&]() -> size_t { return am(c).border(); }); };
+      table->before = [](void *c, ugrep_core_buf_context *out)
+      {
+        memset(out, 0, sizeof(*out));
+        GM(c, [&]()
+        {
+          reflex::AbstractMatcher::Context context = am(c).before();
+          out->offset = offset(c, context.buf);
+          out->len = context.len;
+          out->num = context.num;
+        });
+      };
+      table->after = [](void *c, ugrep_core_buf_context *out)
+      {
+        memset(out, 0, sizeof(*out));
+        GM(c, [&]()
+        {
+          reflex::AbstractMatcher::Context context = am(c).after();
+          out->offset = offset(c, context.buf);
+          out->len = context.len;
+          out->num = context.num;
+        });
+      };
+      table->bef = [](void *c, size_t len) -> size_t { return GM(c, [&]() -> size_t { return offset(c, am(c).bef(len)); }); };
+      table->aft = [](void *c, size_t len) -> size_t { return GM(c, [&]() -> size_t { return offset(c, am(c).aft(len)); }); };
+      table->bytes = [](void *c, size_t off, size_t len) -> const unsigned char*
+      {
+        return GM(c, [&]() -> const unsigned char*
+        {
+          reflex::AbstractMatcher& m = am(c);
+          size_t end = Peek::end(m);
+          if (off > end || len > end - off)
+            return NULL;
+          return reinterpret_cast<const unsigned char*>(Peek::base(m)) + off;
+        });
+      };
+      table->set_reserve = [](void *c, size_t size) { GM(c, [&]() { am(c).set_reserve(size); }); };
+      table->fuzzy_distance = [](void *c, unsigned short max)
+      {
+        GM(c, [&]()
+        {
+          reflex::FuzzyMatcher *fuzzy = dynamic_cast<reflex::FuzzyMatcher*>(&am(c));
+          if (fuzzy != NULL)
+            fuzzy->distance(max);
+        });
+      };
+      table->fuzzy_edits = [](void *c) -> unsigned short
+      {
+        return GM(c, [&]() -> unsigned short
+        {
+          reflex::FuzzyMatcher *fuzzy = dynamic_cast<reflex::FuzzyMatcher*>(&am(c));
+          return fuzzy != NULL ? fuzzy->edits() : 0;
+        });
+      };
+      table->lineno_skip = [](void *c, int on) { GM(c, [&]() { am(c).lineno_skip(on != 0); }); };
+      table->set_shift_handler = [](void *c, int kind)
+      {
+        GM(c, [&]() { mctx(c).facade->set_shift_handler(mctx(c), kind); });
+      };
+      table->set_rust_handler = [](void *c, void *user, ugrep_core_shift_fn shift)
+      {
+        GM(c, [&]()
+        {
+          MatcherCtx& mc = mctx(c);
+          mc.facade->clear_handler(mc);
+          mc.handler.reset(new RustHandler(user, shift));
+          mc.matcher->set_handler(mc.handler.get());
+        });
+      };
+      table->invoke_handler = [](void *c, const ugrep_core_buf_context *context)
+      {
+        GM(c, [&]()
+        {
+          MatcherCtx& mc = mctx(c);
+          size_t end = Peek::end(*mc.matcher);
+          check(context->offset <= end && context->len <= end - context->offset, "invoke_handler: outside the buffer");
+          if (mc.handler)
+            (*mc.handler)(*mc.matcher, Peek::base(*mc.matcher) + context->offset, context->len, context->num);
+        });
+      };
+      table->reset = [](void *c)
+      {
+        GM(c, [&]()
+        {
+          MatcherCtx& mc = mctx(c);
+          mc.facade->clear_handler(mc);
+          mc.matcher->reset();
+        });
+      };
+      table->input = [](void *c, const void *host_input)
+      {
+        GM(c, [&]() { am(c).input(*static_cast<const reflex::Input*>(host_input)); });
+      };
+      table->buffer = [](void *c, const unsigned char *base, size_t size)
+      {
+        GM(c, [&]() { am(c).buffer(const_cast<char*>(reinterpret_cast<const char*>(base)), size); });
+      };
+      table->buffer_all = [](void *c) -> int { return GM(c, [&]() -> int { return am(c).buffer(); }); };
+      table->avail = [](void *c, size_t len) -> size_t { return GM(c, [&]() -> size_t { return am(c).avail(len); }); };
+      table->begin_ptr = [](void *c, size_t len) -> const unsigned char*
+      {
+        return GM(c, [&]() -> const unsigned char*
+        {
+          reflex::AbstractMatcher& m = am(c);
+          const char *ptr = m.begin();
+          size_t end = Peek::end(m);
+          size_t off = ptr - Peek::base(m);
+          if (off > end || len > end - off)
+            return NULL;
+          return reinterpret_cast<const unsigned char*>(ptr);
+        });
+      };
+      table->set_input_handler = [](void *c, int kind)
+      {
+        GM(c, [&]()
+        {
+          SeamFacade& f = *mctx(c).facade;
+          reflex::AbstractMatcher& m = am(c);
+          switch (kind)
+          {
+            case UGREP_CORE_INPUT_HANDLER_BINARY:
+              m.in.set_handler(&f.grep.bin_handler);
+              break;
+#ifndef OS_WIN_OR_MINGW
+            case UGREP_CORE_INPUT_HANDLER_STDIN:
+              m.in.set_handler(&f.grep.stdin_handler);
+              break;
+#endif
+            default:
+              m.in.set_handler(NULL);
+              break;
+          }
+        });
+      };
+      // matcher->buffer(src_bol, src_eol - src_bol + 1).find() on the buffer of another matcher, for cnf_matching
+      table->find_in_line = [](void *c, void *src_c, size_t bol, size_t eol) -> int
+      {
+        return GM(c, [&]() -> int
+        {
+          reflex::AbstractMatcher& src = am(src_c);
+          check(bol <= eol && eol <= Peek::end(src), "find_in_line: outside the buffer of the source matcher");
+          return am(c).buffer(const_cast<char*>(Peek::base(src)) + bol, eol - bol + 1).find() != 0;
+        });
+      };
+      return true;
+    }
+
+    // the matcher at (term, alt) of grep.matchers, NULL when there is none
+    reflex::AbstractMatcher *cnf_matcher(size_t term, size_t alt) const
+    {
+      if (grep.matchers == NULL || term >= grep.matchers->size())
+        return NULL;
+      auto i = grep.matchers->begin();
+      std::advance(i, term);
+      if (alt >= i->size())
+        return NULL;
+      auto j = i->begin();
+      std::advance(j, alt);
+      return j->get();
+    }
+
+    // the buffer position of an offset in the buffer of Grep::matcher, for cnf_matching
+    const char *position(size_t off) const
+    {
+      return Peek::base(*grep.matcher) + off;
+    }
+
+    // the data restline_data points into: the saved string restline or the data of the buffer of Grep::matcher
+    void restline_region(const char *& lo, const char *& hi)
+    {
+      uintptr_t data = reinterpret_cast<uintptr_t>(grep.restline_data);
+      uintptr_t saved = reinterpret_cast<uintptr_t>(grep.restline.c_str());
+      if (data >= saved && data <= saved + grep.restline.size())
+      {
+        lo = grep.restline.c_str();
+        hi = lo + grep.restline.size();
+        return;
+      }
+      lo = Peek::base(*grep.matcher);
+      hi = lo + Peek::end(*grep.matcher);
+      check(data >= reinterpret_cast<uintptr_t>(lo) && data <= reinterpret_cast<uintptr_t>(hi), "restline_data: outside its buffer");
+    }
+
+    // restline_data[0..restline_size] must lie inside the data it points into before the members of Grep read it
+    void check_restline()
+    {
+      if (grep.restline_data != NULL)
+      {
+        const char *lo, *hi;
+        restline_region(lo, hi);
+        check(grep.restline_size <= static_cast<size_t>(hi - grep.restline_data), "restline_size: past the end of the data");
+      }
+    }
+
+    // fill the host table: every callback forwards to Grep, ctx is this facade
+    void fill_env(ugrep_core_search_env *env)
+    {
+      memset(env, 0, sizeof(*env));
+      env->ctx = this;
+      env->member_get = [](void *c, ugrep_core_member member) -> size_t
+      {
+        return G(c, [&]() -> size_t
+        {
+          Grep& g = F(c).grep;
+          switch (member)
+          {
+            case UGREP_CORE_MEMBER_MATCHES: return g.matches;
+            case UGREP_CORE_MEMBER_LINENO: return g.lineno;
+            case UGREP_CORE_MEMBER_HEADING: return g.heading;
+            case UGREP_CORE_MEMBER_STOP: return g.stop;
+            case UGREP_CORE_MEMBER_BINFILE: return g.binfile;
+            case UGREP_CORE_MEMBER_HEX: return g.hex;
+            case UGREP_CORE_MEMBER_BINARY: return g.binary;
+            case UGREP_CORE_MEMBER_RESTLINE_SIZE: return g.restline_size;
+            case UGREP_CORE_MEMBER_RESTLINE_LAST: return g.restline_last;
+            case UGREP_CORE_MEMBER_INTERACTIVE: return g.interactive;
+          }
+          return 0;
+        });
+      };
+      // restline_size is checked against the data when the data is used (restline_bytes, the restline output and save)
+      env->member_set = [](void *c, ugrep_core_member member, size_t value)
+      {
+        G(c, [&]()
+        {
+          Grep& g = F(c).grep;
+          switch (member)
+          {
+            case UGREP_CORE_MEMBER_MATCHES: g.matches = value; break;
+            case UGREP_CORE_MEMBER_LINENO: g.lineno = value; break;
+            case UGREP_CORE_MEMBER_HEADING: g.heading = value != 0; break;
+            case UGREP_CORE_MEMBER_STOP: g.stop = value != 0; break;
+            case UGREP_CORE_MEMBER_BINFILE: g.binfile = value != 0; break;
+            case UGREP_CORE_MEMBER_HEX: g.hex = value != 0; break;
+            case UGREP_CORE_MEMBER_BINARY: g.binary = value != 0; break;
+            case UGREP_CORE_MEMBER_RESTLINE_SIZE: g.restline_size = value; break;
+            case UGREP_CORE_MEMBER_RESTLINE_LAST: g.restline_last = value; break;
+            case UGREP_CORE_MEMBER_INTERACTIVE: g.interactive = value != 0; break;
+          }
+        });
+      };
+      env->partname = [](void *c, size_t *len) -> const unsigned char*
+      {
+        *len = 0;
+        return G(c, [&]() -> const unsigned char*
+        {
+          Grep& g = F(c).grep;
+          *len = g.partname.size();
+          return reinterpret_cast<const unsigned char*>(g.partname.c_str());
+        });
+      };
+      env->restline_output = [](void *c, int kind, int invert, int hex_context)
+      {
+        G(c, [&]()
+        {
+          SeamFacade& f = F(c);
+          f.check_restline();
+          if (kind == 0)
+            f.grep.output_restline(invert != 0, hex_context != 0);
+          else
+            f.grep.output_or_save_restline(invert != 0, hex_context != 0);
+        });
+      };
+      env->restline_save = [](void *c)
+      {
+        G(c, [&]()
+        {
+          SeamFacade& f = F(c);
+          check(f.grep.restline_data != NULL, "save_restline: no restline_data");
+          f.check_restline();
+          f.grep.save_restline();
+        });
+      };
+      env->restline_data_get = [](void *c, size_t *off) -> int
+      {
+        *off = 0;
+        return G(c, [&]() -> int
+        {
+          SeamFacade& f = F(c);
+          if (f.grep.restline_data == NULL)
+            return UGREP_CORE_RESTLINE_NONE;
+          const char *lo, *hi;
+          f.restline_region(lo, hi);
+          *off = f.grep.restline_data - lo;
+          return lo == f.grep.restline.c_str() ? UGREP_CORE_RESTLINE_SAVED : UGREP_CORE_RESTLINE_BUFFER;
+        });
+      };
+      env->restline_data_set = [](void *c, int kind, size_t off)
+      {
+        G(c, [&]()
+        {
+          Grep& g = F(c).grep;
+          if (kind == UGREP_CORE_RESTLINE_BUFFER)
+          {
+            check(off <= Peek::end(*g.matcher), "restline_data_set: offset outside the buffer");
+            g.restline_data = Peek::base(*g.matcher) + off;
+          }
+          else if (kind == UGREP_CORE_RESTLINE_SAVED)
+          {
+            check(off <= g.restline.size(), "restline_data_set: offset outside restline");
+            g.restline_data = g.restline.c_str() + off;
+          }
+          else
+          {
+            g.restline_data = NULL;
+          }
+        });
+      };
+      env->restline_advance = [](void *c, size_t n)
+      {
+        G(c, [&]()
+        {
+          SeamFacade& f = F(c);
+          if (f.grep.restline_data == NULL)
+          {
+            check(n == 0, "restline_advance: no restline_data");
+            return;
+          }
+          const char *lo, *hi;
+          f.restline_region(lo, hi);
+          check(n <= static_cast<size_t>(hi - f.grep.restline_data), "restline_advance: past the end of the data");
+          f.grep.restline_data += n;
+        });
+      };
+      env->restline_bytes = [](void *c, size_t *len) -> const unsigned char*
+      {
+        *len = 0;
+        return G(c, [&]() -> const unsigned char*
+        {
+          SeamFacade& f = F(c);
+          if (f.grep.restline_data == NULL)
+            return NULL;
+          f.check_restline();
+          *len = f.grep.restline_size;
+          return reinterpret_cast<const unsigned char*>(f.grep.restline_data);
+        });
+      };
+      env->restline_set = [](void *c, const unsigned char *s, size_t len)
+      {
+        G(c, [&]()
+        {
+          Grep& g = F(c).grep;
+          std::string temp(reinterpret_cast<const char*>(s), len);
+          temp.swap(g.restline);
+          g.restline_data = g.restline.c_str();
+        });
+      };
+      env->handler_op = [](void *c, ugrep_core_handler_op op, size_t a, size_t b, size_t cc, size_t d)
+      {
+        G(c, [&]()
+        {
+          SeamFacade& f = F(c);
+          const char *base = Peek::base(*f.grep.matcher);
+          switch (op)
+          {
+            case UGREP_CORE_HANDLER_OP_OUTPUT_BEFORE_CONTEXT:
+              if (f.context_handler != NULL)
+                f.context_handler->output_before_context();
+              else if (f.invert_context_handler != NULL)
+                f.invert_context_handler->output_before_context();
+              break;
+            case UGREP_CORE_HANDLER_OP_SET_AFTER_LINENO:
+              if (f.context_handler != NULL)
+                f.context_handler->set_after_lineno(a);
+              break;
+            case UGREP_CORE_HANDLER_OP_ADD_BEFORE_CONTEXT_LINE:
+              check(a <= b && b <= Peek::end(*f.grep.matcher), "add_before_context_line: outside the buffer");
+              if (f.invert_context_handler != NULL)
+                f.invert_context_handler->add_before_context_line(base + a, base + b, cc, d);
+              break;
+            case UGREP_CORE_HANDLER_OP_ADD_BEFORE_CONTEXT_MATCH:
+              if (f.invert_context_handler != NULL)
+              {
+                // output_before_context reads ptr + pos for size bytes and computes pos - the end of the previous match: the
+                // match must start at or after the previous match and end inside the before line it is added to
+                auto& state = f.invert_context_handler->state;
+                if (state.before_length > 0)
+                {
+                  const auto& before_line = state.before_lines[(state.before_index + state.before_length - 1) % state.before_length];
+                  size_t prev_end = before_line.matches.empty() ? 0 : before_line.matches.back().pos + before_line.matches.back().size;
+                  size_t line_size = before_line.line.size();
+                  check(a >= prev_end && b <= line_size && a <= line_size - b, "add_before_context_match: outside the before line");
+                }
+                f.invert_context_handler->add_before_context_match(a, b, cc);
+              }
+              break;
+          }
+        });
+      };
+      env->cnf_matching = [](void *c, size_t bol, size_t eol, int acquire) -> int
+      {
+        return G(c, [&]() -> int
+        {
+          SeamFacade& f = F(c);
+          check(bol <= eol && eol <= Peek::end(*f.grep.matcher), "cnf_matching: bol or eol outside the buffer");
+          try
+          {
+            return f.grep.cnf_matching(f.position(bol), f.position(eol), acquire != 0) ? UGREP_CORE_CNF_YES : UGREP_CORE_CNF_NO;
+          }
+          catch (EXIT_SEARCH&)
+          {
+            return UGREP_CORE_CNF_EXIT;
+          }
+        });
+      };
+      env->cnf_satisfied = [](void *c, int acquire) -> int
+      {
+        return G(c, [&]() -> int
+        {
+          try
+          {
+            return F(c).grep.cnf_satisfied(acquire != 0) ? UGREP_CORE_CNF_YES : UGREP_CORE_CNF_NO;
+          }
+          catch (EXIT_SEARCH&)
+          {
+            return UGREP_CORE_CNF_EXIT;
+          }
+        });
+      };
+      env->matchers_len = [](void *c) -> size_t
+      {
+        return G(c, [&]() -> size_t
+        {
+          Grep& g = F(c).grep;
+          return g.matchers != NULL ? g.matchers->size() : static_cast<size_t>(-1);
+        });
+      };
+      // the first matcher of AND term index
+      env->matchers_matcher = [](void *c, size_t index, ugrep_core_matcher_table *table) -> int
+      {
+        return G(c, [&]() -> int
+        {
+          SeamFacade& f = F(c);
+          return f.fill_matcher_table(f.cnf_matcher(index, 0), table);
+        });
+      };
+      env->matchers_reset = [](void *c)
+      {
+        G(c, [&]()
+        {
+          Grep& g = F(c).grep;
+          if (g.matchers == NULL)
+            return;
+          size_t n = g.matchers->size();
+          g.matching.resize(0);
+          g.matching.resize(n);
+          g.notmatching.resize(n);
+          size_t j = 0;
+          for (auto& i : *g.matchers)
+          {
+            g.notmatching[j].resize(0);
+            g.notmatching[j].resize(i.size() > 0 ? i.size() - 1 : 0);
+            ++j;
+          }
+        });
+      };
+      env->out_eof = [](void *c) -> int { return G(c, [&]() -> int { return F(c).grep.out.eof; }); };
+      env->out_holding = [](void *c) -> int { return G(c, [&]() -> int { return F(c).grep.out.holding(); }); };
+      env->out_op = [](void *c, ugrep_core_out_op op)
+      {
+        G(c, [&]()
+        {
+          SeamFacade& f = F(c);
+          Output& out = f.grep.out;
+          switch (op)
+          {
+            case UGREP_CORE_OUT_HOLD: out.hold(); break;
+            case UGREP_CORE_OUT_ACQUIRE: out.acquire(); break;
+            case UGREP_CORE_OUT_RELEASE: out.release(); break;
+            case UGREP_CORE_OUT_CHECK_FLUSH: out.check_flush(); break;
+            case UGREP_CORE_OUT_NL: out.nl(); break;
+            case UGREP_CORE_OUT_NL_LF: out.nl(true); break;
+            case UGREP_CORE_OUT_HEADER_FILE: out.header(f.current_pathname(), f.grep.partname); break;
+            case UGREP_CORE_OUT_BINARY_FILE_MATCHES: out.binary_file_matches(f.current_pathname(), f.grep.partname); break;
+            case UGREP_CORE_OUT_DUMP_DONE: out.dump.done(); break;
+            case UGREP_CORE_OUT_LAUNCH: out.launch(); break;
+          }
+        });
+      };
+      env->out_chr = [](void *c, unsigned char ch) { G(c, [&]() { F(c).grep.out.chr(ch); }); };
+      env->out_str = [](void *c, const unsigned char *s, size_t len)
+      {
+        G(c, [&]() { F(c).grep.out.str(reinterpret_cast<const char*>(s), len); });
+      };
+      env->out_utf8strn = [](void *c, const unsigned char *s, size_t len, size_t k)
+      {
+        G(c, [&]() { F(c).grep.out.utf8strn(reinterpret_cast<const char*>(s), len, k); });
+      };
+      env->out_num = [](void *c, size_t i, int width) { G(c, [&]() { F(c).grep.out.num(i, width); }); };
+      env->out_header = [](void *c, size_t lineno, size_t byte_offset, const unsigned char *sep, size_t sep_len, int newline)
+      {
+        G(c, [&]()
+        {
+          SeamFacade& f = F(c);
+          std::string separator(reinterpret_cast<const char*>(sep), sep_len);
+          f.grep.out.header(f.current_pathname(), f.grep.partname, f.grep.heading, lineno, f.grep.matcher, byte_offset, separator.c_str(), newline != 0);
+        });
+      };
+      env->out_format_count = [](void *c, const unsigned char *format, size_t len, size_t matches)
+      {
+        G(c, [&]()
+        {
+          std::string text(reinterpret_cast<const char*>(format), len);
+          F(c).grep.out.format(text.c_str(), matches);
+        });
+      };
+      env->out_format = [](void *c, const unsigned char *format, size_t len, size_t matches, size_t *matching, int body, int next) -> int
+      {
+        return G(c, [&]() -> int
+        {
+          SeamFacade& f = F(c);
+          std::string text(reinterpret_cast<const char*>(format), len);
+          return f.grep.out.format(text.c_str(), f.current_pathname(), f.grep.partname, matches, matching, f.grep.matcher, f.grep.heading, body != 0, next != 0);
+        });
+      };
+      env->out_dump_hex = [](void *c, short mode, size_t byte_offset, const unsigned char *data, size_t len)
+      {
+        G(c, [&]() { F(c).grep.out.dump.hex(mode, byte_offset, reinterpret_cast<const char*>(data), len); });
+      };
+      env->out_dump_next = [](void *c, size_t byte_offset) { G(c, [&]() { F(c).grep.out.dump.next(byte_offset); }); };
+      env->stats_found = [](void *c, int what) -> int
+      {
+        return G(c, [&]() -> int
+        {
+          switch (what)
+          {
+            case 0: return Stats::found_file();
+            case 1: return Stats::found_part();
+            default: Stats::undo_found_part(); return 0;
+          }
+        });
+      };
+      env->stats_found_parts = [](void *c) -> size_t { return G(c, [&]() -> size_t { return Stats::found_parts(); }); };
+      env->stats_score_matches = [](void *c, size_t matches, size_t lines) { G(c, [&]() { Stats::score_matches(matches, lines); }); };
+
+      // the file members: filename, file_in, input, Static::source, filter magic, warning, zthread (no mmap: it is Rust)
+      env->filename = [](void *c, size_t *len) -> const unsigned char*
+      {
+        *len = 0;
+        return G(c, [&]() -> const unsigned char*
+        {
+          Grep& g = F(c).grep;
+          *len = g.filename != NULL ? strlen(g.filename) : 0;
+          return reinterpret_cast<const unsigned char*>(g.filename);
+        });
+      };
+      env->file_in = [](void *c) -> void* { return G(c, [&]() -> void* { return F(c).grep.file_in; }); };
+      env->set_file_in = [](void *c, void *file) { G(c, [&]() { F(c).grep.file_in = static_cast<FILE*>(file); }); };
+      env->input = [](void *c) -> void* { return G(c, [&]() -> void* { return &F(c).grep.input; }); };
+      env->input_file = [](void *c) -> void* { return G(c, [&]() -> void* { return F(c).grep.input.file(); }); };
+      env->input_set_file = [](void *c, void *file, int encoding, int owned)
+      {
+        G(c, [&]()
+        {
+          SeamFacade& f = F(c);
+          FILE *next = stream(file, "input_set_file: NULL file");
+          // the owned pipe that Grep::input holds is closed first, as close_file does before input changes
+          if (next != f.grep.input.file())
+            f.close_held_input();
+          f.grep.input = reflex::Input(next, static_cast<reflex::Input::file_encoding_type>(encoding));
+          f.input_owned = owned != 0;
+        });
+      };
+      env->input_clear = [](void *c) { G(c, [&]() { F(c).close_held_input(); }); };
+      env->input_get = [](void *c, unsigned char *buf, size_t len) -> size_t
+      {
+        return G(c, [&]() -> size_t { return F(c).grep.input.get(reinterpret_cast<char*>(buf), len); });
+      };
+      env->source = [](void *c) -> void* { return G(c, [&]() -> void* { return Static::source; }); };
+      env->stdin_file = [](void *c) -> void* { return G(c, [&]() -> void* { return stdin; }); };
+      // scan the magic pattern on the file and rewind it, as Grep::filter does
+      env->filter_magic_scan = [](void *c, void *file) -> size_t
+      {
+        return G(c, [&]() -> size_t
+        {
+          FILE *in = stream(file, "filter_magic_scan: NULL file");
+          size_t match = reflex::Matcher(Static::filter_magic_pattern, in).scan();
+          rewind(in);
+          return match;
+        });
+      };
+      env->warning = [](void *c, const char *message, const char *arg) { G(c, [&]() { warning(message, arg); }); };
+      // the slots are never NULL: without the decompression thread they are stubs (the Rust side only calls them when
+      // flag_decompress is set, which needs HAVE_LIBZ)
+#if defined(HAVE_LIBZ) && defined(WITH_DECOMPRESSION_THREAD)
+      env->zthread_start = [](void *c, size_t ztstage, const char *path, const char *find, int encoding) -> int
+      {
+        return G(c, [&]() -> int
+        {
+          SeamFacade& f = F(c);
+          FILE *in = stream(f.grep.file_in, "zthread_start: NULL file_in");
+          // a job still running is drained (its pipe closed) before a new one starts, and the held input is closed
+          f.drain_zthread();
+          f.close_held_input();
+          FILE *pipe = f.grep.zthread.start(ztstage, path, in, find);
+          return f.install_pipe(pipe, encoding);
+        });
+      };
+      env->zthread_open_next = [](void *c, const char *path, int encoding) -> int
+      {
+        return G(c, [&]() -> int
+        {
+          SeamFacade& f = F(c);
+          // as close_file: the previous part's pipe is closed before open_next waits for the thread, which may be
+          // blocked writing to it
+          f.close_held_input();
+          return f.install_pipe(f.grep.zthread.open_next(path), encoding);
+        });
+      };
+      env->zthread_cancel = [](void *c) { G(c, [&]() { F(c).grep.zthread.cancel(); }); };
+#else
+      env->zthread_start = [](void *, size_t, const char *, const char *, int) -> int { return 0; };
+      env->zthread_open_next = [](void *, const char *, int) -> int { return 0; };
+      env->zthread_cancel = [](void *) { };
+#endif
+      env->cnf_alts = [](void *c, size_t term) -> size_t
+      {
+        return G(c, [&]() -> size_t
+        {
+          Grep& g = F(c).grep;
+          if (g.matchers == NULL || term >= g.matchers->size())
+            return 0;
+          auto i = g.matchers->begin();
+          std::advance(i, term);
+          return i->size();
+        });
+      };
+      env->cnf_alt_matcher = [](void *c, size_t term, size_t alt, ugrep_core_matcher_table *table) -> int
+      {
+        return G(c, [&]() -> int
+        {
+          SeamFacade& f = F(c);
+          return f.fill_matcher_table(f.cnf_matcher(term, alt), table);
+        });
+      };
+      env->cnf_bit_get = [](void *c, int which, size_t k, size_t l) -> int
+      {
+        return G(c, [&]() -> int
+        {
+          Grep& g = F(c).grep;
+          if (which == UGREP_CORE_CNF_MATCHING)
+            return k < g.matching.size() ? g.matching[k] : 0;
+          return k < g.notmatching.size() && l < g.notmatching[k].size() ? g.notmatching[k][l] : 0;
+        });
+      };
+      env->cnf_bit_set = [](void *c, int which, size_t k, size_t l)
+      {
+        G(c, [&]()
+        {
+          Grep& g = F(c).grep;
+          if (which == UGREP_CORE_CNF_MATCHING)
+          {
+            check(k < g.matching.size(), "cnf_bit_set: term out of range");
+            g.matching[k] = true;
+          }
+          else
+          {
+            check(k < g.notmatching.size() && l < g.notmatching[k].size(), "cnf_bit_set: term or alternative out of range");
+            g.notmatching[k][l] = true;
+          }
+        });
+      };
+      // not guarded: it reports the channel
+      env->error_pending = [](void *c) -> int { return F(c).error != nullptr; };
+      env->input_encoding = [](void *c) -> int { return G(c, [&]() -> int { return F(c).grep.input.file_encoding(); }); };
+      env->encoding_null_data = [](void *c) -> int
+      {
+        return G(c, [&]() -> int { return static_cast<int>(reflex::Input::file_encoding::null_data); });
+      };
+      env->flag_filter = [](void *c, size_t *len) -> const unsigned char*
+      {
+        *len = 0;
+        return G(c, [&]() -> const unsigned char*
+        {
+          *len = flag_filter.size();
+          return reinterpret_cast<const unsigned char*>(flag_filter.c_str());
+        });
+      };
+      env->flag_filter_magic_label = [](void *c, size_t index, size_t *len) -> const unsigned char*
+      {
+        *len = 0;
+        return G(c, [&]() -> const unsigned char*
+        {
+          if (index >= flag_filter_magic_label.size())
+            return NULL;
+          *len = flag_filter_magic_label[index].size();
+          return reinterpret_cast<const unsigned char*>(flag_filter_magic_label[index].c_str());
+        });
+      };
+      env->file_open = [](void *c, const char *path) -> void*
+      {
+        return G(c, [&]() -> void*
+        {
+          FILE *file = NULL;
+          if (fopenw_s(&file, path, "rb") != 0)
+          {
+            warning("cannot read", path);
+            return NULL;
+          }
+          return file;
+        });
+      };
+      env->file_close = [](void *c, void *file) { G(c, [&]() { fclose(stream(file, "file_close: NULL file")); }); };
+      env->file_read_error = [](void *c, void *file, const char *path) -> int
+      {
+        return G(c, [&]() -> int
+        {
+          if (!ferror(stream(file, "file_read_error: NULL file")))
+            return 0;
+          warning("cannot read", path);
+          return 1;
+        });
+      };
+      env->file_set_binary = [](void *c, void *file)
+      {
+        G(c, [&]()
+        {
+#ifdef OS_WIN
+          (void)_setmode(fileno(stream(file, "file_set_binary: NULL file")), _O_BINARY);
+#else
+          (void)stream(file, "file_set_binary: NULL file");
+#endif
+        });
+      };
+      env->file_nonblock_regular = [](void *c, void *file)
+      {
+        G(c, [&]()
+        {
+#if defined(__linux__)
+          int fd = fileno(stream(file, "file_nonblock_regular: NULL file"));
+          struct stat buf;
+
+          if (fstat(fd, &buf) == 0 && S_ISREG(buf.st_mode))
+            fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
+#else
+          (void)stream(file, "file_nonblock_regular: NULL file");
+#endif
+        });
+      };
+      env->file_probe_interactive = [](void *c, void *file) -> int
+      {
+        return G(c, [&]() -> int
+        {
+#ifndef OS_WIN_OR_MINGW
+          int fd = fileno(stream(file, "file_probe_interactive: NULL file"));
+          struct stat buf;
+
+          if (fstat(fd, &buf) == 0 && (S_ISCHR(buf.st_mode) || S_ISFIFO(buf.st_mode) || S_ISSOCK(buf.st_mode)))
+            return fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) != -1;
+#else
+          (void)stream(file, "file_probe_interactive: NULL file");
+#endif
+          return 0;
+        });
+      };
+      env->file_seek_set = [](void *c, void *file) -> int
+      {
+        return G(c, [&]() -> int { return fseek(stream(file, "file_seek_set: NULL file"), 0, SEEK_SET) == 0; });
+      };
+      env->stdin_drain_check = [](void *c) -> int
+      {
+        return G(c, [&]() -> int
+        {
+#if defined(WITH_STDIN_DRAIN) && !defined(OS_WIN_OR_MINGW)
+          return !feof(stdin) && fseek(stdin, 0, SEEK_END) < 0 && errno != EINVAL;
+#else
+          return 0;
+#endif
+        });
+      };
+      env->filter_spawn = [](void *c, void *file, const char *path, const char *command, void **out) -> int
+      {
+        *out = NULL;
+        return G(c, [&]() -> int
+        {
+          FILE *in = stream(file, "filter_spawn: NULL file");
+          bool ok = F(c).grep.filter_spawn(in, path, command);
+          *out = in;
+          return ok;
+        });
+      };
+      env->is_binary = [](void *c, const unsigned char *bytes, size_t len) -> int
+      {
+        return G(c, [&]() -> int { return is_binary(reinterpret_cast<const char*>(bytes), len); });
+      };
+      // the close of close_file(): the stream stays in C++, Rust never holds it
+      env->close_input_file = [](void *c)
+      {
+        G(c, [&]()
+        {
+          SeamFacade& f = F(c);
+          FILE *file = f.grep.input.file();
+          if (file != NULL)
+          {
+            f.detach_matchers(file);
+            // only a stream given by input_set_file(Owned) is closed, never stdin, Static::source or file_in
+            if (f.input_owned && file != stdin && file != Static::source && file != f.grep.file_in)
+              fclose(file);
+          }
+          f.grep.input.clear();
+          f.input_owned = false;
+          f.cancel_zthread_if_blocked();
+        });
+      };
+      env->close_file_in = [](void *c)
+      {
+        G(c, [&]()
+        {
+          SeamFacade& f = F(c);
+          FILE *file = f.grep.file_in;
+          if (file != NULL)
+          {
+            f.cancel_zthread_if_blocked();
+            f.drain_zthread();
+            f.detach_matchers(file);
+            if (file != stdin && file != Static::source)
+              fclose(file);
+            f.grep.file_in = NULL;
+          }
+          f.grep.input.clear();
+          f.input_owned = false;
+        });
+      };
+    }
+
+    static SeamFacade& F(void *ctx) { return *static_cast<SeamFacade*>(ctx); }
+
+    // the pathname of the search being bound, NULL when none
+    const char *current_pathname() const { return path_slot; }
+
+    Grep&                  grep;                   // the Grep object
+    const char            *path_slot;              // the pathname of the search in progress, see bind(); handlers refer to it
+    bool                   input_owned = false;    // Grep::input holds a stream given by input_set_file(Owned): only that one is closed
+    bool                   zthread_active = false; // start/open_next returned a pipe and open_next has not returned NULL since
+    std::exception_ptr     error;                  // the pending exception of the exception channel, see guard()
+    ContextGrepHandler    *context_handler;        // the registered handler when of this class, owned by its MatcherCtx
+    InvertContextGrepHandler *invert_context_handler; // the registered handler when of this class
+    std::deque<MatcherCtx> matcher_ctxs;           // one per matcher handed out
+    rust::Box<ugrep_rust::GrepState> state;        // the Rust state of the Grep lifetime (the mmap mapping), freed with the facade
+  };
 
   const char                    *filename;      // the name of the file being searched
   std::string                    partname;      // the name of an extracted file from an archive
