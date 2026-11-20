@@ -193,8 +193,8 @@ pub struct GrepEnv {
     pub warning: extern "C" fn(*mut c_void, *const c_char, *const c_char),
     /// The zthread slots are `Option`: a facade built without `HAVE_LIBZ` may leave them NULL (the facade fills stubs,
     /// but a NULL must never be UB).
-    pub zthread_start: Option<extern "C" fn(*mut c_void, usize, *const c_char, *const c_char) -> *mut c_void>,
-    pub zthread_open_next: Option<extern "C" fn(*mut c_void, *const c_char) -> *mut c_void>,
+    pub zthread_start:     Option<extern "C" fn(*mut c_void, usize, *const c_char, *const c_char, c_int) -> c_int>,
+        pub zthread_open_next: Option<extern "C" fn(*mut c_void, *const c_char, c_int) -> c_int>,
     pub zthread_cancel: Option<extern "C" fn(*mut c_void)>,
     pub cnf_alts: extern "C" fn(*mut c_void, usize) -> usize,
     pub cnf_alt_matcher: extern "C" fn(*mut c_void, usize, usize, *mut MatcherTable) -> c_int,
@@ -544,19 +544,17 @@ impl GrepHost for CHost {
     fn is_binary(&self, bytes: &[u8]) -> bool {
         (self.0.is_binary)(self.0.ctx, bytes.as_ptr(), bytes.len()) != 0
     }
-    fn zthread_start(&self, ztstage: usize, pathname: &[u8], find: Option<&[u8]>) -> Option<OwnedFile> {
-        let start = self.0.zthread_start?;
+    fn zthread_start(&mut self, ztstage: usize, pathname: &[u8], find: Option<&[u8]>, encoding: i32) -> bool {
+        let Some(start) = self.0.zthread_start else { return false };
         let pathname = c_string(pathname);
         let find = find.map(c_string);
         let find_ptr = find.as_ref().map_or(std::ptr::null(), |f| f.as_ptr());
-        // SAFETY: the facade returns the `FILE*` of the decompression pipe (or NULL), which the caller has to close.
-        unsafe { raw::owned_file(start(self.0.ctx, ztstage, pathname.as_ptr(), find_ptr)) }
+        start(self.0.ctx, ztstage, pathname.as_ptr(), find_ptr, encoding) != 0
     }
-    fn zthread_open_next(&self, pathname: &[u8]) -> Option<OwnedFile> {
-        let open_next = self.0.zthread_open_next?;
+    fn zthread_open_next(&mut self, pathname: &[u8], encoding: i32) -> bool {
+        let Some(open_next) = self.0.zthread_open_next else { return false };
         let pathname = c_string(pathname);
-        // SAFETY: the facade returns the `FILE*` of the next decompression pipe (or NULL), which the caller has to close.
-        unsafe { raw::owned_file(open_next(self.0.ctx, pathname.as_ptr())) }
+        open_next(self.0.ctx, pathname.as_ptr(), encoding) != 0
     }
     fn zthread_cancel(&self) {
         if let Some(cancel) = self.0.zthread_cancel {

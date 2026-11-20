@@ -257,10 +257,12 @@ typedef struct ugrep_core_search_env {
   // warning(message, arg), the process-wide C++ warning
   void (*warning)(void *ctx, const char *message, const char *arg);
   // Grep::zthread.start(ztstage, pathname, Grep::file_in, find) / open_next / cancel (WITH_DECOMPRESSION_THREAD): the pipe
-  // FILE* or NULL; find may be NULL; a NULL file_in is an error of the exception channel.
-  // Without HAVE_LIBZ the facade fills stubs (NULL / no-op), never NULL slots; the Rust side takes Option as well
-  void *(*zthread_start)(void *ctx, size_t ztstage, const char *pathname, const char *find);
-  void *(*zthread_open_next)(void *ctx, const char *pathname);
+  //   FILE* is installed by the facade into Grep::input (reflex::Input(pipe, encoding), input_owned = true) and 1 is returned,
+    // else 0; the pipe never reaches Rust (an unread pipe held by Rust would deadlock the drain of close_file_in).
+    // find may be NULL; a NULL file_in is an error of the exception channel.
+    // Without HAVE_LIBZ the facade fills stubs (0 / no-op), never NULL slots; the Rust side takes Option as well
+    int (*zthread_start)(void *ctx, size_t ztstage, const char *pathname, const char *find, int encoding);
+    int (*zthread_open_next)(void *ctx, const char *pathname, int encoding);
   void (*zthread_cancel)(void *ctx);
   // the CNF of Grep::matchers (a list of lists of matchers, an element may be NULL): number of alternatives of term
   size_t (*cnf_alts)(void *ctx, size_t term);

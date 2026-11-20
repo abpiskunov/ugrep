@@ -801,12 +801,14 @@ pub trait GrepHost {
     fn filter_spawn(&self, file: FileSource, pathname: &[u8], command: &[u8]) -> Option<OwnedFile>;
     /// `is_binary(bytes, len)` of ugrep.cpp (`flag_encoding_type`, `-a`, `-U`, `-W`, `reflex::isutf8`).
     fn is_binary(&self, bytes: &[u8]) -> bool;
-    /// `Grep::zthread.start(ztstage, pathname, Grep::file_in, find)`: the pipe, or NULL. The thread reads `Grep::file_in`,
-    /// which stays owned by the host (it is closed by [`GrepHost::close_file_in`]); a NULL `file_in` is an error of the
-    /// exception channel.
-    fn zthread_start(&self, ztstage: usize, pathname: &[u8], find: Option<&[u8]>) -> Option<OwnedFile>;
-    /// `Grep::zthread.open_next(pathname)`: the next pipe, or NULL.
-    fn zthread_open_next(&self, pathname: &[u8]) -> Option<OwnedFile>;
+    /// `Grep::zthread.start(ztstage, pathname, Grep::file_in, find)`; on a pipe the host installs it into `Grep::input`
+    /// (`reflex::Input(pipe, encoding)`, owned: closed by [`GrepHost::close_input_file`]) and returns true, else false.
+    /// The pipe never reaches Rust. The thread reads `Grep::file_in`, which stays owned by the host (closed by
+    /// [`GrepHost::close_file_in`]); a NULL `file_in` is an error of the exception channel. `&mut self`: no [`FileRef`]
+    /// of `input_file` is alive.
+    fn zthread_start(&mut self, ztstage: usize, pathname: &[u8], find: Option<&[u8]>, encoding: i32) -> bool;
+    /// `Grep::zthread.open_next(pathname)`: as `zthread_start`, true when the next pipe is now `Grep::input`.
+    fn zthread_open_next(&mut self, pathname: &[u8], encoding: i32) -> bool;
     /// `Grep::zthread.cancel()`.
     fn zthread_cancel(&self);
 

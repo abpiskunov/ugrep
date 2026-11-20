@@ -129,7 +129,7 @@ pub struct FileRef<'a> {
     _host: PhantomData<&'a ()>,
 }
 
-/// A `FILE*` that the holder must close: made only by `file_open`, `filter_spawn` and `zthread_start`/`open_next`.
+/// A `FILE*` that the holder must close: made only by `file_open` and `filter_spawn`.
 /// Never NULL (a failed call returns `None`), not `Copy` or `Clone`; `file_close`, `filter_spawn` and `set_file_in` take it
 /// by value, so a double close does not compile. A stream that the host owns (`Grep::file_in`, the file of
 /// `Grep::input`) is closed by the host primitives `close_input_file` and `close_file_in`, never handed to Rust.

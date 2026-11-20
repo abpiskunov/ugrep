@@ -3049,28 +3049,44 @@ struct Grep {
 #endif
     }
 
-    // an active decompression thread still holds file_in: cancel it and take every pending pipe until open_next returns
+    // an active decompression thread still holds file_in: close the pipe held by Grep::input first (a thread blocked
+    // writing to an unread pipe is not woken by cancel), then cancel and take every pending pipe until open_next returns
     // NULL, so that the stream is not closed under the thread
     void drain_zthread()
     {
 #if defined(HAVE_LIBZ) && defined(WITH_DECOMPRESSION_THREAD)
       if (zthread_active)
       {
+        FILE *held = grep.input.file();
+        if (held != NULL)
+        {
+          detach_matchers(held);
+          if (input_owned && held != stdin && held != Static::source && held != grep.file_in)
+            fclose(held);
+        }
+        grep.input.clear();
+        input_owned = false;
         grep.zthread.cancel();
         const char *path = path_slot != NULL ? path_slot : "";
         for (FILE *pipe = grep.zthread.open_next(path); pipe != NULL; pipe = grep.zthread.open_next(path))
         {
           detach_matchers(pipe);
-          if (grep.input.file() == pipe)
-          {
-            grep.input.clear();
-            input_owned = false;
-          }
           fclose(pipe);
         }
         zthread_active = false;
       }
 #endif
+    }
+
+    // Grep::input takes over the pipe of zthread start/open_next: the pipe stays in C++ and is closed by close_input_file
+    int install_pipe(FILE *pipe, int encoding)
+    {
+      zthread_active = pipe != NULL;
+      if (pipe == NULL)
+        return 0;
+      grep.input = reflex::Input(pipe, static_cast<reflex::Input::file_encoding_type>(encoding));
+      input_owned = true;
+      return 1;
     }
 
     // no matcher of the facade keeps reading a stream that is about to be closed: its input is cleared
@@ -3845,30 +3861,27 @@ struct Grep {
       // the slots are never NULL: without the decompression thread they are stubs (the Rust side only calls them when
       // flag_decompress is set, which needs HAVE_LIBZ)
 #if defined(HAVE_LIBZ) && defined(WITH_DECOMPRESSION_THREAD)
-      env->zthread_start = [](void *c, size_t ztstage, const char *path, const char *find) -> void*
+      env->zthread_start = [](void *c, size_t ztstage, const char *path, const char *find, int encoding) -> int
       {
-        return G(c, [&]() -> void*
+        return G(c, [&]() -> int
         {
           SeamFacade& f = F(c);
-          void *pipe = f.grep.zthread.start(ztstage, path, stream(f.grep.file_in, "zthread_start: NULL file_in"), find);
-          f.zthread_active = pipe != NULL;
-          return pipe;
+          FILE *pipe = f.grep.zthread.start(ztstage, path, stream(f.grep.file_in, "zthread_start: NULL file_in"), find);
+          return f.install_pipe(pipe, encoding);
         });
       };
-      env->zthread_open_next = [](void *c, const char *path) -> void*
+      env->zthread_open_next = [](void *c, const char *path, int encoding) -> int
       {
-        return G(c, [&]() -> void*
+        return G(c, [&]() -> int
         {
           SeamFacade& f = F(c);
-          void *pipe = f.grep.zthread.open_next(path);
-          f.zthread_active = pipe != NULL;
-          return pipe;
+          return f.install_pipe(f.grep.zthread.open_next(path), encoding);
         });
       };
       env->zthread_cancel = [](void *c) { G(c, [&]() { F(c).grep.zthread.cancel(); }); };
 #else
-      env->zthread_start = [](void *, size_t, const char *, const char *) -> void* { return NULL; };
-      env->zthread_open_next = [](void *, const char *) -> void* { return NULL; };
+      env->zthread_start = [](void *, size_t, const char *, const char *, int) -> int { return 0; };
+      env->zthread_open_next = [](void *, const char *, int) -> int { return 0; };
       env->zthread_cancel = [](void *) { };
 #endif
       env->cnf_alts = [](void *c, size_t term) -> size_t
