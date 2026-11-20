@@ -643,6 +643,12 @@ pub struct GrepFlags {
     pub with_filename: bool,
     pub with_hex: bool,
     pub zmax: usize,
+    /// `flag_max_mmap` (`--max-mmap`), 0 disables the mmap of `init_read`.
+    pub max_mmap: usize,
+    /// `color_sl`, `color_cx` and `color_off`, NUL-free copies.
+    pub color_sl: Bytes,
+    pub color_cx: Bytes,
+    pub color_off: Bytes,
 }
 
 /// The callback interface of the Grep seam: everything a search branch uses of the C++ `Grep` object, its `Output`,
@@ -1002,59 +1008,540 @@ pub mod branch {
 /// `Grep::matcher`. What they need of `Grep` (`file_in`, `input`, `interactive`, `zthread`, `restline*`, `out`, the CNF
 /// bits) is reached through the [`GrepHost`] of `ctx`. The `mmap` of `init_read` is ported to Rust, not a callback.
 pub mod file {
-    use super::{CnfResult, GrepState, MatcherHandle, SearchContext};
+    use super::{
+        raw, Bytes, CnfBits, CnfResult, FileSource, GrepHost, GrepState, MatcherHandle, MatcherKind, RestlineData, SearchContext, HEX_CONTEXT_LINE,
+        HEX_LINE, INPUT_HANDLER_BINARY, INPUT_HANDLER_STDIN,
+    };
+
+    /// `reflex::AbstractMatcher::Const::BUFSZ`: how much of the input `init_is_binary` checks.
+    const BUFSZ: usize = 256 * 1024;
+    /// `Action::READ` of `flag_devices_action`.
+    const ACTION_READ: i32 = 2;
+    /// `Mode::PERL` of `flag_mode`.
+    const MODE_PERL: i32 = 4;
+    /// `PATHSEPCHR`.
+    const PATHSEPCHR: u8 = if cfg!(windows) { b'\\' } else { b'/' };
 
     /// `Grep::cnf_matching(bol, eol, acquire)`: `bol` and `eol` are offsets into the buffer of `matcher`. `Exit` is the
     /// `throw EXIT_SEARCH()` of the C++.
-    pub fn cnf_matching(_ctx: &SearchContext, _matcher: &MatcherHandle, _bol: usize, _eol: usize, _acquire: bool) -> CnfResult {
-        panic!("Grep seam: file::cnf_matching is not ported")
+    pub fn cnf_matching(ctx: &SearchContext, matcher: &MatcherHandle, bol: usize, eol: usize, acquire: bool) -> CnfResult {
+        ctx.with_host(|h| {
+            let terms = h.matchers_len().unwrap_or(0);
+            if ctx.flags().files {
+                if h.out_holding() {
+                    let mut all = true; // all terms matched
+                    for k in 0..terms {
+                        // an OR term hasn't matched before
+                        if h.cnf_bit_get(CnfBits::Matching, k, 0) {
+                            continue;
+                        }
+                        let alts = h.cnf_alts(k);
+                        if alts == 0 {
+                            continue;
+                        }
+                        let first = h.cnf_alt_matcher(k, 0);
+                        // check OR terms
+                        if first.as_ref().is_some_and(|m| m.find_in_line(matcher, bol, eol)) {
+                            h.cnf_bit_set(CnfBits::Matching, k, 0);
+                            continue;
+                        }
+                        // check OR NOT terms
+                        let mut none = true; // all not-terms matched
+                        for l in 0..alts - 1 {
+                            if let Some(m) = h.cnf_alt_matcher(k, l + 1) {
+                                if !h.cnf_bit_get(CnfBits::NotMatching, k, l) {
+                                    if m.find_in_line(matcher, bol, eol) {
+                                        h.cnf_bit_set(CnfBits::NotMatching, k, l);
+                                    } else {
+                                        all = false;
+                                        none = false;
+                                    }
+                                }
+                            }
+                        }
+                        if none {
+                            // when all not-terms matched and we don't have a positive alternative then stop searching this file
+                            if first.is_none() {
+                                return CnfResult::EXIT;
+                            }
+                            all = false;
+                        }
+                    }
+                    if h.error_pending() {
+                        return CnfResult::EXIT;
+                    }
+                    // if all terms matched globally per file then remove the hold to launch output
+                    if all {
+                        if let Some(exit) = launch(h, acquire) {
+                            return exit;
+                        }
+                    }
+                }
+            } else {
+                // for each AND term check if the line has a match
+                for k in 0..terms {
+                    let alts = h.cnf_alts(k);
+                    if alts == 0 {
+                        continue;
+                    }
+                    // check OR terms
+                    if h.cnf_alt_matcher(k, 0).is_some_and(|m| m.find_in_line(matcher, bol, eol)) {
+                        continue;
+                    }
+                    // check OR NOT terms
+                    let not_matched = (1..alts).any(|j| h.cnf_alt_matcher(k, j).is_some_and(|m| !m.find_in_line(matcher, bol, eol)));
+                    if !not_matched {
+                        return CnfResult::NO;
+                    }
+                }
+            }
+            if h.error_pending() {
+                CnfResult::EXIT
+            } else {
+                CnfResult::YES
+            }
+        })
+    }
+
+    /// `if (acquire) out.acquire(); if (!Stats::found_part()) throw EXIT_SEARCH(); out.launch();`
+    fn launch(h: &dyn GrepHost, acquire: bool) -> Option<CnfResult> {
+        if acquire {
+            h.out_acquire();
+        }
+        // --max-files: max reached?
+        if !h.stats_found_part() {
+            return Some(CnfResult::EXIT);
+        }
+        h.out_launch();
+        None
     }
 
     /// `Grep::cnf_satisfied(acquire)`; `Exit` is the `throw EXIT_SEARCH()` of the C++.
-    pub fn cnf_satisfied(_ctx: &SearchContext, _acquire: bool) -> CnfResult {
-        panic!("Grep seam: file::cnf_satisfied is not ported")
+    pub fn cnf_satisfied(ctx: &SearchContext, acquire: bool) -> CnfResult {
+        ctx.with_host(|h| {
+            if h.out_holding() {
+                // for each AND term check if the term was matched before
+                for k in 0..h.matchers_len().unwrap_or(0) {
+                    // an OR term hasn't matched
+                    if h.cnf_bit_get(CnfBits::Matching, k, 0) {
+                        continue;
+                    }
+                    let alts = h.cnf_alts(k);
+                    // return if there are no OR NOT terms to check
+                    if alts <= 1 {
+                        return CnfResult::NO;
+                    }
+                    // check if not all of the OR NOT terms matched
+                    let open = (0..alts - 1).any(|l| h.cnf_alt_matcher(k, l + 1).is_some() && !h.cnf_bit_get(CnfBits::NotMatching, k, l));
+                    if !open {
+                        return CnfResult::NO;
+                    }
+                }
+                if let Some(exit) = launch(h, acquire) {
+                    return exit;
+                }
+            }
+            if h.error_pending() {
+                CnfResult::EXIT
+            } else {
+                CnfResult::YES
+            }
+        })
     }
 
     /// `Grep::open_file(pathname, find)`: `find` is NULL for `None`. `is_stdin` is the C++ test `pathname ==
     /// Static::LABEL_STANDARD_INPUT`, by pointer identity, which the bytes of `pathname` cannot express.
-    pub fn open_file(_ctx: &SearchContext, _pathname: &[u8], _find: Option<&[u8]>, _is_stdin: bool) -> bool {
-        panic!("Grep seam: file::open_file is not ported")
+    pub fn open_file(ctx: &SearchContext, pathname: &[u8], find: Option<&[u8]>, is_stdin: bool) -> bool {
+        let (decompress, zmax, encoding, devices_action, probe) = {
+            let f = ctx.flags();
+            (f.decompress, f.zmax, i32::from(f.encoding_type), f.devices_action, !f.quiet && !f.files_with_matches && !f.count)
+        };
+        let label: Bytes;
+        let pathname: &[u8] = if is_stdin {
+            if ctx.with_host(|h| h.source().is_none()) {
+                return false;
+            }
+            label = ctx.flags().label.clone().unwrap_or_default();
+            ctx.with_host_mut(|h| h.set_file_in(Some(FileSource::Source)));
+            ctx.with_host(|h| {
+                if let Some(source) = h.source() {
+                    h.file_set_binary(&source);
+                }
+            });
+            &label
+        } else {
+            // the warning for a failed open is issued by `file_open`
+            match ctx.with_host(|h| h.file_open(pathname)) {
+                Some(file) => ctx.with_host_mut(|h| h.set_file_in(Some(FileSource::Owned(file)))),
+                None => {
+                    ctx.with_host_mut(|h| h.set_file_in(None));
+                    return false;
+                }
+            }
+            pathname
+        };
+
+        // "interactive" means possibly slow input from a TTY or pipe
+        ctx.with_host(|h| h.set_interactive(false));
+
+        // --filter: fork process to filter file, when applicable
+        if !filter(ctx, pathname) {
+            return false;
+        }
+
+        if devices_action != ACTION_READ {
+            // Linux has system "regular files" that can be set non-blocking to raise EAGAIN e.g. for /proc and /sys files
+            ctx.with_host(|h| {
+                if let Some(file) = h.file_in() {
+                    if file != h.stdin_file() && h.source().as_ref() != Some(&file) {
+                        h.file_nonblock_regular(&file);
+                    }
+                }
+            });
+        }
+
+        if decompress {
+            // start decompression thread if not running, get pipe with decompressed input
+            if !ctx.with_host_mut(|h| h.zthread_start(zmax, pathname, find, encoding)) {
+                ctx.with_host_mut(|h| h.close_file_in());
+                return false;
+            }
+        } else {
+            ctx.with_host_mut(|h| h.input_set_file_in(encoding));
+        }
+
+        if cfg!(windows) {
+            // for Windows we don't check for invalid Unicode input, no stdin handler
+            if probe && ctx.with_host(|h| h.input_file().is_some_and(|file| file == h.stdin_file())) {
+                ctx.with_host(|h| h.set_interactive(true));
+            }
+        } else if !decompress && probe {
+            // if input is a character device (e.g. TTY) or a pipe, then make it non-blocking and register a stdin handler
+            // to continue reading and flush results to output, don't check for invalid Unicode input
+            ctx.with_host(|h| {
+                let interactive = h.file_in().is_some_and(|file| h.file_probe_interactive(&file));
+                h.set_interactive(interactive);
+            });
+        }
+
+        !ctx.error_pending()
     }
 
     /// `Grep::filter(file_in, pathname)`: `--filter`, replaces `file_in` through the host.
-    pub fn filter(_ctx: &SearchContext, _pathname: &[u8]) -> bool {
-        panic!("Grep seam: file::filter is not ported")
+    pub fn filter(ctx: &SearchContext, pathname: &[u8]) -> bool {
+        let filter = ctx.with_host(|h| h.flag_filter());
+        if filter.is_empty() || ctx.with_host(|h| h.file_in().is_none()) {
+            return true;
+        }
+        // C strings
+        let pathname = until_nul(pathname);
+        let basename = match pathname.iter().rposition(|&c| c == PATHSEPCHR) {
+            Some(i) => &pathname[i + 1..],
+            None => pathname,
+        };
+
+        // get the basenames's extension suffix, don't consider . at the front of basename, otherwise skip .
+        let mut suffix: Option<Bytes> = match basename.iter().rposition(|&c| c == b'.') {
+            Some(0) | None => None,
+            Some(i) => Some(until_nul(&basename[i + 1..]).to_vec()),
+        };
+
+        // --filter-magic-label: if the file is seekable (to rewind later), then check for a magic pattern match
+        let labels: Vec<Bytes> = ctx.with_host(|h| (0..).map_while(|i| h.flag_filter_magic_label(i)).collect());
+        if !labels.is_empty() && ctx.with_host(|h| h.file_in().is_some_and(|file| h.file_seek_set(&file))) {
+            // --filter-magic-label: check for overriding +
+            let is_plus = suffix.is_some() && labels.iter().any(|label| label.first() == Some(&b'+'));
+
+            // --filter-magic-label: if the basename has no suffix or a +LABEL + then check magic bytes
+            if suffix.is_none() || is_plus {
+                // match the magic pattern, the input is rewound after the scan
+                let found = ctx.with_host(|h| h.file_in().map_or(0, |file| h.filter_magic_scan(&file)));
+                if found > 0 && found <= labels.len() {
+                    let label = until_nul(&labels[found - 1]);
+                    suffix = Some(label.strip_prefix(b"+").unwrap_or(label).to_vec());
+                }
+            }
+        }
+
+        // basenames without a suffix get "*" as a suffix
+        let suffix = match suffix {
+            Some(s) if !s.is_empty() => s,
+            _ => b"*".to_vec(),
+        };
+
+        match find_filter_command(&filter, &suffix) {
+            // suffix has a command to execute
+            Some(command) => ctx.with_host_mut(|h| raw::filter_file_in(h, pathname, &command)),
+            None => true,
+        }
+    }
+
+    /// The prefix of `bytes` before the first NUL, as a C string reads it.
+    fn until_nul(bytes: &[u8]) -> &[u8] {
+        bytes.split(|&c| c == 0).next().unwrap_or(&[])
+    }
+
+    /// C `isspace` in the "C" locale.
+    fn is_space(c: u8) -> bool {
+        matches!(c, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r')
+    }
+
+    /// The command of the first `--filter=SUFFIXES:COMMAND,...` entry that matches `suffix` (case insensitive), else the
+    /// wildcard `*:COMMAND` entry; `None` when there is no command.
+    fn find_filter_command(filter: &[u8], suffix: &[u8]) -> Option<Bytes> {
+        let filter = until_nul(filter);
+        let at = |i: usize| filter.get(i).copied().unwrap_or(0);
+        let find = |c: u8, from: usize| filter.get(from..).and_then(|rest| rest.iter().position(|&x| x == c)).map(|i| i + from);
+        let mut pos = 0;
+        let mut default_command = None;
+
+        // find the command corresponding to the first matching suffix specified in the filter
+        let command = loop {
+            while is_space(at(pos)) {
+                pos += 1;
+            }
+
+            // wildcard *:command is considered only when no matching suffix was found
+            if at(pos) == b'*' {
+                default_command = find(b':', pos);
+            }
+
+            // match filter filename extension (case insensitive)
+            let ext_match = suffix.iter().enumerate().all(|(i, &c)| c.eq_ignore_ascii_case(&at(pos + i)));
+            let next = at(pos + suffix.len());
+            if ext_match && (next == b':' || next == b',' || is_space(next)) {
+                break find(b':', pos);
+            }
+
+            match find(b',', pos) {
+                Some(comma) => pos = comma + 1,
+                None => break None,
+            }
+        };
+
+        // if no matching command, use the wildcard *:command when specified, skip over the ':'
+        command.or(default_command).map(|colon| filter[colon + 1..].to_vec())
     }
 
     /// `Grep::close_file(pathname)`: true when the next file of an archive is to be searched.
-    pub fn close_file(_ctx: &SearchContext, _pathname: &[u8]) -> bool {
-        panic!("Grep seam: file::close_file is not ported")
+    pub fn close_file(ctx: &SearchContext, pathname: &[u8]) -> bool {
+        let (decompress, encoding, drain) = {
+            let f = ctx.flags();
+            (f.decompress, i32::from(f.encoding_type), !f.quiet && !f.files_with_matches && f.max_count == 0 && f.max_line == 0)
+        };
+
+        // check if the input has an error condition, but do not check stdin which is handled differently
+        ctx.with_host(|h| {
+            if let Some(file) = h.file_in() {
+                if file != h.stdin_file() && h.source().as_ref() != Some(&file) {
+                    h.file_read_error(&file, pathname);
+                }
+            }
+        });
+
+        // -z: open next archived file if any or close the compressed file/archive
+        if decompress {
+            // close the input FILE* and its underlying pipe
+            ctx.with_host_mut(|h| h.close_input_file());
+
+            // if output is blocked, then cancel decompression threads
+            ctx.with_host(|h| {
+                if h.out_eof() {
+                    h.zthread_cancel();
+                }
+            });
+
+            // open pipe to the next file or part in an archive if there is a next file to extract, and loop back in search()
+            if ctx.with_host_mut(|h| h.zthread_open_next(pathname, encoding)) {
+                return true;
+            }
+        }
+
+        // drain stdin when non-seekable file such as a pipe until eof, unless option -q is used
+        if drain && ctx.with_host(|h| h.file_in().is_some_and(|file| file == h.stdin_file()) && h.stdin_drain_check()) {
+            let mut buf = [0u8; 16384];
+            while ctx.with_host(|h| h.input_get(&mut buf)) > 0 {}
+        }
+
+        // close the current input file
+        ctx.with_host_mut(|h| h.close_file_in());
+
+        false
     }
 
     /// `Grep::init_read()`: false when the file is skipped (`-I` and binary). `state` is the Grep-lifetime Rust state
     /// (the mmap of the input).
-    pub fn init_read(_state: &GrepState, _ctx: &SearchContext, _matcher: &MatcherHandle) -> bool {
-        panic!("Grep seam: file::init_read is not ported")
+    pub fn init_read(state: &GrepState, ctx: &SearchContext, matcher: &MatcherHandle) -> bool {
+        let (min_line, with_filename, max_mmap, mode, binary_without_match, check_binary, null_data_flag) = {
+            let f = ctx.flags();
+            (
+                f.min_line,
+                f.with_filename,
+                f.max_mmap,
+                f.mode,
+                f.binary_without_match,
+                !f.quiet && !f.files_with_matches && !f.count && f.format.is_none() && !f.text && !f.hex && !f.with_hex,
+                i32::from(f.encoding_type),
+            )
+        };
+
+        // initialize Grep search and output variables
+        let interactive = ctx.with_host(|h| {
+            h.set_binfile(false);
+            h.set_lineno(if min_line > 0 { min_line - 1 } else { 0 });
+            h.set_heading(with_filename);
+            h.set_hex(false);
+            h.set_binary(false);
+            h.set_matches(0);
+            h.set_stop(false);
+            h.interactive()
+        });
+
+        // attempt to mmap the input file, if mmap is supported and enabled (disabled by default)
+        let mapped = if max_mmap > 0 {
+            ctx.with_host(|h| if h.input_encoding() == 0 { h.input_file().and_then(|file| raw::map_input(state, &file, max_mmap)) } else { None })
+        } else {
+            None
+        };
+        if let Some(memory) = mapped {
+            // matcher reads directly from protected mmap memory
+            matcher.buffer(&memory);
+        } else {
+            // assign input to the matcher to search
+            let input = ctx.with_host(|h| h.input());
+            matcher.input(&input);
+
+            if matcher.kind() == MatcherKind::BOOST && mode == MODE_PERL {
+                // buffer all input to work around Boost.Regex partial matching bug
+                matcher.buffer_all();
+            } else if !cfg!(windows) && interactive {
+                // set interactive search handler e.g. for slow stdin input
+                matcher.set_input_handler(INPUT_HANDLER_STDIN);
+            }
+        }
+
+        // interactive: do not check init_is_binary(), wait until handler detects binary files that have NUL bytes
+        if !interactive {
+            // otherwise, check if the file is a binary file
+            if binary_without_match {
+                // -I: do not match binary files
+                if init_is_binary(ctx, matcher) {
+                    return false;
+                }
+            } else if check_binary && null_data_flag != ctx.with_host(|h| h.encoding_null_data()) {
+                // not -q, -l, -c, --format, -a, -X, -W, -00: check if initial part of the file is binary
+                let binfile = init_is_binary(ctx, matcher);
+                ctx.with_host(|h| h.set_binfile(binfile));
+
+                // detect binary input dynamically when more input is read after checking the inital input
+                matcher.set_input_handler(INPUT_HANDLER_BINARY);
+            }
+        }
+
+        // --range=[MIN,][MAX]: start searching at line MIN
+        for _ in 1..min_line {
+            if !matcher.skip(b'\n') {
+                break;
+            }
+        }
+
+        true
     }
 
     /// `Grep::init_is_binary()`.
-    pub fn init_is_binary(_ctx: &SearchContext, _matcher: &MatcherHandle) -> bool {
-        panic!("Grep seam: file::init_is_binary is not ported")
+    pub fn init_is_binary(ctx: &SearchContext, matcher: &MatcherHandle) -> bool {
+        // check initial input for binary data, fill up to BUFSZ bytes to check (similar GNU grep, but a bit more)
+        let mut avail = matcher.avail(BUFSZ);
+        if avail == 0 {
+            return false;
+        }
+        let Some(buf) = matcher.begin_bytes(avail) else { return false };
+
+        // do not cut off the last UTF-8 sequence, ignore it, otherwise we risk failing the UTF-8 check
+        if buf[avail - 1] & 0x80 == 0x80 {
+            let mut n = avail.min(4); // note: 1 <= n <= 4 bytes to check
+            while n > 0 {
+                avail -= 1;
+                if buf[avail] & 0xc0 != 0x80 {
+                    break;
+                }
+                n -= 1;
+            }
+            if buf[avail] & 0xc0 != 0xc0 {
+                return true;
+            }
+        }
+
+        ctx.with_host(|h| h.is_binary(&buf[..avail]))
     }
 
     /// `Grep::output_or_save_restline(invert, hex_context)`.
-    pub fn output_or_save_restline(_ctx: &SearchContext, _matcher: &MatcherHandle, _invert: bool, _hex_context: bool) {
-        panic!("Grep seam: file::output_or_save_restline is not ported")
+    pub fn output_or_save_restline(ctx: &SearchContext, matcher: &MatcherHandle, invert: bool, hex_context: bool) {
+        if ctx.with_host(|h| h.restline_data()) != RestlineData::None {
+            if ctx.flags().ungroup || ctx.with_host(|h| h.lineno()) != matcher.lineno() {
+                output_restline(ctx, matcher, invert, hex_context);
+            } else {
+                save_restline(ctx);
+            }
+        }
     }
 
     /// `Grep::output_restline(invert, hex_context)`.
-    pub fn output_restline(_ctx: &SearchContext, _matcher: &MatcherHandle, _invert: bool, _hex_context: bool) {
-        panic!("Grep seam: file::output_restline is not ported")
+    pub fn output_restline(ctx: &SearchContext, matcher: &MatcherHandle, invert: bool, hex_context: bool) {
+        if ctx.with_host(|h| h.restline_data()) == RestlineData::None {
+            return;
+        }
+        if ctx.with_host(|h| h.binary()) {
+            // --hexdump with ABC context: if binary then show hex context
+            if hex_context {
+                let (after, columns) = {
+                    let f = ctx.flags();
+                    (f.hex_after, f.hex_columns)
+                };
+                let (last, size) = ctx.with_host(|h| (h.restline_last(), h.restline_size()));
+                let mut right = after
+                    .wrapping_mul(columns)
+                    .wrapping_sub(last.wrapping_sub(1).checked_rem(columns).unwrap_or(0))
+                    .wrapping_sub(1);
+                let first = matcher.first();
+                if last.wrapping_add(right) > first {
+                    right = first.wrapping_sub(last);
+                }
+                if right < size {
+                    ctx.with_host(|h| h.set_restline_size(right));
+                }
+            }
+            ctx.with_host(|h| h.out_dump_hex(if invert { HEX_CONTEXT_LINE } else { HEX_LINE }, h.restline_last(), &h.restline_bytes()));
+        } else {
+            let (color, off) = {
+                let f = ctx.flags();
+                (if invert { f.color_cx.clone() } else { f.color_sl.clone() }, f.color_off.clone())
+            };
+            ctx.with_host(|h| {
+                let mut lf_only = false;
+                let mut bytes = h.restline_bytes();
+                if let Some(&last) = bytes.last() {
+                    lf_only = last == b'\n';
+                    bytes.truncate(bytes.len() - usize::from(lf_only));
+                    h.set_restline_size(bytes.len());
+                    if !bytes.is_empty() {
+                        h.out_str(&color);
+                        h.out_str(&bytes);
+                        h.out_str(&off);
+                    }
+                }
+                h.out_nl(lf_only);
+            });
+        }
+        ctx.with_host(|h| h.set_restline_data(RestlineData::None));
     }
 
     /// `Grep::save_restline()`.
-    pub fn save_restline(_ctx: &SearchContext) {
-        panic!("Grep seam: file::save_restline is not ported")
+    pub fn save_restline(ctx: &SearchContext) {
+        ctx.with_host(|h| {
+            let bytes = h.restline_bytes();
+            h.restline_set(&bytes);
+        });
     }
 }
 
@@ -1354,11 +1841,792 @@ mod tests {
         assert_eq!(*m.calls.borrow(), vec!["find", "find", "find", "input_handler", "input_handler_none"]);
     }
 
-    #[test]
-    #[should_panic(expected = "file::open_file is not ported")]
-    fn file_stub_panics_instead_of_running() {
-        file::open_file(&SearchContext::new(b"a", 0), b"a", None, false);
+    /// A fake `Grep`: the files are made-up addresses (1 is `stdin`, 2 the TUI `Static::source`), every host call that
+    /// matters to a file member is logged, the output goes to a byte string.
+    mod host {
+        use super::super::*;
+        use std::cell::RefCell;
+
+        pub const STDIN: usize = 1;
+        pub const SOURCE: usize = 2;
+        pub const OPENED: usize = 3;
+        pub const PIPE: usize = 9;
+
+        pub struct St {
+            pub log: Vec<String>,
+            pub file_in: Option<usize>,
+            pub input_file: Option<usize>,
+            pub has_source: bool,
+            pub open_fails: bool,
+            pub spawn_fails: bool,
+            pub zthread_ok: bool,
+            pub next_part: bool,
+            pub interactive: bool,
+            pub probe: bool,
+            pub drain: bool,
+            pub drain_chunks: usize,
+            pub binary_content: bool,
+            pub is_binary_seen: Vec<Vec<u8>>,
+            pub filter: Vec<u8>,
+            pub labels: Vec<Vec<u8>>,
+            pub magic: usize,
+            pub eof: bool,
+            pub holding: bool,
+            pub found_part: bool,
+            pub lineno: usize,
+            pub binary: bool,
+            pub binfile: bool,
+            pub restline_data: RestlineData,
+            pub restline_size: usize,
+            pub restline_last: usize,
+            pub buffer: Vec<u8>,
+            pub saved: Vec<u8>,
+            pub out: Vec<u8>,
+            pub alts: Vec<Vec<bool>>,
+            pub matching: Vec<bool>,
+        }
+
+        pub struct TestHost {
+            pub st: std::rc::Rc<RefCell<St>>,
+            pub matcher: Rc<MatcherHandle>,
+        }
+
+        pub fn state() -> std::rc::Rc<RefCell<St>> {
+            std::rc::Rc::new(RefCell::new(St {
+                log: Vec::new(),
+                file_in: None,
+                input_file: None,
+                has_source: true,
+                open_fails: false,
+                spawn_fails: false,
+                zthread_ok: true,
+                next_part: false,
+                interactive: false,
+                probe: false,
+                drain: false,
+                drain_chunks: 0,
+                binary_content: false,
+                is_binary_seen: Vec::new(),
+                filter: Vec::new(),
+                labels: Vec::new(),
+                magic: 0,
+                eof: false,
+                holding: false,
+                found_part: true,
+                lineno: 0,
+                binary: false,
+                binfile: true,
+                restline_data: RestlineData::None,
+                restline_size: 0,
+                restline_last: 0,
+                buffer: Vec::new(),
+                saved: Vec::new(),
+                out: Vec::new(),
+                alts: Vec::new(),
+                matching: Vec::new(),
+            }))
+        }
+
+        impl TestHost {
+            fn log(&self, what: &str) {
+                self.st.borrow_mut().log.push(what.to_string());
+            }
+            fn file(addr: usize) -> FileRef<'static> {
+                raw::fake::file_ref(addr)
+            }
+            fn addr(file: &FileRef<'_>) -> usize {
+                raw::file_ptr(file) as usize
+            }
+        }
+
+        impl GrepHost for TestHost {
+            fn matches(&self) -> usize {
+                0
+            }
+            fn set_matches(&self, _: usize) {
+                self.log("set_matches");
+            }
+            fn lineno(&self) -> usize {
+                self.st.borrow().lineno
+            }
+            fn set_lineno(&self, lineno: usize) {
+                self.st.borrow_mut().lineno = lineno;
+            }
+            fn heading(&self) -> bool {
+                false
+            }
+            fn set_heading(&self, _: bool) {
+                self.log("set_heading");
+            }
+            fn stop(&self) -> bool {
+                false
+            }
+            fn set_stop(&self, _: bool) {
+                self.log("set_stop");
+            }
+            fn binfile(&self) -> bool {
+                self.st.borrow().binfile
+            }
+            fn set_binfile(&self, binfile: bool) {
+                self.st.borrow_mut().binfile = binfile;
+            }
+            fn hex(&self) -> bool {
+                false
+            }
+            fn set_hex(&self, _: bool) {
+                self.log("set_hex");
+            }
+            fn binary(&self) -> bool {
+                self.st.borrow().binary
+            }
+            fn set_binary(&self, binary: bool) {
+                self.st.borrow_mut().binary = binary;
+            }
+            fn partname(&self) -> Bytes {
+                Bytes::new()
+            }
+            fn restline_size(&self) -> usize {
+                self.st.borrow().restline_size
+            }
+            fn set_restline_size(&self, size: usize) {
+                self.st.borrow_mut().restline_size = size;
+            }
+            fn restline_last(&self) -> usize {
+                self.st.borrow().restline_last
+            }
+            fn set_restline_last(&self, last: usize) {
+                self.st.borrow_mut().restline_last = last;
+            }
+            fn restline_data(&self) -> RestlineData {
+                self.st.borrow().restline_data
+            }
+            fn set_restline_data(&self, data: RestlineData) {
+                self.st.borrow_mut().restline_data = data;
+            }
+            fn restline_advance(&self, _: usize) {
+                self.log("restline_advance");
+            }
+            fn restline_bytes(&self) -> Bytes {
+                let st = self.st.borrow();
+                match st.restline_data {
+                    RestlineData::None => Bytes::new(),
+                    RestlineData::Buffer(off) => st.buffer[off..off + st.restline_size].to_vec(),
+                    RestlineData::Saved(off) => st.saved[off..off + st.restline_size].to_vec(),
+                }
+            }
+            fn restline_set(&self, bytes: &[u8]) {
+                let mut st = self.st.borrow_mut();
+                st.saved = bytes.to_vec();
+                st.restline_data = RestlineData::Saved(0);
+            }
+            fn restline_output(&self, _: bool, _: bool) {
+                self.log("host restline_output (must not be called by file::*)");
+            }
+            fn restline_output_or_save(&self, _: bool, _: bool) {
+                self.log("host restline_output_or_save (must not be called by file::*)");
+            }
+            fn restline_save(&self) {
+                self.log("host restline_save (must not be called by file::*)");
+            }
+            fn handler_output_before_context(&self) {}
+            fn handler_set_after_lineno(&self, _: usize) {}
+            fn handler_add_before_context_line(&self, _: usize, _: usize, _: usize, _: usize) {}
+            fn handler_add_before_context_match(&self, _: usize, _: usize, _: usize) {}
+            fn cnf_matching(&self, _: usize, _: usize, _: bool) -> CnfResult {
+                self.log("host cnf_matching (must not be called by file::*)");
+                CnfResult::NO
+            }
+            fn cnf_satisfied(&self, _: bool) -> CnfResult {
+                self.log("host cnf_satisfied (must not be called by file::*)");
+                CnfResult::NO
+            }
+            fn out_launch(&self) {
+                self.log("launch");
+            }
+            fn cnf_alts(&self, term: usize) -> usize {
+                self.st.borrow().alts.get(term).map_or(0, Vec::len)
+            }
+            fn cnf_alt_matcher(&self, term: usize, alt: usize) -> Option<Rc<MatcherHandle>> {
+                let present = self.st.borrow().alts.get(term).and_then(|a| a.get(alt)).copied().unwrap_or(false);
+                present.then(|| Rc::clone(&self.matcher))
+            }
+            fn cnf_bit_get(&self, which: CnfBits, k: usize, _: usize) -> bool {
+                which == CnfBits::Matching && self.st.borrow().matching.get(k).copied().unwrap_or(false)
+            }
+            fn cnf_bit_set(&self, which: CnfBits, k: usize, _: usize) {
+                if which == CnfBits::Matching {
+                    self.st.borrow_mut().matching[k] = true;
+                }
+            }
+            fn error_pending(&self) -> bool {
+                false
+            }
+            fn filename(&self) -> Option<Bytes> {
+                None
+            }
+            fn interactive(&self) -> bool {
+                self.st.borrow().interactive
+            }
+            fn set_interactive(&self, interactive: bool) {
+                self.st.borrow_mut().interactive = interactive;
+            }
+            fn file_in(&self) -> Option<FileRef<'_>> {
+                self.st.borrow().file_in.map(Self::file)
+            }
+            fn set_file_in(&mut self, file: Option<FileSource>) {
+                let addr = file.map(|f| match f {
+                    FileSource::Stdin => STDIN,
+                    FileSource::Source => SOURCE,
+                    FileSource::Owned(f) => raw::file_into_ptr(f) as usize,
+                });
+                self.st.borrow_mut().file_in = addr;
+            }
+            fn close_input_file(&mut self) {
+                self.log("close_input_file");
+                self.st.borrow_mut().input_file = None;
+            }
+            fn close_file_in(&mut self) {
+                self.log("close_file_in");
+                self.st.borrow_mut().file_in = None;
+            }
+            fn input(&self) -> InputHandle {
+                raw::fake::input_handle()
+            }
+            fn input_file(&self) -> Option<FileRef<'_>> {
+                self.st.borrow().input_file.map(Self::file)
+            }
+            fn input_encoding(&self) -> i32 {
+                0
+            }
+            fn input_set_file(&mut self, _: FileSource, _: i32) {
+                self.log("input_set_file");
+            }
+            fn input_set_file_in(&mut self, encoding: i32) {
+                self.log(&format!("input_set_file_in {encoding}"));
+                let file_in = self.st.borrow().file_in;
+                self.st.borrow_mut().input_file = file_in;
+            }
+            fn input_clear(&mut self) {
+                self.log("input_clear");
+            }
+            fn input_get(&self, _: &mut [u8]) -> usize {
+                let mut st = self.st.borrow_mut();
+                st.log.push("input_get".to_string());
+                if st.drain_chunks > 0 {
+                    st.drain_chunks -= 1;
+                    16384
+                } else {
+                    0
+                }
+            }
+            fn source(&self) -> Option<FileRef<'_>> {
+                self.st.borrow().has_source.then(|| Self::file(SOURCE))
+            }
+            fn stdin_file(&self) -> FileRef<'_> {
+                Self::file(STDIN)
+            }
+            fn encoding_null_data(&self) -> i32 {
+                99
+            }
+            fn flag_filter(&self) -> Bytes {
+                self.st.borrow().filter.clone()
+            }
+            fn flag_filter_magic_label(&self, index: usize) -> Option<Bytes> {
+                self.st.borrow().labels.get(index).cloned()
+            }
+            fn filter_magic_scan(&self, _: &FileRef<'_>) -> usize {
+                self.log("magic_scan");
+                self.st.borrow().magic
+            }
+            fn warning(&self, message: &[u8], arg: &[u8]) {
+                self.log(&format!("warning {} {}", String::from_utf8_lossy(message), String::from_utf8_lossy(arg)));
+            }
+            fn file_open(&self, pathname: &[u8]) -> Option<OwnedFile> {
+                self.log(&format!("open {}", String::from_utf8_lossy(pathname)));
+                if self.st.borrow().open_fails {
+                    self.log("warning cannot read");
+                    None
+                } else {
+                    Some(raw::fake::owned_file(OPENED))
+                }
+            }
+            fn file_close(&self, _: OwnedFile) {
+                self.log("file_close");
+            }
+            fn file_read_error(&self, file: &FileRef<'_>, _: &[u8]) -> bool {
+                self.log(&format!("read_error {}", Self::addr(file)));
+                false
+            }
+            fn file_set_binary(&self, _: &FileRef<'_>) {
+                self.log("set_binary");
+            }
+            fn file_nonblock_regular(&self, file: &FileRef<'_>) {
+                self.log(&format!("nonblock {}", Self::addr(file)));
+            }
+            fn file_probe_interactive(&self, _: &FileRef<'_>) -> bool {
+                self.st.borrow().probe
+            }
+            fn file_seek_set(&self, _: &FileRef<'_>) -> bool {
+                true
+            }
+            fn stdin_drain_check(&self) -> bool {
+                self.st.borrow().drain
+            }
+            fn filter_spawn(&self, file: FileSource, pathname: &[u8], command: &[u8]) -> Option<OwnedFile> {
+                let kind = match file {
+                    FileSource::Stdin => "stdin".to_string(),
+                    FileSource::Source => "source".to_string(),
+                    FileSource::Owned(f) => format!("owned {}", raw::file_into_ptr(f) as usize),
+                };
+                self.log(&format!("spawn {kind} {} {}", String::from_utf8_lossy(pathname), String::from_utf8_lossy(command)));
+                (!self.st.borrow().spawn_fails).then(|| raw::fake::owned_file(PIPE))
+            }
+            fn is_binary(&self, bytes: &[u8]) -> bool {
+                let mut st = self.st.borrow_mut();
+                st.is_binary_seen.push(bytes.to_vec());
+                st.binary_content
+            }
+            fn zthread_start(&mut self, _: usize, pathname: &[u8], find: Option<&[u8]>, _: i32) -> bool {
+                self.log(&format!("zthread_start {} {:?}", String::from_utf8_lossy(pathname), find.map(<[u8]>::to_vec)));
+                self.st.borrow().zthread_ok
+            }
+            fn zthread_open_next(&mut self, _: &[u8], _: i32) -> bool {
+                self.log("zthread_open_next");
+                self.st.borrow().next_part
+            }
+            fn zthread_cancel(&self) {
+                self.log("zthread_cancel");
+            }
+            fn matchers_len(&self) -> Option<usize> {
+                Some(self.st.borrow().alts.len())
+            }
+            fn matchers_matcher(&self, index: usize) -> Option<Rc<MatcherHandle>> {
+                self.cnf_alt_matcher(index, 0)
+            }
+            fn matchers_reset(&self) {}
+            fn out_eof(&self) -> bool {
+                self.st.borrow().eof
+            }
+            fn out_hold(&self) {}
+            fn out_holding(&self) -> bool {
+                self.st.borrow().holding
+            }
+            fn out_acquire(&self) {
+                self.log("acquire");
+            }
+            fn out_release(&self) {}
+            fn out_check_flush(&self) {}
+            fn out_chr(&self, c: u8) {
+                self.st.borrow_mut().out.push(c);
+            }
+            fn out_str(&self, s: &[u8]) {
+                self.st.borrow_mut().out.extend_from_slice(s);
+            }
+            fn out_utf8strn(&self, _: &[u8], _: usize) {}
+            fn out_num(&self, _: usize, _: i32) {}
+            fn out_nl(&self, lf_only: bool) {
+                self.st.borrow_mut().out.extend_from_slice(if lf_only { b"<LF>" } else { b"<CRLF>" });
+            }
+            fn out_header(&self, _: usize, _: usize, _: &[u8], _: bool) {}
+            fn out_header_file(&self) {}
+            fn out_binary_file_matches(&self) {}
+            fn out_format_count(&self, _: &[u8], _: usize) {}
+            fn out_format(&self, _: &[u8], _: usize, _: Option<&mut usize>, _: bool, _: bool) -> bool {
+                false
+            }
+            fn out_dump_hex(&self, mode: i16, byte_offset: usize, data: &[u8]) {
+                let line = format!("hex({mode},{byte_offset},{})", String::from_utf8_lossy(data));
+                self.st.borrow_mut().out.extend_from_slice(line.as_bytes());
+            }
+            fn out_dump_next(&self, _: usize) {}
+            fn out_dump_done(&self) {}
+            fn stats_found_file(&self) -> bool {
+                true
+            }
+            fn stats_found_part(&self) -> bool {
+                self.st.borrow().found_part
+            }
+            fn stats_undo_found_part(&self) {}
+            fn stats_found_parts(&self) -> usize {
+                0
+            }
+            fn stats_score_matches(&self, _: usize, _: usize) {}
+        }
     }
+
+    /// A context over a fake `Grep` and a fake matcher over `buf`.
+    fn file_ctx(buf: &[u8], flags: GrepFlags) -> (SearchContext, std::rc::Rc<RefCell<host::St>>, Rc<MatcherHandle>, Box<fake::Fake>) {
+        let mut m = fake();
+        m.buf = buf.to_vec();
+        let matcher = Rc::new(raw::fake::handle(fake::table(&m, MatcherKind::REFLEX)));
+        let st = host::state();
+        st.borrow_mut().buffer = buf.to_vec();
+        let ctx = SearchContext::new(b"", 0);
+        ctx.set_flags(flags);
+        ctx.set_host(Box::new(host::TestHost { st: st.clone(), matcher: matcher.clone() }));
+        (ctx, st, matcher, m)
+    }
+
+    fn log_of(st: &std::rc::Rc<RefCell<host::St>>) -> Vec<String> {
+        st.borrow().log.clone()
+    }
+
+    #[test]
+    fn open_file_opens_and_assigns_the_input() {
+        let (ctx, st, _m, _f) = file_ctx(b"", GrepFlags { encoding_type: 7, ..GrepFlags::default() });
+        assert!(file::open_file(&ctx, b"a.txt", None, false));
+        let log = log_of(&st);
+        assert_eq!(log, vec!["open a.txt", "nonblock 3", "input_set_file_in 7"]);
+        assert_eq!(st.borrow().file_in, Some(host::OPENED));
+        assert!(!st.borrow().interactive);
+    }
+
+    #[test]
+    fn open_file_failure_leaves_no_file() {
+        let (ctx, st, _m, _f) = file_ctx(b"", GrepFlags::default());
+        st.borrow_mut().open_fails = true;
+        assert!(!file::open_file(&ctx, b"missing", None, false));
+        assert_eq!(log_of(&st), vec!["open missing", "warning cannot read"]);
+        assert_eq!(st.borrow().file_in, None);
+    }
+
+    #[test]
+    fn open_file_standard_input_uses_the_source_and_label() {
+        let (ctx, st, _m, _f) = file_ctx(b"", GrepFlags { label: Some(b"(stdin)".to_vec()), devices_action: 2, ..GrepFlags::default() });
+        assert!(file::open_file(&ctx, b"-", None, true));
+        assert_eq!(log_of(&st), vec!["set_binary", "input_set_file_in 0"]);
+        assert_eq!(st.borrow().file_in, Some(host::SOURCE));
+        st.borrow_mut().has_source = false;
+        assert!(!file::open_file(&ctx, b"-", None, true));
+    }
+
+    #[test]
+    fn open_file_probes_interactive_unless_quiet_or_decompressing() {
+        let (ctx, st, _m, _f) = file_ctx(b"", GrepFlags { devices_action: 2, ..GrepFlags::default() });
+        st.borrow_mut().probe = true;
+        assert!(file::open_file(&ctx, b"p", None, false));
+        assert_eq!(st.borrow().interactive, cfg!(not(windows)));
+        let (ctx, st, _m, _f) = file_ctx(b"", GrepFlags { devices_action: 2, quiet: true, ..GrepFlags::default() });
+        st.borrow_mut().probe = true;
+        assert!(file::open_file(&ctx, b"p", None, false));
+        assert!(!st.borrow().interactive);
+    }
+
+    #[test]
+    fn open_file_decompress_starts_the_thread_and_closes_on_failure() {
+        let flags = GrepFlags { decompress: true, zmax: 3, devices_action: 2, ..GrepFlags::default() };
+        let (ctx, st, _m, _f) = file_ctx(b"", flags);
+        assert!(file::open_file(&ctx, b"a.gz", Some(b"x"), false));
+        assert_eq!(log_of(&st), vec!["open a.gz", "zthread_start a.gz Some([120])"]);
+        let (ctx, st, _m, _f) = file_ctx(b"", GrepFlags { decompress: true, devices_action: 2, ..GrepFlags::default() });
+        st.borrow_mut().zthread_ok = false;
+        assert!(!file::open_file(&ctx, b"a.gz", None, false));
+        assert_eq!(log_of(&st), vec!["open a.gz", "zthread_start a.gz None", "close_file_in"]);
+        assert_eq!(st.borrow().file_in, None);
+    }
+
+    fn filter_spawns(filter: &[u8], pathname: &[u8], labels: &[&[u8]], magic: usize) -> Vec<String> {
+        let (ctx, st, _m, _f) = file_ctx(b"", GrepFlags::default());
+        {
+            let mut s = st.borrow_mut();
+            s.file_in = Some(host::OPENED);
+            s.filter = filter.to_vec();
+            s.labels = labels.iter().map(|l| l.to_vec()).collect();
+            s.magic = magic;
+        }
+        assert!(file::filter(&ctx, pathname));
+        let log = log_of(&st);
+        assert_eq!(st.borrow().file_in, if log.iter().any(|l| l.starts_with("spawn")) { Some(host::PIPE) } else { Some(host::OPENED) });
+        log
+    }
+
+    #[test]
+    fn filter_picks_the_command_of_the_suffix() {
+        let log = filter_spawns(b"pdf:pdftotext % -, DOC:cat", &[&b"dir"[..], &[PATH_SEP][..], &b"x.Pdf"[..]].concat(), &[], 0);
+        assert_eq!(log.len(), 1);
+        assert!(log[0].starts_with("spawn owned 3 dir") && log[0].ends_with("x.Pdf pdftotext % -, DOC:cat"), "{log:?}");
+        let log = filter_spawns(b"pdf:a,doc:b", b"x.doc", &[], 0);
+        assert_eq!(log, vec!["spawn owned 3 x.doc b"]);
+        // a leading dot is no suffix: the wildcard command applies
+        let log = filter_spawns(b"txt:a,*:wild", b".bashrc", &[], 0);
+        assert_eq!(log, vec!["spawn owned 3 .bashrc wild"]);
+        let log = filter_spawns(b"txt:a, *:wild", b"noext", &[], 0);
+        assert_eq!(log, vec!["spawn owned 3 noext wild"]);
+        // no match and no wildcard: unchanged
+        assert!(filter_spawns(b"txt:a", b"x.rs", &[], 0).is_empty());
+        // an entry that lists suffixes only, without a command
+        assert!(filter_spawns(b"rs", b"x.rs", &[], 0).is_empty());
+    }
+
+    #[test]
+    fn filter_magic_label_supplies_the_suffix() {
+        let log = filter_spawns(b"pdf:p,*:wild", b"noext", &[b"pdf", b"+doc"], 1);
+        assert_eq!(log, vec!["magic_scan",         "spawn owned 3 noext p,*:wild"]);
+        // + overrides a file name suffix
+        let log = filter_spawns(b"doc:d,txt:t", b"x.txt", &[b"pdf", b"+doc"], 2);
+                assert_eq!(log, vec!["magic_scan", "spawn owned 3 x.txt d,txt:t"]);
+        // without +, a suffix is trusted
+        let log = filter_spawns(b"doc:d,txt:t", b"x.txt", &[b"pdf", b"doc"], 2);
+        assert_eq!(log, vec!["spawn owned 3 x.txt t"]);
+        // no magic match
+        let log = filter_spawns(b"pdf:p,*:wild", b"noext", &[b"pdf"], 0);
+        assert_eq!(log, vec!["magic_scan", "spawn owned 3 noext wild"]);
+    }
+
+    #[test]
+    fn filter_spawn_failure_clears_file_in() {
+        let (ctx, st, _m, _f) = file_ctx(b"", GrepFlags::default());
+        {
+            let mut s = st.borrow_mut();
+            s.file_in = Some(host::STDIN);
+            s.filter = b"*:cmd".to_vec();
+            s.spawn_fails = true;
+        }
+        assert!(!file::filter(&ctx, b"x"));
+        assert_eq!(log_of(&st), vec!["spawn stdin x cmd"]);
+        assert_eq!(st.borrow().file_in, None);
+    }
+
+    #[test]
+    fn close_file_closes_in_the_documented_order() {
+        let (ctx, st, _m, _f) = file_ctx(b"", GrepFlags::default());
+        st.borrow_mut().file_in = Some(host::OPENED);
+        assert!(!file::close_file(&ctx, b"a"));
+        assert_eq!(log_of(&st), vec!["read_error 3", "close_file_in"]);
+
+        // stdin is drained, not checked for errors
+        let (ctx, st, _m, _f) = file_ctx(b"", GrepFlags::default());
+        {
+            let mut s = st.borrow_mut();
+            s.file_in = Some(host::STDIN);
+            s.drain = true;
+            s.drain_chunks = 2;
+        }
+        assert!(!file::close_file(&ctx, b"-"));
+        assert_eq!(log_of(&st), vec!["input_get", "input_get", "input_get", "close_file_in"]);
+
+        // not with -q
+        let (ctx, st, _m, _f) = file_ctx(b"", GrepFlags { quiet: true, ..GrepFlags::default() });
+        {
+            let mut s = st.borrow_mut();
+            s.file_in = Some(host::STDIN);
+            s.drain = true;
+        }
+        assert!(!file::close_file(&ctx, b"-"));
+        assert_eq!(log_of(&st), vec!["close_file_in"]);
+    }
+
+    #[test]
+    fn close_file_decompress_continues_with_the_next_part() {
+        let (ctx, st, _m, _f) = file_ctx(b"", GrepFlags { decompress: true, ..GrepFlags::default() });
+        {
+            let mut s = st.borrow_mut();
+            s.file_in = Some(host::OPENED);
+            s.next_part = true;
+            s.eof = true;
+        }
+        assert!(file::close_file(&ctx, b"a.zip"));
+        assert_eq!(log_of(&st), vec!["read_error 3", "close_input_file", "zthread_cancel", "zthread_open_next"]);
+        st.borrow_mut().next_part = false;
+        st.borrow_mut().log.clear();
+        assert!(!file::close_file(&ctx, b"a.zip"));
+        assert_eq!(log_of(&st).last().map(String::as_str), Some("close_file_in"));
+    }
+
+    #[test]
+    fn init_is_binary_ignores_a_cut_utf8_sequence() {
+        // "é" is c3 a9: cut after c3 the tail is ignored and the rest checked
+        let (ctx, st, matcher, _f) = file_ctx(b"ab\xc3", GrepFlags::default());
+        assert!(!file::init_is_binary(&ctx, &matcher));
+        assert_eq!(st.borrow().is_binary_seen, vec![b"ab".to_vec()]);
+        // a stray continuation byte at the end with no lead byte is binary
+        let (ctx, _st, matcher, _f) = file_ctx(b"ab\x80\x80\x80\x80", GrepFlags::default());
+        assert!(file::init_is_binary(&ctx, &matcher));
+        // a complete sequence at the end is dropped from the check too, with its lead byte
+        let (ctx, st, matcher, _f) = file_ctx(b"a\xc3\xa9", GrepFlags::default());
+        st.borrow_mut().binary_content = true;
+        assert!(file::init_is_binary(&ctx, &matcher));
+        assert_eq!(st.borrow().is_binary_seen, vec![b"a".to_vec()]);
+        // empty input
+        let (ctx, _st, matcher, _f) = file_ctx(b"", GrepFlags::default());
+        assert!(!file::init_is_binary(&ctx, &matcher));
+    }
+
+    #[test]
+    fn init_read_sets_the_state_and_checks_for_binary() {
+        let state = GrepState::new();
+        let (ctx, st, matcher, f) = file_ctx(b"abc\n", GrepFlags { min_line: 3, ..GrepFlags::default() });
+        st.borrow_mut().binary_content = false;
+        assert!(file::init_read(&state, &ctx, &matcher));
+        assert_eq!(st.borrow().lineno, 2);
+        assert!(!st.borrow().binfile);
+        assert_eq!(*f.calls.borrow(), vec!["input_handler"]);
+
+        // -I with binary content skips the file
+        let (ctx, st, matcher, _f) = file_ctx(b"abc\n", GrepFlags { binary_without_match: true, ..GrepFlags::default() });
+        st.borrow_mut().binary_content = true;
+        assert!(!file::init_read(&state, &ctx, &matcher));
+
+        // -a and interactive input do not check
+        let (ctx, st, matcher, f) = file_ctx(b"abc\n", GrepFlags { text: true, ..GrepFlags::default() });
+        assert!(file::init_read(&state, &ctx, &matcher));
+        assert!(st.borrow().is_binary_seen.is_empty());
+        assert!(f.calls.borrow().is_empty());
+        let (ctx, st, matcher, f) = file_ctx(b"abc\n", GrepFlags::default());
+        st.borrow_mut().interactive = true;
+        assert!(file::init_read(&state, &ctx, &matcher));
+        assert!(st.borrow().is_binary_seen.is_empty());
+        assert_eq!(f.calls.borrow().len(), usize::from(cfg!(not(windows))));
+        assert_eq!(state.mapping(), None);
+    }
+
+    #[test]
+    fn restline_is_output_or_saved() {
+        let (ctx, st, matcher, _f) = file_ctx(b"rest of line\n", GrepFlags { color_sl: b"<sl>".to_vec(), color_cx: b"<cx>".to_vec(), color_off: b"</>".to_vec(), ..GrepFlags::default() });
+        {
+            let mut s = st.borrow_mut();
+            s.restline_data = RestlineData::Buffer(5);
+            s.restline_size = 8;
+            s.lineno = 1; // the matcher is at line 1: the line is saved
+        }
+        file::output_or_save_restline(&ctx, &matcher, false, false);
+        assert_eq!(st.borrow().restline_data, RestlineData::Saved(0));
+        assert_eq!(st.borrow().saved, b"of line\n".to_vec());
+        assert!(st.borrow().out.is_empty());
+
+        // another line: output, the line feed is output as the end of line
+        st.borrow_mut().lineno = 2;
+        file::output_or_save_restline(&ctx, &matcher, true, false);
+        assert_eq!(st.borrow().out, b"<cx>of line</><LF>".to_vec());
+        assert_eq!(st.borrow().restline_data, RestlineData::None);
+        assert_eq!(st.borrow().restline_size, 7);
+        assert!(log_of(&st).is_empty(), "file::* must not call the host restline slots: {:?}", log_of(&st));
+
+        // nothing to do without a restline
+        file::output_or_save_restline(&ctx, &matcher, false, false);
+        file::output_restline(&ctx, &matcher, false, false);
+        assert_eq!(st.borrow().out, b"<cx>of line</><LF>".to_vec());
+    }
+
+    #[test]
+    fn restline_without_text_only_ends_the_line() {
+        let (ctx, st, matcher, _f) = file_ctx(b"\n", GrepFlags { ungroup: true, ..GrepFlags::default() });
+        {
+            let mut s = st.borrow_mut();
+            s.restline_data = RestlineData::Buffer(0);
+            s.restline_size = 1;
+            s.lineno = 1;
+        }
+        file::output_or_save_restline(&ctx, &matcher, false, false);
+        assert_eq!(st.borrow().out, b"<LF>".to_vec());
+        assert_eq!(st.borrow().restline_size, 0);
+    }
+
+    #[test]
+    fn restline_of_binary_is_a_hex_dump_with_context() {
+        let flags = GrepFlags { hex_after: 1, hex_columns: 4, ..GrepFlags::default() };
+        let (ctx, st, matcher, _f) = file_ctx(b"0123456789", flags);
+        {
+            let mut s = st.borrow_mut();
+            s.binary = true;
+            s.restline_data = RestlineData::Buffer(2);
+            s.restline_size = 8;
+            s.restline_last = 2;
+        }
+        // right = 1 * 4 - ((2 - 1) % 4) - 1 = 2, matcher.first() = 1 < last + right: right = first - last wraps
+        file::output_restline(&ctx, &matcher, false, true);
+        let out = String::from_utf8_lossy(&st.borrow().out).to_string();
+        assert!(out.starts_with("hex(1,2,"), "{out}");
+        let (ctx, st, matcher, _f) = file_ctx(b"0123456789", GrepFlags::default());
+        {
+            let mut s = st.borrow_mut();
+            s.binary = true;
+            s.restline_data = RestlineData::Buffer(2);
+            s.restline_size = 3;
+            s.restline_last = 2;
+        }
+        file::output_restline(&ctx, &matcher, true, false);
+        assert_eq!(st.borrow().out, b"hex(3,2,234)".to_vec());
+    }
+
+    #[test]
+    fn cnf_matching_checks_every_and_term() {
+        let (ctx, st, matcher, _f) = file_ctx(b"abc\n", GrepFlags::default());
+        // (alt0 or not alt1) and (alt0): the fake matcher always finds
+        st.borrow_mut().alts = vec![vec![true, true], vec![true]];
+        assert_eq!(file::cnf_matching(&ctx, &matcher, 0, 3, false), CnfResult::YES);
+        // no positive alternative: the line must not match one of the not-terms: it does, so no
+        st.borrow_mut().alts = vec![vec![false, true]];
+        assert_eq!(file::cnf_matching(&ctx, &matcher, 0, 3, false), CnfResult::NO);
+        st.borrow_mut().alts = vec![vec![false]];
+        assert_eq!(file::cnf_matching(&ctx, &matcher, 0, 3, false), CnfResult::NO);
+        assert!(log_of(&st).is_empty());
+    }
+
+    #[test]
+    fn cnf_matching_with_files_launches_when_all_terms_matched() {
+        let (ctx, st, matcher, _f) = file_ctx(b"abc\n", GrepFlags { files: true, ..GrepFlags::default() });
+        {
+            let mut s = st.borrow_mut();
+            s.holding = true;
+            s.alts = vec![vec![true], vec![true]];
+            s.matching = vec![false, false];
+        }
+        assert_eq!(file::cnf_matching(&ctx, &matcher, 0, 3, true), CnfResult::YES);
+        assert_eq!(st.borrow().matching, vec![true, true]);
+        assert_eq!(log_of(&st), vec!["acquire", "launch"]);
+
+        // --max-files reached: exit
+        st.borrow_mut().log.clear();
+        st.borrow_mut().found_part = false;
+        assert_eq!(file::cnf_matching(&ctx, &matcher, 0, 3, false), CnfResult::EXIT);
+
+        // a term that only has not-terms, all of which matched: stop searching this file
+        let (ctx, st, matcher, _f) = file_ctx(b"abc\n", GrepFlags { files: true, ..GrepFlags::default() });
+        {
+            let mut s = st.borrow_mut();
+            s.holding = true;
+            s.alts = vec![vec![false]];
+            s.matching = vec![false];
+        }
+        assert_eq!(file::cnf_matching(&ctx, &matcher, 0, 3, false), CnfResult::EXIT);
+    }
+
+    #[test]
+    fn cnf_satisfied_needs_every_term_matched() {
+        let (ctx, st, _m, _f) = file_ctx(b"", GrepFlags::default());
+        // not holding: nothing to launch
+        assert_eq!(file::cnf_satisfied(&ctx, false), CnfResult::YES);
+        assert!(log_of(&st).is_empty());
+        {
+            let mut s = st.borrow_mut();
+            s.holding = true;
+            s.alts = vec![vec![true], vec![true]];
+            s.matching = vec![true, false];
+        }
+        assert_eq!(file::cnf_satisfied(&ctx, true), CnfResult::NO);
+        st.borrow_mut().matching = vec![true, true];
+        assert_eq!(file::cnf_satisfied(&ctx, true), CnfResult::YES);
+        assert_eq!(log_of(&st), vec!["acquire", "launch"]);
+        st.borrow_mut().found_part = false;
+        assert_eq!(file::cnf_satisfied(&ctx, false), CnfResult::EXIT);
+    }
+
+    #[test]
+    fn save_restline_copies_the_rest_of_the_line() {
+        let (ctx, st, _m, _f) = file_ctx(b"0123456789", GrepFlags::default());
+        {
+            let mut s = st.borrow_mut();
+            s.restline_data = RestlineData::Buffer(4);
+            s.restline_size = 3;
+        }
+        file::save_restline(&ctx);
+        assert_eq!(st.borrow().saved, b"456".to_vec());
+        assert_eq!(st.borrow().restline_data, RestlineData::Saved(0));
+        assert_eq!(st.borrow().restline_size, 3);
+    }
+
+    const PATH_SEP: u8 = if cfg!(windows) { b'\\' } else { b'/' };
 
     #[test]
     #[should_panic(expected = "lent by with_bytes")]

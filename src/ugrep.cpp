@@ -76,6 +76,7 @@ After this, you may want to test ugrep and install it (optional):
 
 #include "ugrep.hpp"
 #include "glob.hpp"
+#include <memory>
 #include "mmap.hpp"
 #include "output.hpp"
 #include "output_rust.hpp"
@@ -2163,373 +2164,41 @@ struct Grep {
   // extract a part from an archive and send to a stream
   void extract(const char *filename, const char *partname, FILE *output);
 
-  // check CNF AND/OR/NOT conditions are met for the line(s) spanning bol to eol
+  // check CNF AND/OR/NOT conditions are met for the line(s) spanning bol to eol, ported to Rust (grep_file seam)
   bool cnf_matching(const char *bol, const char *eol, bool acquire = false)
   {
-    if (flag_files)
-    {
-      if (out.holding())
-      {
-        size_t k = 0;    // iterate over matching[] bitmask
-        bool all = true; // all terms matched
-
-        // for each AND term check if the AND term was matched before or has a match this time
-        for (const auto& i : *matchers)
-        {
-          // an OR term hasn't matched before
-          if (!matching[k])
-          {
-            auto j = i.begin();
-            auto e = i.end();
-
-            if (j != e)
-            {
-              // check OR terms
-              if (*j && (*j)->buffer(const_cast<char*>(bol), eol - bol + 1).find() != 0)
-              {
-                matching[k] = true;
-                ++j;
-              }
-              else
-              {
-                // check OR NOT terms
-                size_t l = 0;     // iterate over notmaching[k] bitmask
-                bool none = true; // all not-terms matched
-
-                while (++j != e)
-                {
-                  if (*j && !notmatching[k][l])
-                  {
-                    if ((*j)->buffer(const_cast<char*>(bol), eol - bol + 1).find() != 0)
-                      notmatching[k][l] = true;
-                    else
-                      all = none = false;
-                  }
-
-                  ++l;
-                }
-
-                if (none)
-                {
-                  // when all not-terms matched and we don't have a positive alternative then stop searching this file
-                  if (!*i.begin())
-                    throw EXIT_SEARCH();
-
-                  all = false;
-                }
-              }
-            }
-          }
-          ++k;
-        }
-
-        // if all terms matched globally per file then remove the hold to launch output
-        if (all)
-        {
-          if (acquire)
-            out.acquire();
-
-          // --max-files: max reached?
-          if (!Stats::found_part())
-            throw EXIT_SEARCH();
-
-          out.launch();
-        }
-      }
-    }
-    else
-    {
-      // for each AND term check if the line has a match
-      for (const auto& i : *matchers)
-      {
-        auto j = i.begin();
-        auto e = i.end();
-
-        if (j != e)
-        {
-          // check OR terms
-          if (*j && (*j)->buffer(const_cast<char*>(bol), eol - bol + 1).find() != 0)
-            continue;
-
-          // check OR NOT terms
-          while (++j != e)
-            if (*j && (*j)->buffer(const_cast<char*>(bol), eol - bol + 1).find() == 0)
-              break;
-
-          if (j == e)
-            return false;
-        }
-      }
-    }
-
-    return true;
+    SeamFacade& f = seam_facade();
+    const char *base = SeamFacade::Peek::base(*matcher);
+    uint8_t result = ugrep_rust::search_cnf_matching(*f.ctx, f.matcher_handle(), bol - base, eol - base, acquire);
+    return f.cnf_result(result);
   }
 
-  // if CNF AND/OR/NOT conditions are met globally then launch output after searching a file with --files
+  // if CNF AND/OR/NOT conditions are met globally then launch output after searching a file with --files, ported to Rust
   bool cnf_satisfied(bool acquire = false)
   {
-    if (out.holding())
-    {
-      size_t k = 0; // iterate over matching[] bitmask
-
-      // for each AND term check if the term was matched before
-      for (const auto& i : *matchers)
-      {
-        // an OR term hasn't matched
-        if (!matching[k])
-        {
-          // return if there are no OR NOT terms to check
-          if (i.size() <= 1)
-            return false;
-
-          auto j = i.begin();
-          auto e = i.end();
-
-          // check if not all of the OR NOT terms matched
-          if (j != e)
-          {
-            size_t l = 0; // iterate over notmaching[k] bitmask
-            while (++j != e)
-            {
-              if (*j && !notmatching[k][l])
-                break;
-              ++l;
-            }
-            // return if all OR NOT terms matched
-            if (j == e)
-              return false;
-          }
-        }
-        ++k;
-      }
-
-      if (acquire)
-        out.acquire();
-
-      // --max-files: max reached?
-      if (!Stats::found_part())
-        throw EXIT_SEARCH();
-
-      out.launch();
-    }
-
-    return true;
+    SeamFacade& f = seam_facade();
+    uint8_t result = ugrep_rust::search_cnf_satisfied(*f.ctx, acquire);
+    return f.cnf_result(result);
   }
 
-  // open a file for (binary) reading and assign input, decompress the file when -z, --decompress specified, may throw bad_alloc
+  // open a file for (binary) reading and assign input, decompress the file when -z, --decompress specified, may throw bad_alloc, ported to Rust
   bool open_file(const char *pathname, const char *find = NULL)
   {
-    if (pathname == Static::LABEL_STANDARD_INPUT)
-    {
-      if (Static::source == NULL)
-        return false;
-
-      pathname = flag_label;
-      file_in = Static::source;
-
-#ifdef OS_WIN
-      (void)_setmode(fileno(Static::source), _O_BINARY);
-#endif
-    }
-    else if (fopenw_s(&file_in, pathname, "rb") != 0)
-    {
-      warning("cannot read", pathname);
-
-      return false;
-    }
-
-    // "interactive" means possibly slow input from a TTY or pipe
-    interactive = false;
-
-    // --filter: fork process to filter file, when applicable
-    if (!filter(file_in, pathname))
-      return false;
-
-#if defined(__linux__)
-    if (file_in != stdin && file_in != Static::source)
-    {
-      // Linux has system "regular files" that can be set non-blocking to raise EAGAIN e.g. for /proc and /sys files
-      if (flag_devices_action != Action::READ)
-      {
-        int fd = fileno(file_in);
-        struct stat buf;
-
-        if (fstat(fd, &buf) == 0 && S_ISREG(buf.st_mode))
-          fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
-      }
-    }
-#endif
-
-#ifdef HAVE_LIBZ
-    if (flag_decompress)
-    {
-#ifdef WITH_DECOMPRESSION_THREAD
-
-      // start decompression thread if not running, get pipe with decompressed input
-      FILE *pipe_in = zthread.start(flag_zmax, pathname, file_in, find);
-      if (pipe_in == NULL)
-      {
-        fclose(file_in);
-        file_in = NULL;
-
-        return false;
-      }
-
-      input = reflex::Input(pipe_in, flag_encoding_type);
-
-#else
-      (void)find; // appease -Wunused
-
-      // create or open a new zstreambuf
-      if (zstream == NULL)
-        zstream = new zstreambuf(pathname, file_in);
-      else
-        zstream->open(pathname, file_in);
-
-      if (stream != NULL)
-        delete stream;
-
-      stream = new std::istream(zstream);
-
-      input = stream;
-
-#endif
-    }
-    else
-    {
-      input = reflex::Input(file_in, flag_encoding_type);
-    }
-#else
-    (void)find; // appease -Wunused
-    input = reflex::Input(file_in, flag_encoding_type);
-#endif
-
-#ifndef OS_WIN_OR_MINGW
-    if (!flag_decompress && !flag_quiet && !flag_files_with_matches && !flag_count)
-    {
-      int fd = fileno(file_in);
-      struct stat buf;
-
-      // if input is a character device (e.g. TTY) or a pipe, then make it non-blocking and register a stdin handler to continue reading and flush results to output, don't check for invalid Unicode input
-      if (fstat(fd, &buf) == 0 && (S_ISCHR(buf.st_mode) || S_ISFIFO(buf.st_mode) || S_ISSOCK(buf.st_mode)))
-        interactive = (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) != -1);
-    }
-#else
-    // for Windows we don't check for invalid Unicode input, no stdin handler
-    if (input == stdin && !flag_quiet && !flag_files_with_matches && !flag_count)
-      interactive = true;
-#endif
-
-    return true;
+    SeamFacade& f = seam_facade();
+    f.refresh();
+    bool is_stdin = pathname == Static::LABEL_STANDARD_INPUT;
+    bool result = ugrep_rust::search_open_file(*f.ctx, core_rust::to_slice(pathname != NULL ? pathname : ""), core_rust::to_slice(find != NULL ? find : ""), find != NULL, is_stdin);
+    f.rethrow();
+    return result;
   }
 
-  // --filter: return true on success, create a pipe to replace file input if filtering files in a forked process
-  bool filter(FILE*& in, const char *pathname)
+  // --filter: return true on success, create a pipe to replace file input if filtering files in a forked process, ported to Rust
+  bool filter(const char *pathname)
   {
-    if (!flag_filter.empty() && in != NULL)
-    {
-      const char *basename = strrchr(pathname, PATHSEPCHR);
-      if (basename == NULL)
-        basename = pathname;
-      else
-        ++basename;
-
-      // get the basenames's extension suffix
-      const char *suffix = strrchr(basename, '.');
-
-      // don't consider . at the front of basename, otherwise skip .
-      if (suffix == basename)
-        suffix = NULL;
-      else if (suffix != NULL)
-        ++suffix;
-
-      // --filter-magic-label: if the file is seekable (to rewind later), then check for a magic pattern match
-      if (!flag_filter_magic_label.empty() && fseek(in, 0, SEEK_SET) == 0)
-      {
-        bool is_plus = false;
-
-        // --filter-magic-label: check for overriding +
-        if (suffix != NULL)
-        {
-          for (const auto& i : flag_filter_magic_label)
-          {
-            if (i.front() == '+')
-            {
-              is_plus = true;
-
-              break;
-            }
-          }
-        }
-
-        // --filter-magic-label: if the basename has no suffix or a +LABEL + then check magic bytes
-        if (suffix == NULL || is_plus)
-        {
-          // create a matcher to match the magic pattern
-          size_t match = reflex::Matcher(Static::filter_magic_pattern, in).scan();
-
-          // rewind the input after scan
-          rewind(in);
-
-          if (match > 0 && match <= flag_filter_magic_label.size())
-          {
-            suffix = flag_filter_magic_label[match - 1].c_str();
-
-            if (*suffix == '+')
-              ++suffix;
-          }
-        }
-      }
-
-      // basenames without a suffix get "*" as a suffix
-      if (suffix == NULL || *suffix == '\0')
-        suffix = "*";
-
-      size_t sep = strlen(suffix);
-
-      const char *command = flag_filter.c_str();
-      const char *default_command = NULL;
-
-      // find the command corresponding to the first matching suffix specified in the filter
-      while (true)
-      {
-        while (isspace(static_cast<unsigned char>(*command)))
-          ++command;
-
-        // wildcard *:command is considered only when no matching suffix was found
-        if (*command == '*')
-          default_command = strchr(command, ':');
-
-        // match filter filename extension (case insensitive)
-        bool ext_match = strncasecmp(suffix, command, sep) == 0;
-        if (ext_match && (command[sep] == ':' || command[sep] == ',' || isspace(static_cast<unsigned char>(command[sep]))))
-        {
-          command = strchr(command, ':');
-          break;
-        }
-
-        command = strchr(command, ',');
-        if (command == NULL)
-          break;
-
-        ++command;
-      }
-
-      // if no matching command, use the wildcard *:command when specified
-      if (command == NULL)
-        command = default_command;
-
-      // suffix has a command to execute
-      if (command != NULL)
-      {
-        // skip over the ':'
-        ++command;
-
-        return filter_spawn(in, pathname, command);
-      }
-    }
-
-    return true;
+    SeamFacade& f = seam_facade();
+    bool result = ugrep_rust::search_filter(*f.ctx, core_rust::to_slice(pathname != NULL ? pathname : ""));
+    f.rethrow();
+    return result;
   }
 
   // the OS part of --filter (the retained C++ of the seam, called by filter() and by the facade): create the pipe and run
@@ -2742,230 +2411,55 @@ struct Grep {
     return true;
   }
 
-  // close the file and clear input, return true if next file is extracted from an archive to search
+  // close the file and clear input, return true if next file is extracted from an archive to search, ported to Rust
   bool close_file(const char *pathname)
   {
-    // check if the input has an error condition, but do not check stdin which is handled differently
-    if (file_in != NULL && file_in != stdin && file_in != Static::source && ferror(file_in))
-      warning("cannot read", pathname);
-
-#ifdef HAVE_LIBZ
-#ifdef WITH_DECOMPRESSION_THREAD
-
-    // -z: open next archived file if any or close the compressed file/archive
-    if (flag_decompress)
-    {
-      // close the input FILE* and its underlying pipe previously created with pipe() and fdopen()
-      if (input.file() != NULL)
-      {
-        // close and unassign input, i.e. input.file() == NULL, also closes pipe_fd[0] per fdopen()
-        fclose(input.file());
-        input.clear();
-      }
-
-      // if output is blocked, then cancel decompression threads
-      if (out.eof)
-        zthread.cancel();
-
-      // open pipe to the next file or part in an archive if there is a next file to extract
-      FILE *pipe_in = zthread.open_next(pathname);
-
-      if (pipe_in != NULL)
-      {
-        // assign the next extracted file as input to search
-        input = reflex::Input(pipe_in, flag_encoding_type);
-
-        // loop back in search() to start searching the next file in the archive
-        return true;
-      }
-    }
-
-#else
-
-    if (stream != NULL)
-    {
-      delete stream;
-      stream = NULL;
-    }
-
-#endif
-#endif
-
-#if defined(WITH_STDIN_DRAIN) && !defined(OS_WIN_OR_MINGW)
-
-    // drain stdin when non-seekable file such as a pipe until eof, unless option -q is used
-    if (file_in == stdin && !flag_quiet && !flag_files_with_matches && flag_max_count == 0 && flag_max_line == 0 &&
-        !feof(stdin) && fseek(stdin, 0, SEEK_END) < 0 && errno != EINVAL)
-    {
-      char buf[16384];
-      while (input.get(buf, sizeof(buf)) > 0)
-        continue;
-    }
-
-#endif
-
-    // close the current input file
-    if (file_in != NULL && file_in != stdin && file_in != Static::source)
-    {
-      fclose(file_in);
-      file_in = NULL;
-    }
-
-    input.clear();
-
-    return false;
+    SeamFacade& f = seam_facade();
+    bool result = ugrep_rust::search_close_file(*f.ctx, core_rust::to_slice(pathname != NULL ? pathname : ""));
+    f.rethrow();
+    return result;
   }
 
-  // specify input to read for matcher, when input is a regular file then try mmap for zero copy overhead
+  // specify input to read for matcher, when input is a regular file then try mmap for zero copy overhead, ported to Rust
   bool init_read()
   {
-    // initialize Grep search and output variables
-    binfile = false;
-    lineno = flag_min_line > 0 ? flag_min_line - 1 : 0;
-    heading = flag_with_filename;
-    hex = false;
-    binary = false;
-    matches = 0;
-    stop = false;
-
-    const char *base;
-    size_t size;
-
-    // attempt to mmap the input file, if mmap is supported and enabled (disabled by default)
-    if (mmap.file(input, base, size))
-    {
-      // matcher reads directly from protected mmap memory (cast is safe: base[0..size] is not modified!)
-      matcher->buffer(const_cast<char*>(base), size + 1);
-    }
-    else
-    {
-      // assign input to the matcher to search
-      matcher->input(input);
-
-#if !defined(HAVE_PCRE2) && defined(HAVE_BOOST_REGEX)
-      // buffer all input to work around Boost.Regex partial matching bug, but this may throw std::bad_alloc if the file is too large
-      if (flag_mode == Mode::PERL)
-      {
-        matcher->buffer();
-      }
-      else
-#endif
-
-#ifndef OS_WIN_OR_MINGW
-        // set interactive search handler e.g. for slow stdin input
-        if (interactive)
-          matcher->in.set_handler(&stdin_handler);
-#endif
-    }
-
-    // interactive: do not check init_is_binary(), wait until handler detects binary files that have NUL bytes
-    if (!interactive)
-    {
-      // otherwise, check if the file is a binary file
-      if (flag_binary_without_match)
-      {
-        // -I: do not match binary files
-        if (init_is_binary())
-          return false;
-      }
-      else if (!flag_quiet && !flag_files_with_matches && !flag_count && flag_format == NULL && !flag_text && !flag_hex && !flag_with_hex && flag_encoding_type != reflex::Input::file_encoding::null_data)
-      {
-        // not -q, -l, -c, --format, -a, -X, -W, -00: check if initial part of the file is binary
-        binfile = init_is_binary();
-
-        // detect binary input dynamically when more input is read after checking the inital input
-        matcher->in.set_handler(&bin_handler);
-      }
-    }
-
-    // --range=[MIN,][MAX]: start searching at line MIN
-    for (size_t i = flag_min_line; i > 1; --i)
-      if (!matcher->skip('\n'))
-        break;
-
-    return true;
+    SeamFacade& f = seam_facade();
+    bool result = ugrep_rust::search_init_read(*f.state, *f.ctx, f.matcher_handle());
+    f.rethrow();
+    return result;
   }
 
-  // initial part of a file is binary
+  // initial part of a file is binary, ported to Rust
   bool init_is_binary()
   {
-    // check initial input for binary data, fill up to 131072 bytes to check (similar GNU grep, but a bit more)
-    size_t avail = matcher->avail(reflex::AbstractMatcher::Const::BUFSZ);
-    if (avail == 0)
-      return false;
-
-    // do not cut off the last UTF-8 sequence, ignore it, otherwise we risk failing the UTF-8 check
-    const char *buf = matcher->begin();
-    if ((buf[avail - 1] & 0x80) == 0x80)
-    {
-      size_t n = std::min<size_t>(avail, 4); // note: 1 <= n <= 4 bytes to check
-      while (n > 0 && (buf[--avail] & 0xc0) == 0x80)
-        --n;
-      if ((buf[avail] & 0xc0) != 0xc0)
-        return true;
-    }
-
-    return is_binary(matcher->begin(), avail);
+    SeamFacade& f = seam_facade();
+    bool result = ugrep_rust::search_init_is_binary(*f.ctx, f.matcher_handle());
+    f.rethrow();
+    return result;
   }
 
-  // output the rest of the matching line or save it for later, uses lineno of previous match to check
+  // output the rest of the matching line or save it for later, uses lineno of previous match to check, ported to Rust
   void output_or_save_restline(bool invert = false, bool hex_context = false)
   {
-    if (restline_data != NULL)
-    {
-      if (flag_ungroup || lineno != matcher->lineno())
-        output_restline(invert, hex_context);
-      else
-        save_restline();
-    }
+    SeamFacade& f = seam_facade();
+    ugrep_rust::search_output_or_save_restline(*f.ctx, f.matcher_handle(), invert, hex_context);
+    f.rethrow();
   }
 
-  // output the rest of the matching line or save it for later, this is necessary when the buffer shifts
+  // output the rest of the matching line or save it for later, this is necessary when the buffer shifts, ported to Rust
   void output_restline(bool invert = false, bool hex_context = false)
   {
-    if (restline_data != NULL)
-    {
-      if (binary)
-      {
-        // --hexdump with ABC context: if binary then show hex context
-        if (hex_context)
-        {
-          size_t right = flag_hex_after * flag_hex_columns - ((restline_last - 1) % flag_hex_columns) - 1;
-          if (restline_last + right > matcher->first())
-            right = matcher->first() - restline_last;
-          if (right < restline_size)
-            restline_size = right;
-        }
-
-        out.dump.hex(invert ? Output::Dump::HEX_CONTEXT_LINE : Output::Dump::HEX_LINE, restline_last, restline_data, restline_size);
-      }
-      else
-      {
-        bool lf_only = false;
-        if (restline_size > 0)
-        {
-          lf_only = restline_data[restline_size - 1] == '\n';
-          restline_size -= lf_only;
-          if (restline_size > 0)
-          {
-            out.str(invert ? color_cx : color_sl);
-            out.str(restline_data, restline_size);
-            out.str(color_off);
-          }
-        }
-        out.nl(lf_only);
-      }
-
-      restline_data = NULL;
-    }
+    SeamFacade& f = seam_facade();
+    ugrep_rust::search_output_restline(*f.ctx, f.matcher_handle(), invert, hex_context);
+    f.rethrow();
   }
 
-  // save the rest of the line to a string buffer to output later, may self-assign, so swap with a temp string
+  // save the rest of the line to a string buffer to output later, ported to Rust
   void save_restline()
   {
-    std::string temp(restline_data, restline_size);
-    temp.swap(restline);
-    restline_data = restline.c_str();
+    SeamFacade& f = seam_facade();
+    ugrep_rust::search_save_restline(*f.ctx);
+    f.rethrow();
   }
 
   // The facade of the Grep seam (src/search_seam.h, rust/src_core/SEAM.md "Grep file members"): fills the host table
@@ -2987,17 +2481,56 @@ struct Grep {
         path_slot(NULL),
         context_handler(NULL),
         invert_context_handler(NULL),
-        state(ugrep_rust::grep_state_new())
-    { }
+        state(ugrep_rust::grep_state_new()),
+        grep_matcher(NULL),
+        ctx(ugrep_rust::search_context_new(core_rust::to_slice(""), 0))
+    {
+      // the Rust file members of the Grep (open_file, close_file, init_read, cnf_matching, ...) run on this context
+      fill_env(&env);
+      ugrep_core_search_set_host(&*ctx, &env);
+
+      // the handle of Grep::matcher, which the file members read
+      if (grep.matcher != NULL)
+      {
+        ugrep_core_matcher_table table;
+        if (fill_matcher_table(grep.matcher, &table))
+          grep_matcher = static_cast<ugrep_rust::MatcherHandle*>(ugrep_core_matcher_handle_new(&table));
+      }
+    }
 
     SeamFacade(const SeamFacade&) = delete;
     SeamFacade& operator=(const SeamFacade&) = delete;
 
     ~SeamFacade()
     {
+      // the handles go first: they detach their shift handler from the matcher they borrow
+      if (grep_matcher != NULL)
+        ugrep_core_matcher_handle_free(grep_matcher);
       for (auto& i : matcher_ctxs)
         if (i.handler)
           i.matcher->set_handler(NULL);
+    }
+
+    // take a new snapshot of the flags, the options may have changed since the facade was made (TUI)
+    void refresh()
+    {
+      ugrep_core_search_set_host(&*ctx, &env);
+    }
+
+    // the handle of Grep::matcher
+    const ugrep_rust::MatcherHandle& matcher_handle()
+    {
+      check(grep_matcher != NULL, "the Grep has no matcher");
+      return *grep_matcher;
+    }
+
+    // the result of cnf_matching or cnf_satisfied of Rust: a pending exception is rethrown first, EXIT_SEARCH is thrown
+    bool cnf_result(uint8_t result)
+    {
+      rethrow();
+      if (result == UGREP_CORE_CNF_EXIT)
+        throw EXIT_SEARCH();
+      return result != UGREP_CORE_CNF_NO;
     }
 
     // the pathname of the search the handlers refer to by reference: they refer to the slot, which can be set (again) at
@@ -4128,7 +3661,18 @@ struct Grep {
     InvertContextGrepHandler *invert_context_handler; // the registered handler when of this class
     std::deque<MatcherCtx> matcher_ctxs;           // one per matcher handed out
     rust::Box<ugrep_rust::GrepState> state;        // the Rust state of the Grep lifetime (the mmap mapping), freed with the facade
+    ugrep_core_search_env  env;                    // the host table of the Rust file members, its ctx is this facade
+    ugrep_rust::MatcherHandle *grep_matcher;       // the handle of Grep::matcher, NULL when there is none, freed first
+    rust::Box<ugrep_rust::SearchContext> ctx;      // the Rust context of the file members, last: destroyed first
   };
+
+  // the facade of this Grep, made on first use on the thread that searches
+  SeamFacade& seam_facade()
+  {
+    if (!seam)
+      seam.reset(new SeamFacade(*this));
+    return *seam;
+  }
 
   const char                    *filename;      // the name of the file being searched
   std::string                    partname;      // the name of an extracted file from an archive
@@ -4141,7 +3685,6 @@ struct Grep {
   Static::Matchers              *matchers;      // the CNF of AND/OR/NOT matchers or NULL
   std::vector<bool>              matching;      // bitmap to keep track of globally matching CNF terms
   std::vector<std::vector<bool>> notmatching;   // bitmap to keep track of globally matching OR NOT CNF terms
-  MMap                           mmap;          // mmap state
   reflex::Input                  input;         // input to the matcher
   FILE                          *file_in;       // the current input file
   bool                           interactive;   // the file being searched is a TTY or pipe
@@ -4164,6 +3707,8 @@ struct Grep {
   std::istream                  *stream;        // input stream is the decompressed zstream
 #endif
 #endif
+
+  std::unique_ptr<SeamFacade>    seam;          // the Rust file members' facade, made on first use, last member: destroyed first
 
 };
 
@@ -4271,6 +3816,9 @@ struct GrepWorker : public Grep {
 
   virtual ~GrepWorker()
   {
+    // the facade holds a handle of the matcher, delete it first
+    seam.reset();
+
     // delete the cloned matcher
     delete matcher;
 
@@ -7157,6 +6705,9 @@ void ugrep_find_text_preview(const char *filename, const char *partname, size_t 
 
   Grep grep(NULL, matcher, matchers);
   grep.find_text_preview(filename, partname, from_lineno, max, lineno, num, text);
+
+  // the facade holds a handle of the matcher, delete it first
+  grep.seam.reset();
 
   // delete the cloned matchers, if any
   if (matchers != NULL)
