@@ -21,6 +21,9 @@ mod stats_impl;
 // the Zthread seam: types and stub signatures (no cxx type), the C-ABI entries are in ffi/zthread.rs
 #[path = "zthread.rs"]
 pub mod zthread;
+// the Grep search seam: matcher handle, search context and one stub per search branch (no cxx type)
+#[path = "search.rs"]
+pub mod search;
 
 /// A pattern in the CNF: `None` is the undefined (NULL smart pointer) pattern, `Some` a possibly empty string.
 pub type Pattern = Option<Bytes>;

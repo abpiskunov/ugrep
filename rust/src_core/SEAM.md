@@ -345,9 +345,9 @@ The ugrep.cpp 14047-15365 range (help, version, is_directory, cannot_decompress,
 ## ugrep.cpp option helpers retained (D-src_core-helpers-retained)
 
 The ugrep.cpp ~13500-14046 range (find_text_preview/extract, trim helpers, set_color, option-argument parsers, usage, import_globs) stays C++: it serves the option parsing and driver that stay C++, so a port would add an FFI crossing per call and need its own seam for little gain.
-## ugrep.cpp Grep::ugrep/select/recurse and Grep::search retained (D-src_core-select-retained, D-src_core-search-retained)
+## ugrep.cpp Grep::ugrep/select/recurse retained (D-src_core-select-retained)
 
-The ugrep.cpp ~9166-10482 range (Grep::ugrep, select, recurse, Static helpers) and the ~10483-13499 range (Grep::compute_cost, Grep::search) stay C++. They drive the RE-flex matcher and Output on every match; porting them needs one coarse seam together with Grep and Output.
+The ugrep.cpp ~9166-10482 range (Grep::ugrep, select, recurse, Static helpers) and `Grep::compute_cost` stay C++. `Grep::search` is no longer retained: the earlier D-src_core-search-retained decision is superseded by D-S1-supersede, see "Grep seam" below.
 
 ## ugrep.cpp options and main/wmain retained (D-src_core-options-main-retained)
 
@@ -432,3 +432,144 @@ Behavior task. Evidence at Prepare: both modes build with MSVC (default and `/p:
   to the baseline, also with output redirected to a file).
 - **Threading.** `OutputBuf` is `Send` (one per worker, never shared); the ordered-mode flush runs under the Rust `OutputSync` lock; the raw `regs`
   and `eof` pointers are used by the owner thread only, `eof` through `AtomicBool::from_ptr`.
+
+## Grep seam (Prepare seam: `Grep::search` split into branch functions; D-S1-supersede supersedes the earlier "Grep::search retained" notes)
+
+Behavior unchanged, default build stays C++. `Grep::search` is now a thin shell plus one member function per mode branch. Nothing is switched yet:
+the Rust bodies in `signatures::search` are stubs that `panic!` (no `todo!()`). There are 12 branch stubs and 5 remaining children; the table in
+"Which child ports which stub" says who ports which.
+
+### What crosses and what is deleted later
+- Crosses (declared in the bridge, `lib.rs`; types in `rust/src_core/src/search.rs`, included from `signatures.rs` with `#[path]`; the C ABI of the host
+  table is `src/search_seam.h` and `ffi/search_host.rs`): the matcher handle (`MatcherHandle`, opaque), the search context (`SearchContext`, Rust-owned,
+  opaque), one function per branch and the host table.
+- **Every matcher kind crosses, at the `reflex::AbstractMatcher` level** (`MatcherKind`): `reflex::Matcher` (`REFLEX` 1), `PCRE2Matcher` (`PCRE2` 2),
+  `LineMatcher` (`LINE` 3, `--match`), `FuzzyMatcher` (`FUZZY` 4, `-Z`) and `BoostPerlMatcher` (`BOOST` 5). `PCRE2_UTF` is dropped. No search stays in C++
+  (D-S1-supersede). The `-Zbest` calls on a `FuzzyMatcher` are explicit handle methods: `fuzzy_distance(max)` (`distance()`) and `fuzzy_edits()` (`edits()`).
+- Nothing in `Grep` stays for good. S4c-6 deletes the C++ `Grep`, including the handler classes. Until each branch is ported, the `goto done_search/exit_search`
+  flow stays in the C++ shell and each branch returns `SearchStep::DONE/EXIT`; only the RE-flex/PCRE2/Boost matcher objects stay C++-owned.
+- Moves made: (1) `SearchContext` + `SearchStep` + 12 member declarations in `Grep`; (2) branch bodies moved verbatim into member functions
+  (original indentation kept so the diff reads as a move); (3) shell dispatches with the original conditions. No tap is added to `src/`.
+
+### `Grep::search` shell
+Prologue (best-match cost, `open_file`, label fix) -> `SearchContext ctx(pathname, cost)` -> `search_setup` -> dispatch chain -> `search_epilogue`
+unless the branch returned `EXIT` -> catch blocks, `exit_search:` (`out.release()`, `close_file(ctx.pathname)`, `Stats::found_file()` if `ctx.matched`).
+
+### Search context (shared locals): `Grep::SearchContext` / Rust `SearchContext`
+Fields: `pathname` (`const char *`, bytes in Rust), `cost` (`uint16_t`), `matched` (`bool`, `Cell<bool>` in Rust), and in Rust the attached `GrepHost`
+and `flags` (`GrepFlags`, read from `settings.rs` `UGREP_SETTINGS` by `flags_from_settings` when the host is attached; no callbacks; `color_*`/`match_*` strings are read from `ugrep_settings` directly).
+Other state read by branches (not in the context; stays in `Grep` members, reached through `GrepHost`, or branch-locals): `lineno`, `heading`, `matches`, `stop`, `binfile`,
+`hex`, `binary`, `restline*`, `partname`, `out`, `matcher`/`matchers`, `matching`/`notmatching`.
+
+### Branches (dispatch function, condition, context fields, handle mapping)
+| Branch | `Grep::` function (Rust `branch::`) | Condition | Context fields | Handle methods used |
+|---|---|---|---|---|
+| setup | `search_setup` (`setup`) | always | none (members `out`, `matchers`, `matching`, `notmatching`) | none |
+| -q/-l/-L | `search_quiet_list` | `flag_quiet \|\| flag_files_with_matches` | `pathname` | find, bol, eol, lineno, lineno_skip; host: out acquire/header/format/holding, cnf_matching |
+| -c | `search_count` | `flag_count` | `pathname` | find, bol, eol, at_bol, skip, lineno, lineno_skip; host: cnf_matching, Stats, out |
+| --format | `search_format` | `flag_format != NULL` | `pathname` | find, bol, eol, at_bol, skip, before, after, lineno, lines, set_shift_handler(FORMAT_INVERT_MATCH), invoke_handler; host: `out_format` with the `matching` counter |
+| -o | `search_only_matching` | `flag_only_matching` without -ABC | `pathname` | find, bol, eol, begin, first, size, lineno, lineno_skip, lines, bytes; host: out dump, header, format |
+| -o -ABC | `search_only_matching_context` | `-o` with -ABC | `pathname` | as -o plus end, last, border, set_shift_handler(ONLY_MATCHING_CONTEXT); host: `utf8strn`, restline |
+| plain/hex | `search_plain` | no -ABC, -v, -y | `pathname` | find, bol, eol, begin, end, first, last, size, bef(len), aft(len), border, at_bol, skip, hit_end, set_reserve, lineno, lineno_skip, lines, bytes, set_shift_handler(GREP); host: restline_*, out |
+| -v | `search_invert` | `-v` only | `pathname` | find, bol, eol, before, after, lineno, lines, set_shift_handler(INVERT_MATCH), invoke_handler |
+| -y | `search_any_line` | `-y` | `pathname` | as plain plus before, after, set_shift_handler(ANY_LINE), invoke_handler |
+| -ABC | `search_context` | -ABC, no -v | `pathname` | as -y with set_shift_handler(CONTEXT); host: `handler_output_before_context`, `handler_set_after_lineno` |
+| -ABC -v | `search_context_invert` | -ABC with -v | `pathname` | as -y plus columno, set_shift_handler(INVERT_CONTEXT); host: `handler_add_before_context_line`, `handler_add_before_context_match` |
+| epilogue | `search_epilogue` | after any non-EXIT branch | `matched` (set true), `pathname` unused | lineno; host: `cnf_satisfied`, `matches`, `out.nl`, `Stats::score_matches` |
+
+Matcher-handle API: `find`, `next_match(skip_line)`, `bol`, `eol(inclusive)`, `begin`, `end`, `text_bounds` (begin/end/first/last/size/bol/eol/lineno/lines
+snapshot), `with_bytes(offset, len, |b| ..)` (unsafe fn) / `bytes_to_vec(offset, len)` (the buffer bytes; there is no method returning a borrowed slice), `before()`/`after()` returning `BufContext {offset, len, num}`, `bef(len)`/`aft(len)` returning an offset,
+`lineno_skip`, `reset`. `lineno()` and `lines()` are handle calls (hot loop), also snapshotted in `text_bounds`.
+Buffer-shift event: `set_shift_handler(HandlerKind)` registers one of the C++ handler classes (GREP, ONLY_MATCHING_CONTEXT, INVERT_MATCH,
+FORMAT_INVERT_MATCH, ANY_LINE, CONTEXT, INVERT_CONTEXT; `NONE` unregisters) as the matcher's event handler, or `set_rust_handler(Box<dyn ShiftHandler>)`
+registers a Rust one (`RUST`); `invoke_handler(BufContext)` is the explicit `handler(*matcher, buf, len, num)` call; `shift_event` delivers the event.
+Also on the handle: `first`, `last`, `size`, `columno`, `at_bol`, `hit_end`, `skip(c)`, `border`, `set_reserve`; for a `FuzzyMatcher` the `-Zbest` calls
+`fuzzy_distance(max)` and `fuzzy_edits()`.
+Every call in the branch bodies maps to one of these methods or to `GrepHost`; the mapping was checked branch by branch against the call lists of the
+`search_*` bodies. The discriminants and the `GrepEnv` layout are pinned by Rust tests against `src/search_seam.h`.
+
+### Host callback interface (`GrepHost`, `ffi/search_host.rs`)
+What stays in C++ and a branch needs reaches Rust through `GrepHost` (`src/search.rs`), in the style of the Zthread `Host`: a `#[repr(C)]` table
+`GrepEnv` of `extern "C"` callbacks with an opaque `ctx`, attached to the context by `ugrep_core_search_set_host(ctx, env)`; branches reach it through
+`SearchContext::with_host`. The table is a fixed signature: the C++ facade (a `ugrep_core_search_env` header) is filled by S4c-2 and later children
+without editing the trait or the table. It carries:
+- `Grep` members: `matches`, `lineno`, `heading`, `stop`, `binfile`, `hex`, `binary`, `partname`, `restline_size`, `restline_last` (get/set), and
+  `output_restline`, `output_or_save_restline`, `save_restline`.
+- `restline_data` get/set (`RestlineData`: none, an offset into the matcher buffer, or the saved `restline` string), `restline_advance`, `restline_bytes`.
+- Context-handler methods (`handler_op`): `handler_output_before_context`, `handler_set_after_lineno`, `handler_add_before_context_line`,
+  `handler_add_before_context_match`.
+- CNF and matchers: `cnf_matching(bol, eol, acquire)`, `cnf_satisfied(acquire)`, `matchers_len` (`None` = NULL), `matchers_matcher(i)` (a handle of any
+  kind), `matchers_reset` (the `--files` bitmask reset of `search_setup`).
+- `out` (`Output`): `eof`, `hold`, `holding`, `acquire`, `release`, `check_flush`, `chr`, `str`, `utf8strn`, `num`, `nl`, `header` (both forms),
+  `binary_file_matches`, `format` (both forms; the in/out `matching` counter is `Option<&mut usize>`, `None` for --format-open/-close), `dump.hex` (modes `HEX_MATCH` 0, `HEX_LINE` 1, `HEX_CONTEXT_MATCH` 2, `HEX_CONTEXT_LINE` 3, exported in `search.rs` and `search_seam.h`), `dump.next`, `dump.done`.
+- `Stats`: `found_file`, `found_part`, `undo_found_part`, `found_parts`, `score_matches`.
+- Flags are not callbacks: `GrepFlags` is read from `settings.rs` (`UGREP_SETTINGS`) directly.
+- The C ABI is mirrored by `src/search_seam.h` (`struct ugrep_core_search_env`); Rust tests pin enum discriminants and field offsets.
+Callbacks run on the searching thread only; byte results stay valid until the next callback.
+
+### Which child ports which stub
+Bodies of `signatures::search::branch` (and the bridge `search_*` functions, unchanged):
+| Child | Ports |
+|---|---|
+| S4c-2 | no branch stub: Grep file handling (`cnf_matching`, `open_file`, `filter`, `close_file`, `init_read`, restline) through the host interface |
+| S4c-3 | `setup`, `quiet_list`, `count`, `format` |
+| S4c-4 | `only_matching`, `only_matching_context` |
+| S4c-5 | `plain`, `invert`, `any_line` |
+| S4c-6 | `context`, `context_invert`, `epilogue`; then `find_text_preview`, `extract`, delete C++ `Grep` |
+That is all 12 stubs: 4 + 2 + 3 + 3.
+### Every `Grep` member
+- Nested types: `EXIT_SEARCH`, `Type`, `Entry`, `Job`, `JobQueue` (two variants under `WITH_LOCK_FREE_JOB_QUEUE`), `BinaryHandler`, `StdInHandler`
+  (non-Windows), `GrepHandler`, `OnlyMatchingContextGrepHandler`, `InvertMatchGrepHandler`, `FormatInvertMatchGrepHandler`, `AnyLineGrepHandler`,
+  `ContextGrepHandler`, `InvertContextGrepHandler`, new `SearchContext`, `SearchStep`. Subclasses: `GrepMaster`, `GrepWorker` (retained).
+- Methods: constructor, `~Grep`, `cancel`, `ugrep`, `select`, `recurse`, `compute_cost`, `search` (shell), the 12 `search_*` above,
+  `find_text_preview`, `extract`, `cnf_matching`, `cnf_satisfied`, `open_file`, `filter`, `close_file`, `init_read`, `init_is_binary`,
+  `output_or_save_restline`, `output_restline`, `save_restline`.
+- Fields: `filename`, `partname`, `restline`, `restline_data`, `restline_size`, `restline_last`, `out` (`Output`), `matcher`, `matchers`, `matching`,
+  `notmatching`, `mmap`, `input`, `file_in`, `interactive`, `binfile`, `lineno`, `heading`, `hex`, `binary`, `matches`, `stop`, `bin_handler`,
+  `stdin_handler` (non-Windows), `zthread` (or `zstream`/`stream` under `HAVE_LIBZ`; see the Zthread seam).
+All stay in C++ in this stage; the branch functions read them through `this`.
+
+### Encoding, re-entrancy, thread affinity, owner, errors
+- **Encoding:** paths and text are bytes (`&[u8]`), offsets `usize`, no UTF-8 assumption; `cost` is `u16`.
+- **Re-entrancy:** the C++ matcher fires the shift handler during `find`/`eol(true)` while a branch runs, and the handler reads `ctx.pathname`.
+  Therefore every handle method takes `&self`, branches take `&SearchContext`, `matched` is a `Cell`; no `&mut` is held across a call into C++.
+- **Thread affinity:** a `SearchContext` and `MatcherHandle` are created and used on the one worker thread running `Grep::search`; they are not
+  `Send`/`Sync`-shared. `cancel()` from the TUI thread touches `Grep` members only, never the handle.
+- **Owner side:** `SearchContext` owned by Rust (boxed, created and freed by the shell); matcher object owned by C++ (the handle borrows it through its `MatcherTable`);
+  pathname memory owned by the caller of `search`.
+- **Error kinds:** the stubs `panic!` (`panic = "abort"` in the profile); the ported branches report I/O failure as C++ does today (exceptions
+  `EXIT_SEARCH`/`std::exception` caught in the shell), result is a `SearchStep` (`u8`: CONTINUE 0, DONE 1, EXIT 2), not an error.
+
+### Matcher callback table (how Rust calls the C++ matcher)
+`MatcherHandle` carries a `MatcherTable` (`search.rs`, mirrored by `struct ugrep_core_matcher_table` in `src/search_seam.h`): a `ctx` (the facade's
+handle of the matcher), the `kind`, and one `extern "C"` function pointer per handle method: `find`, `next_match`, `bol`, `eol`, `begin`, `end`,
+`text_bounds`, `first`, `last`, `size`, `lineno`, `lines`, `columno`, `at_bol`, `hit_end`, `skip`, `border`, `before`, `after`, `bef`, `aft`, `bytes`,
+`set_reserve`, `fuzzy_distance`, `fuzzy_edits`, `lineno_skip`, `set_shift_handler` (handler construction by `HandlerKind`), `set_rust_handler`
+(trampoline registration) and `invoke_handler`, plus `reset`: 32 words. The facade fills one table per matcher; `GrepEnv.matchers_matcher(index)` fills
+it for `matchers->at(index)`, and the C entry `ugrep_core_matcher_handle_new(table)` copies it for `Grep::matcher` (one handle per matcher). Rust tests pin the layout and run the
+handle against a fake matcher through the table; the header pins enum last values, `offsetof` and `sizeof` with `static_assert`.
+- **Buffer bytes:** `MatcherHandle` has no method returning `&[u8]`. `bytes_to_vec` returns an owned copy (a cost for the performance task on the hot
+  path), and `unsafe fn with_bytes(offset, len, |b| ..)` lends the slice zero-copy: while the closure runs, every other call on the handle panics, and the caller guarantees the handle is the only one on the matcher, so no call can
+  shift the buffer under the slice. The host (`out_str` and the like) does not touch the matcher and may be called from the closure.
+- **Handler lifetime:** the C++ handler object (`GrepHandler` and its derived classes, or the trampoline of a Rust handler) is owned by the facade. It
+  lives until the next `set_shift_handler`/`set_rust_handler`, `reset` or the destruction of the facade, whichever comes first, and the facade never
+  leaves the matcher pointing at a destroyed handler. `reset()` destroys the registered handler (RE-flex forgets it as well), so a branch registers
+  its handler again after `reset` and after each new input source (once per file). A Rust handler lives in the handle: `reset` and the next
+  registration drop it after C++ replaced the trampoline, and dropping the handle first unregisters the trampoline. Handler classes are registered only
+  by `set_shift_handler`; `HandlerKind::RUST` is registered by `set_rust_handler` alone.
+- **unsafe:** every raw-pointer read, the `bytes`/`deref`/`read` functions (all `unsafe fn` with a `# Safety` contract), the slice creation of `with_bytes`,
+  and the shift trampoline `rust_shift_trampoline` are in `ffi/matcher_raw.rs`, declared from `search.rs`, so policy-scan sees them in `ffi/` and the
+  signatures-only harness still builds. The table reaches Rust through the C entry `ugrep_core_matcher_handle_new(const ugrep_core_matcher_table *)`
+  (`ffi/search_host.rs`, declared in `src/search_seam.h`, a typed pointer, no `usize`) and goes away with `ugrep_core_matcher_handle_free`.
+- **One handle per C++ matcher:** the `lent` guard of `with_bytes` and the Rust handler slot live in the handle, so they only protect the matcher if no
+  second handle exists for it. `Grep::matcher` gets one handle from `ugrep_core_matcher_handle_new`, but `GrepHost::matchers_matcher(i)` builds a
+  new handle on every call, so a branch must not hold two handles on one matcher while it uses `with_bytes`. `with_bytes` is therefore `unsafe fn`:
+  its contract is "the only handle, no matcher call while the closure runs". `bytes_to_vec` copies immediately and is safe: `bytes` returns NULL
+  outside the buffer and Rust aborts on NULL. `raw::new_handle` (the only constructor of a handle) and the shift trampoline are `unsafe fn` in `ffi/`, so no safe code builds a handle from
+  an arbitrary table or calls the trampoline with an arbitrary pointer.
+- **Re-entrancy:** a shift event arrives inside `find`, `next_match` or `eol(true)` through the trampoline into `dispatch_shift`, which only borrows the
+  handler slot; a handler that replaces itself while running is skipped, not aliased.
+
+### Unknown ownership
+- None for the matcher calls: they go through the table above. Open for the Port that fills the facade: the concrete C++ functions behind each table
+  entry (S4c-2 fills them with the first switched branch).

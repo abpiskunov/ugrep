@@ -521,6 +521,7 @@
     <ClInclude Include="..\src\vkey.hpp" />
     <ClInclude Include="..\src\zopen.h" />
     <ClInclude Include="..\src\zstream.hpp" />
+    <ClInclude Include="..\src\search_seam.h" />
     <ClInclude Include="..\src\zstream_seam.h" />
     <ClInclude Include="..\src\zthread_seam.h" />
     <ClInclude Include="include_ugrep\config.h" />
