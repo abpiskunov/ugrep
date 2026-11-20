@@ -85,6 +85,7 @@ After this, you may want to test ugrep and install it (optional):
 // set_color() and trim() are implemented in Rust (rust/src_core), see rust/src_core/SEAM.md
 #include "core_rust.hpp"
 #include "zthread_seam.h"
+#include "search_seam.h"
 #include "zstream_seam.h"
 #include <reflex/matcher.h>
 #include <reflex/linematcher.h>

@@ -68,6 +68,41 @@ pub struct TextBounds {
     pub lines: usize,
 }
 
+/// `reflex::AbstractMatcher::Context`: a run of the matcher buffer, `buf_[offset..offset + len]`, with the number of
+/// lines in it. What `before()` and `after()` return and what the handler takes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BufContext {
+    pub offset: usize,
+    pub len: usize,
+    pub num: usize,
+}
+
+/// Which buffer-shift handler class C++ registers on the matcher (`set_handler`): the numbers are the C++ values of
+/// the facade, pinned by a test.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HandlerKind(pub u8);
+
+impl HandlerKind {
+    /// No handler.
+    pub const NONE: HandlerKind = HandlerKind(0);
+    /// `GrepHandler`.
+    pub const GREP: HandlerKind = HandlerKind(1);
+    /// `OnlyMatchingContextGrepHandler`.
+    pub const ONLY_MATCHING_CONTEXT: HandlerKind = HandlerKind(2);
+    /// `InvertMatchGrepHandler`.
+    pub const INVERT_MATCH: HandlerKind = HandlerKind(3);
+    /// `FormatInvertMatchGrepHandler`.
+    pub const FORMAT_INVERT_MATCH: HandlerKind = HandlerKind(4);
+    /// `AnyLineGrepHandler`.
+    pub const ANY_LINE: HandlerKind = HandlerKind(5);
+    /// `ContextGrepHandler`.
+    pub const CONTEXT: HandlerKind = HandlerKind(6);
+    /// `InvertContextGrepHandler`.
+    pub const INVERT_CONTEXT: HandlerKind = HandlerKind(7);
+    /// A handler written in Rust (`set_rust_handler`); C++ registers a trampoline into `shift_event`.
+    pub const RUST: HandlerKind = HandlerKind(255);
+}
+
 /// The buffer-shift event: `reflex::AbstractMatcher::Handler::operator()(matcher, buf, len, num)`, called with the text
 /// that is about to leave the buffer (`len` is 0 when the buffer only grows).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -201,24 +236,32 @@ impl MatcherHandle {
         panic!("Grep seam: MatcherHandle::border is not ported")
     }
 
-    /// `matcher->before()`: the offset of the start of the text before the match.
-    pub fn before(&self) -> usize {
+    /// `matcher->before()`: the buffered text before the matching line as `{offset, len, num}`, which goes straight to
+    /// the handler (`invoke_handler`).
+    pub fn before(&self) -> BufContext {
         panic!("Grep seam: MatcherHandle::before is not ported")
     }
 
-    /// `matcher->after()`: the offset of the end of the text after the match.
-    pub fn after(&self) -> usize {
+    /// `matcher->after()`: the buffered text after EOF is reached as `{offset, len, num}`.
+    pub fn after(&self) -> BufContext {
         panic!("Grep seam: MatcherHandle::after is not ported")
     }
 
-    /// `matcher->bef()`.
-    pub fn bef(&self) -> usize {
+    /// `matcher->bef(len)`: the offset of the begin of the match minus `len`, or 0 at the begin of the buffer.
+    pub fn bef(&self, _len: usize) -> usize {
         panic!("Grep seam: MatcherHandle::bef is not ported")
     }
 
-    /// `matcher->aft()`.
-    pub fn aft(&self) -> usize {
+    /// `matcher->aft(len)`: the offset of the end of the match plus `len`, or of the end of the input. It fetches
+    /// input, so it invalidates earlier offsets and slices, as the C++ pointers.
+    pub fn aft(&self, _len: usize) -> usize {
         panic!("Grep seam: MatcherHandle::aft is not ported")
+    }
+
+    /// The bytes `buf_[offset..offset + len]` of the matcher buffer, for `out_str`, `check_binary`, `memchr`,
+    /// `utf8nlen` and the like. Borrowed: valid until the next call on this handle (any call can shift the buffer).
+    pub fn bytes(&self, _offset: usize, _len: usize) -> &[u8] {
+        panic!("Grep seam: MatcherHandle::bytes is not ported")
     }
 
     /// `matcher->set_reserve(size)`: reserve buffer space for a line kept across a buffer shift.
@@ -243,16 +286,30 @@ impl MatcherHandle {
         panic!("Grep seam: MatcherHandle::lineno_skip is not ported")
     }
 
-    /// Register or clear the buffer-shift listener (`matcher->set_handler`); C++ keeps the handler object, the
-    /// events come back through [`MatcherHandle::shift_event`]. The matcher forgets the handler when a new input
-    /// source is assigned, so this is called once per file.
-    pub fn set_shift_listener(&self, _enabled: bool) {
-        panic!("Grep seam: MatcherHandle::set_shift_listener is not ported")
+    /// Register the buffer-shift handler of the given kind (`matcher->set_handler`), or clear it with
+    /// [`HandlerKind::NONE`]. C++ constructs the handler (`GrepHandler` or a class derived from it, with `*this` and the
+    /// pathname) and the kind picks the class. The matcher forgets the handler when a new input source is assigned, so
+    /// this is called once per file. A handler class ported to Rust registers as [`HandlerKind::RUST`] after
+    /// [`MatcherHandle::set_rust_handler`].
+    pub fn set_shift_handler(&self, _kind: HandlerKind) {
+        panic!("Grep seam: MatcherHandle::set_shift_handler is not ported")
     }
 
-    /// The buffer-shift event, forwarded by the C++ handler to the listener. Runs inside `find`, `next_match` or `eol`.
+    /// Install the Rust [`ShiftHandler`] that the C trampoline of [`HandlerKind::RUST`] forwards the events to.
+    pub fn set_rust_handler(&self, _handler: Box<dyn ShiftHandler>) {
+        panic!("Grep seam: MatcherHandle::set_rust_handler is not ported")
+    }
+
+    /// The buffer-shift event, forwarded by the C++ trampoline to the Rust handler. Runs inside `find`, `next_match` or
+    /// `eol`; `buf` is the text about to leave the buffer.
     pub fn shift_event(&self, _event: ShiftEvent, _buf: &[u8]) {
         panic!("Grep seam: MatcherHandle::shift_event is not ported")
+    }
+
+    /// Call the registered handler explicitly, as the branches do with `handler(*matcher, context.buf, context.len,
+    /// context.num)` after `before()` or `after()`.
+    pub fn invoke_handler(&self, _context: BufContext) {
+        panic!("Grep seam: MatcherHandle::invoke_handler is not ported")
     }
 
     /// `matcher->reset()`: back to the start of the input, drops the shift listener and the match.
@@ -272,8 +329,20 @@ impl SearchStep {
     pub const EXIT: SearchStep = SearchStep(2);
 }
 
-/// Snapshot of the `flag_*` globals the search branches read (`flag_before_context` and the like), taken by C++ at the
-/// start of `search`. Strings are bytes, `None` is NULL.
+/// Where `Grep::restline_data` points.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RestlineData {
+    /// NULL.
+    None,
+    /// An offset into the matcher buffer (`restline_data = end`).
+    Buffer(usize),
+    /// The saved copy `Grep::restline` (`restline_data = restline.c_str()`), which survives a buffer shift.
+    Saved,
+}
+
+/// Snapshot of the `flag_*` globals the search branches read (`flag_before_context` and the like), taken from
+/// `ugrep_settings` (Rust-owned since S1, `ffi/settings.rs`) when the host is attached. Strings are bytes, `None` is
+/// NULL. The `color_*` and `match_*` strings the branches also read stay in `ugrep_settings` and are read from there.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct GrepFlags {
     pub after_context: usize,
@@ -348,9 +417,29 @@ pub trait GrepHost {
     fn set_restline_size(&self, size: usize);
     fn restline_last(&self) -> usize;
     fn set_restline_last(&self, last: usize);
+    /// `Grep::restline_data`: NULL, a position in the matcher buffer or the saved `restline` string.
+    fn restline_data(&self) -> RestlineData;
+    /// Set `restline_data` (`= NULL`, `= end`, `= restline.c_str()`).
+    fn set_restline_data(&self, data: RestlineData);
+    /// `restline_data += n`, in the buffer or in the saved string.
+    fn restline_advance(&self, n: usize);
+    /// `restline_data[..restline_size]` copied out, empty when NULL.
+    fn restline_bytes(&self) -> Bytes;
     fn restline_output(&self, invert: bool, hex_context: bool);
     fn restline_output_or_save(&self, invert: bool, hex_context: bool);
     fn restline_save(&self);
+
+    // the methods of the registered handler object (`ContextGrepHandler`, `InvertContextGrepHandler`) that the branches
+    // call; they act on the handler `MatcherHandle::set_shift_handler` registered last. A handler class ported to Rust
+    // has these as its own methods and does not use them.
+    /// `handler.output_before_context()`.
+    fn handler_output_before_context(&self);
+    /// `handler.set_after_lineno(lineno)`.
+    fn handler_set_after_lineno(&self, lineno: usize);
+    /// `handler.add_before_context_line(bol, eol, columno, offset)`, `bol` and `eol` are matcher buffer offsets.
+    fn handler_add_before_context_line(&self, bol: usize, eol: usize, columno: usize, offset: usize);
+    /// `handler.add_before_context_match(pos, size, offset)`.
+    fn handler_add_before_context_match(&self, pos: usize, size: usize, offset: usize);
 
     // the CNF of `--files` / `-e -e`: `cnf_matching`, `cnf_satisfied`, `matchers`, `matching`, `notmatching`
     fn cnf_matching(&self, bol: usize, eol: usize, acquire: bool) -> bool;
@@ -381,8 +470,10 @@ pub trait GrepHost {
     fn out_binary_file_matches(&self);
     /// `out.format(format, matches)`.
     fn out_format_count(&self, format: &[u8], matches: usize);
-    /// `out.format(format, pathname, partname, matches, matching, matcher, heading, body, next)`.
-    fn out_format(&self, format: &[u8], matches: usize, body: bool, next: bool) -> bool;
+    /// `out.format(format, pathname, partname, matches, matching, matcher, heading, body, next)`; `matching` is the
+    /// in/out counter (`&format_matching`, `&replace_matching`) that the branch owns and passes on every call, `None`
+    /// for the NULL of `--format-open` and `--format-close`.
+    fn out_format(&self, format: &[u8], matches: usize, matching: Option<&mut usize>, body: bool, next: bool) -> bool;
     fn out_dump_hex(&self, mode: i16, byte_offset: usize, data: &[u8]);
     fn out_dump_next(&self, byte_offset: usize);
     fn out_dump_done(&self);
@@ -393,9 +484,6 @@ pub trait GrepHost {
     fn stats_undo_found_part(&self);
     fn stats_found_parts(&self) -> usize;
     fn stats_score_matches(&self, matches: usize, lines: usize);
-
-    /// The flags the branches read.
-    fn flags(&self) -> GrepFlags;
 }
 
 /// The locals of `Grep::search` that its branches share (`Grep::SearchContext`). Rust-owned; the C++ `Grep` members
@@ -410,17 +498,34 @@ pub struct SearchContext {
     /// This file or archive has a match (set by the epilogue).
     pub matched: Cell<bool>,
     host: RefCell<Option<Box<dyn GrepHost>>>,
+    flags: RefCell<GrepFlags>,
 }
 
 impl SearchContext {
     /// A context for `search(pathname, cost)`; `matched` starts false and no host is attached yet.
     pub fn new(pathname: &[u8], cost: u16) -> SearchContext {
-        SearchContext { pathname: pathname.to_vec(), cost, matched: Cell::new(false), host: RefCell::new(None) }
+        SearchContext {
+            pathname: pathname.to_vec(),
+            cost,
+            matched: Cell::new(false),
+            host: RefCell::new(None),
+            flags: RefCell::new(GrepFlags::default()),
+        }
     }
 
     /// Attach the callback interface to the C++ `Grep`; the shell does it once before the first branch.
     pub fn set_host(&self, host: Box<dyn GrepHost>) {
         *self.host.borrow_mut() = Some(host);
+    }
+
+    /// Set the flags snapshot (read from `ugrep_settings` by `ffi/search_host.rs` when the host is attached).
+    pub fn set_flags(&self, flags: GrepFlags) {
+        *self.flags.borrow_mut() = flags;
+    }
+
+    /// The flags the branches read.
+    pub fn flags(&self) -> std::cell::Ref<'_, GrepFlags> {
+        self.flags.borrow()
     }
 
     /// Run `f` with the host. Panics when none was attached: the shell always attaches one.
@@ -432,8 +537,10 @@ impl SearchContext {
     }
 }
 
-/// One stub per search branch, named as the C++ `Grep::search_*` functions; a later Port unit replaces one each. They
-/// take the context and the matcher handle; what a branch needs of the C++ `Grep` members is decided by that unit.
+/// One stub per search branch, named as the C++ `Grep::search_*` functions. The 12 stubs are ported by S4c-3 (`setup`,
+/// `quiet_list`, `count`, `format`), S4c-4 (`only_matching`, `only_matching_context`), S4c-5 (`plain`, `invert`,
+/// `any_line`) and S4c-6 (`context`, `context_invert`, `epilogue`); see SEAM.md. They
+/// take the context and the matcher handle; what they need of the C++ `Grep` is reached through [`GrepHost`] of `ctx`.
 pub mod branch {
     use super::{MatcherHandle, SearchContext, SearchStep};
 
@@ -495,5 +602,34 @@ pub mod branch {
     /// `Grep::search_epilogue`: `--files` check, `--break`, `--stats`; sets `ctx.matched`.
     pub fn epilogue(_ctx: &SearchContext, _matcher: &MatcherHandle) {
         panic!("Grep seam: branch::epilogue is not ported")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // the numbers the C++ facade (src/search_seam.h) uses for the kinds, steps and handler classes
+    #[test]
+    fn numbers_match_the_header() {
+        assert_eq!(
+            [MatcherKind::REFLEX.0, MatcherKind::PCRE2.0, MatcherKind::LINE.0, MatcherKind::FUZZY.0, MatcherKind::BOOST.0],
+            [1, 2, 3, 4, 5]
+        );
+        assert_eq!([SearchStep::CONTINUE.0, SearchStep::DONE.0, SearchStep::EXIT.0], [0, 1, 2]);
+        assert_eq!(
+            [
+                HandlerKind::NONE.0,
+                HandlerKind::GREP.0,
+                HandlerKind::ONLY_MATCHING_CONTEXT.0,
+                HandlerKind::INVERT_MATCH.0,
+                HandlerKind::FORMAT_INVERT_MATCH.0,
+                HandlerKind::ANY_LINE.0,
+                HandlerKind::CONTEXT.0,
+                HandlerKind::INVERT_CONTEXT.0,
+                HandlerKind::RUST.0,
+            ],
+            [0, 1, 2, 3, 4, 5, 6, 7, 255]
+        );
     }
 }

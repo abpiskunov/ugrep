@@ -63,6 +63,7 @@ ugrep_SOURCES = \
 	vkey.cpp \
 	ugrep.hpp \
 	zstream.hpp \
+	search_seam.h \
 	zstream_seam.h \
 	zthread_seam.h \
 	zopen.h \

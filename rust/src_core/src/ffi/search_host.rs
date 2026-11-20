@@ -8,60 +8,68 @@
 use std::ffi::c_void;
 use std::os::raw::c_int;
 
-use crate::signatures::search::{GrepFlags, GrepHost, MatcherHandle, MatcherKind, SearchContext};
+use crate::signatures::search::{GrepFlags, GrepHost, MatcherHandle, MatcherKind, RestlineData, SearchContext};
 use crate::signatures::Bytes;
 
-/// Identifiers of the integer flags, the argument of `flag_int`.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub enum FlagInt {
-    AfterContext,
-    BeforeContext,
-    AnyLine,
-    BestMatch,
-    BinaryWithoutMatch,
-    Break,
-    Count,
-    Files,
-    FilesWithMatches,
-    Fuzzy,
-    Hex,
-    HexAfter,
-    HexBefore,
-    HexColumns,
-    InvertMatch,
-    LineNumber,
-    Match,
-    MaxCount,
-    MaxFiles,
-    MaxLine,
-    MinCount,
-    Mode,
-    Multiline,
-    NoHeader,
-    Null,
-    OnlyMatching,
-    Quiet,
-    Ungroup,
-    WithFilename,
-    WithHex,
+/// The flags are not in the table: they are Rust-owned (`ugrep_settings`, `ffi/settings.rs`), so no callback is needed.
+/// A string flag is NULL or a NUL-terminated string owned by C++.
+fn cstr(p: *const std::os::raw::c_char) -> Option<Bytes> {
+    if p.is_null() {
+        None
+    } else {
+        // SAFETY: a non-NULL string flag points to a NUL-terminated string owned by C++ for the life of the process.
+        Some(unsafe { std::ffi::CStr::from_ptr(p) }.to_bytes().to_vec())
+    }
 }
 
-/// Identifiers of the string flags, the argument of `flag_str` (NULL result for a NULL flag).
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub enum FlagStr {
-    Color,
-    Format,
-    FormatOpen,
-    FormatClose,
-    Label,
-    Replace,
-    Separator,
-    SeparatorBar,
-    SeparatorDash,
-    Stats,
-    Tag,
+/// The `GrepFlags` snapshot of the current `ugrep_settings`; no C++ call.
+pub fn flags_from_settings() -> GrepFlags {
+    // SAFETY: the settings are written during option parsing and only read while searching; no other reference is
+    // live here.
+    let s = unsafe { &*crate::settings_ffi::UGREP_SETTINGS.as_ptr() };
+    GrepFlags {
+        after_context: s.flag_after_context,
+        before_context: s.flag_before_context,
+        any_line: s.flag_any_line,
+        best_match: s.flag_best_match,
+        binary_without_match: s.flag_binary_without_match != 0,
+        brk: s.flag_break != 0,
+        color: cstr(s.flag_color),
+        count: s.flag_count,
+        files: s.flag_files,
+        files_with_matches: s.flag_files_with_matches,
+        format: cstr(s.flag_format),
+        format_open: cstr(s.flag_format_open),
+        format_close: cstr(s.flag_format_close),
+        fuzzy: s.flag_fuzzy,
+        hex: s.flag_hex,
+        hex_after: s.flag_hex_after,
+        hex_before: s.flag_hex_before,
+        hex_columns: s.flag_hex_columns,
+        invert_match: s.flag_invert_match,
+        label: cstr(s.flag_label),
+        line_number: s.flag_line_number != 0,
+        match_: s.flag_match,
+        max_count: s.flag_max_count,
+        max_files: s.flag_max_files,
+        max_line: s.flag_max_line,
+        min_count: s.flag_min_count,
+        mode: s.flag_mode,
+        multiline: s.flag_multiline,
+        no_header: s.flag_no_header,
+        null: s.flag_null,
+        only_matching: s.flag_only_matching,
+        quiet: s.flag_quiet,
+        replace: cstr(s.flag_replace),
+        separator: cstr(s.flag_separator),
+        separator_bar: cstr(s.flag_separator_bar),
+        separator_dash: cstr(s.flag_separator_dash),
+        stats: cstr(s.flag_stats),
+        tag: cstr(s.flag_tag),
+        ungroup: s.flag_ungroup != 0,
+        with_filename: s.flag_with_filename,
+        with_hex: s.flag_with_hex,
+    }
 }
 
 /// Identifiers of the `bool` and `size_t` members of `Grep`, the argument of `member_get` and `member_set`.
@@ -79,7 +87,23 @@ pub enum Member {
     RestlineLast,
 }
 
-/// The `Output` operations that take a byte string or numbers, the argument of `out_op`.
+/// How the C++ facade decodes `restline_data_get` and `restline_data_set`: 0 NULL, 1 offset in the matcher buffer,
+/// 2 the saved `restline` string.
+pub const RESTLINE_NONE: c_int = 0;
+pub const RESTLINE_BUFFER: c_int = 1;
+pub const RESTLINE_SAVED: c_int = 2;
+
+/// The handler methods the branches call, the argument of `handler_op` (`a`..`d` are the arguments in order).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub enum HandlerOp {
+    OutputBeforeContext,
+    SetAfterLineno,
+    AddBeforeContextLine,
+    AddBeforeContextMatch,
+}
+
+/// The `Output` operations that take no argument, the argument of `out_op`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub enum OutOp {
@@ -94,8 +118,8 @@ pub enum OutOp {
     DumpDone,
 }
 
-/// Mirrors the table the C++ facade provides (a `struct ugrep_core_search_env` of the header added with the first
-/// switched branch).
+/// Mirrors `struct ugrep_core_search_env` of `src/search_seam.h`; the order of the fields and of the enum values is
+/// pinned by the tests below and by the header.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct GrepEnv {
@@ -106,6 +130,14 @@ pub struct GrepEnv {
     pub partname: extern "C" fn(*mut c_void, *mut usize) -> *const u8,
     pub restline_output: extern "C" fn(*mut c_void, c_int, c_int, c_int),
     pub restline_save: extern "C" fn(*mut c_void),
+    /// Returns `RESTLINE_*`; the offset in the buffer is written through the pointer for `RESTLINE_BUFFER`.
+    pub restline_data_get: extern "C" fn(*mut c_void, *mut usize) -> c_int,
+    pub restline_data_set: extern "C" fn(*mut c_void, c_int, usize),
+    pub restline_advance: extern "C" fn(*mut c_void, usize),
+    /// `restline_data[..restline_size]`, length through the pointer, NULL when `restline_data` is NULL.
+    pub restline_bytes: extern "C" fn(*mut c_void, *mut usize) -> *const u8,
+    /// The methods of the registered handler; `a`..`d` are the arguments of `HandlerOp`, unused ones are 0.
+    pub handler_op: extern "C" fn(*mut c_void, HandlerOp, usize, usize, usize, usize),
     pub cnf_matching: extern "C" fn(*mut c_void, usize, usize, c_int) -> c_int,
     pub cnf_satisfied: extern "C" fn(*mut c_void, c_int) -> c_int,
     /// `matchers->size()`, or `usize::MAX` when `matchers` is NULL.
@@ -121,15 +153,14 @@ pub struct GrepEnv {
     pub out_num: extern "C" fn(*mut c_void, usize, c_int),
     pub out_header: extern "C" fn(*mut c_void, usize, usize, *const u8, usize, c_int),
     pub out_format_count: extern "C" fn(*mut c_void, *const u8, usize, usize),
-    pub out_format: extern "C" fn(*mut c_void, *const u8, usize, usize, c_int, c_int) -> c_int,
+    /// `out.format(...)`: format, matches, in/out `size_t *matching` (NULL for --format-open/-close), body, next.
+    pub out_format: extern "C" fn(*mut c_void, *const u8, usize, usize, *mut usize, c_int, c_int) -> c_int,
     pub out_dump_hex: extern "C" fn(*mut c_void, i16, usize, *const u8, usize),
     pub out_dump_next: extern "C" fn(*mut c_void, usize),
     /// `Stats::found_file`, `found_part`, `undo_found_part`: 0, 1, 2; the result of the first two is the bool.
     pub stats_found: extern "C" fn(*mut c_void, c_int) -> c_int,
     pub stats_found_parts: extern "C" fn(*mut c_void) -> usize,
     pub stats_score_matches: extern "C" fn(*mut c_void, usize, usize),
-    pub flag_int: extern "C" fn(*mut c_void, FlagInt) -> usize,
-    pub flag_str: extern "C" fn(*mut c_void, FlagStr, *mut usize) -> *const u8,
 }
 
 /// The C++ facade behind the callbacks table.
@@ -155,20 +186,6 @@ impl CHost {
 
     fn op(&self, op: OutOp) {
         (self.0.out_op)(self.0.ctx, op)
-    }
-
-    fn int(&self, f: FlagInt) -> usize {
-        (self.0.flag_int)(self.0.ctx, f)
-    }
-
-    fn string(&self, f: FlagStr) -> Option<Bytes> {
-        let mut len = 0usize;
-        let ptr = (self.0.flag_str)(self.0.ctx, f, &mut len);
-        if ptr.is_null() {
-            None
-        } else {
-            Some(bytes_of(ptr, len))
-        }
     }
 }
 
@@ -232,6 +249,42 @@ impl GrepHost for CHost {
     }
     fn set_restline_last(&self, last: usize) {
         self.set(Member::RestlineLast, last)
+    }
+    fn restline_data(&self) -> RestlineData {
+        let mut offset = 0usize;
+        match (self.0.restline_data_get)(self.0.ctx, &mut offset) {
+            RESTLINE_NONE => RestlineData::None,
+            RESTLINE_BUFFER => RestlineData::Buffer(offset),
+            _ => RestlineData::Saved,
+        }
+    }
+    fn set_restline_data(&self, data: RestlineData) {
+        let (kind, offset) = match data {
+            RestlineData::None => (RESTLINE_NONE, 0),
+            RestlineData::Buffer(offset) => (RESTLINE_BUFFER, offset),
+            RestlineData::Saved => (RESTLINE_SAVED, 0),
+        };
+        (self.0.restline_data_set)(self.0.ctx, kind, offset)
+    }
+    fn restline_advance(&self, n: usize) {
+        (self.0.restline_advance)(self.0.ctx, n)
+    }
+    fn restline_bytes(&self) -> Bytes {
+        let mut len = 0usize;
+        let ptr = (self.0.restline_bytes)(self.0.ctx, &mut len);
+        bytes_of(ptr, len)
+    }
+    fn handler_output_before_context(&self) {
+        (self.0.handler_op)(self.0.ctx, HandlerOp::OutputBeforeContext, 0, 0, 0, 0)
+    }
+    fn handler_set_after_lineno(&self, lineno: usize) {
+        (self.0.handler_op)(self.0.ctx, HandlerOp::SetAfterLineno, lineno, 0, 0, 0)
+    }
+    fn handler_add_before_context_line(&self, bol: usize, eol: usize, columno: usize, offset: usize) {
+        (self.0.handler_op)(self.0.ctx, HandlerOp::AddBeforeContextLine, bol, eol, columno, offset)
+    }
+    fn handler_add_before_context_match(&self, pos: usize, size: usize, offset: usize) {
+        (self.0.handler_op)(self.0.ctx, HandlerOp::AddBeforeContextMatch, pos, size, offset, 0)
     }
     fn restline_output(&self, invert: bool, hex_context: bool) {
         (self.0.restline_output)(self.0.ctx, 0, invert as c_int, hex_context as c_int)
@@ -312,8 +365,9 @@ impl GrepHost for CHost {
     fn out_format_count(&self, format: &[u8], matches: usize) {
         (self.0.out_format_count)(self.0.ctx, format.as_ptr(), format.len(), matches)
     }
-    fn out_format(&self, format: &[u8], matches: usize, body: bool, next: bool) -> bool {
-        (self.0.out_format)(self.0.ctx, format.as_ptr(), format.len(), matches, body as c_int, next as c_int) != 0
+    fn out_format(&self, format: &[u8], matches: usize, matching: Option<&mut usize>, body: bool, next: bool) -> bool {
+        let matching = matching.map_or(std::ptr::null_mut(), |m| m as *mut usize);
+        (self.0.out_format)(self.0.ctx, format.as_ptr(), format.len(), matches, matching, body as c_int, next as c_int) != 0
     }
     fn out_dump_hex(&self, mode: i16, byte_offset: usize, data: &[u8]) {
         (self.0.out_dump_hex)(self.0.ctx, mode, byte_offset, data.as_ptr(), data.len())
@@ -340,53 +394,6 @@ impl GrepHost for CHost {
     fn stats_score_matches(&self, matches: usize, lines: usize) {
         (self.0.stats_score_matches)(self.0.ctx, matches, lines)
     }
-
-    fn flags(&self) -> GrepFlags {
-        let b = |f: FlagInt| self.int(f) != 0;
-        GrepFlags {
-            after_context: self.int(FlagInt::AfterContext),
-            before_context: self.int(FlagInt::BeforeContext),
-            any_line: b(FlagInt::AnyLine),
-            best_match: b(FlagInt::BestMatch),
-            binary_without_match: b(FlagInt::BinaryWithoutMatch),
-            brk: b(FlagInt::Break),
-            color: self.string(FlagStr::Color),
-            count: b(FlagInt::Count),
-            files: b(FlagInt::Files),
-            files_with_matches: b(FlagInt::FilesWithMatches),
-            format: self.string(FlagStr::Format),
-            format_open: self.string(FlagStr::FormatOpen),
-            format_close: self.string(FlagStr::FormatClose),
-            fuzzy: self.int(FlagInt::Fuzzy),
-            hex: b(FlagInt::Hex),
-            hex_after: self.int(FlagInt::HexAfter),
-            hex_before: self.int(FlagInt::HexBefore),
-            hex_columns: self.int(FlagInt::HexColumns),
-            invert_match: b(FlagInt::InvertMatch),
-            label: self.string(FlagStr::Label),
-            line_number: b(FlagInt::LineNumber),
-            match_: b(FlagInt::Match),
-            max_count: self.int(FlagInt::MaxCount),
-            max_files: self.int(FlagInt::MaxFiles),
-            max_line: self.int(FlagInt::MaxLine),
-            min_count: self.int(FlagInt::MinCount),
-            mode: self.int(FlagInt::Mode) as i32,
-            multiline: b(FlagInt::Multiline),
-            no_header: b(FlagInt::NoHeader),
-            null: b(FlagInt::Null),
-            only_matching: b(FlagInt::OnlyMatching),
-            quiet: b(FlagInt::Quiet),
-            replace: self.string(FlagStr::Replace),
-            separator: self.string(FlagStr::Separator),
-            separator_bar: self.string(FlagStr::SeparatorBar),
-            separator_dash: self.string(FlagStr::SeparatorDash),
-            stats: self.string(FlagStr::Stats),
-            tag: self.string(FlagStr::Tag),
-            ungroup: b(FlagInt::Ungroup),
-            with_filename: b(FlagInt::WithFilename),
-            with_hex: b(FlagInt::WithHex),
-        }
-    }
 }
 
 /// Attach the C++ host to a search context.
@@ -399,4 +406,96 @@ pub unsafe extern "C" fn ugrep_core_search_set_host(ctx: *const SearchContext, e
     // SAFETY: the caller guarantees both pointers are valid.
     let (ctx, env) = unsafe { (&*ctx, *env) };
     ctx.set_host(Box::new(CHost(env)));
+    ctx.set_flags(flags_from_settings());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::mem::{offset_of, size_of};
+
+    // the values of the C enums of src/search_seam.h
+    #[test]
+    fn enum_discriminants_match_the_header() {
+        let members = [
+            Member::Matches,
+            Member::Lineno,
+            Member::Heading,
+            Member::Stop,
+            Member::Binfile,
+            Member::Hex,
+            Member::Binary,
+            Member::RestlineSize,
+            Member::RestlineLast,
+        ];
+        for (i, m) in members.iter().enumerate() {
+            assert_eq!(*m as i32, i as i32);
+        }
+        let ops = [
+            OutOp::Hold,
+            OutOp::Acquire,
+            OutOp::Release,
+            OutOp::CheckFlush,
+            OutOp::Nl,
+            OutOp::NlLf,
+            OutOp::HeaderFile,
+            OutOp::BinaryFileMatches,
+            OutOp::DumpDone,
+        ];
+        for (i, o) in ops.iter().enumerate() {
+            assert_eq!(*o as i32, i as i32);
+        }
+        let handler_ops =
+            [HandlerOp::OutputBeforeContext, HandlerOp::SetAfterLineno, HandlerOp::AddBeforeContextLine, HandlerOp::AddBeforeContextMatch];
+        for (i, o) in handler_ops.iter().enumerate() {
+            assert_eq!(*o as i32, i as i32);
+        }
+        assert_eq!((RESTLINE_NONE, RESTLINE_BUFFER, RESTLINE_SAVED), (0, 1, 2));
+        assert_eq!(size_of::<Member>(), size_of::<c_int>());
+        assert_eq!(size_of::<OutOp>(), size_of::<c_int>());
+        assert_eq!(size_of::<HandlerOp>(), size_of::<c_int>());
+    }
+
+    // every member of the table is a pointer, in the order of `struct ugrep_core_search_env`
+    #[test]
+    fn env_layout_matches_the_header() {
+        let w = size_of::<usize>();
+        let offsets = [
+            offset_of!(GrepEnv, ctx),
+            offset_of!(GrepEnv, member_get),
+            offset_of!(GrepEnv, member_set),
+            offset_of!(GrepEnv, partname),
+            offset_of!(GrepEnv, restline_output),
+            offset_of!(GrepEnv, restline_save),
+            offset_of!(GrepEnv, restline_data_get),
+            offset_of!(GrepEnv, restline_data_set),
+            offset_of!(GrepEnv, restline_advance),
+            offset_of!(GrepEnv, restline_bytes),
+            offset_of!(GrepEnv, handler_op),
+            offset_of!(GrepEnv, cnf_matching),
+            offset_of!(GrepEnv, cnf_satisfied),
+            offset_of!(GrepEnv, matchers_len),
+            offset_of!(GrepEnv, matchers_matcher),
+            offset_of!(GrepEnv, matchers_reset),
+            offset_of!(GrepEnv, out_eof),
+            offset_of!(GrepEnv, out_holding),
+            offset_of!(GrepEnv, out_op),
+            offset_of!(GrepEnv, out_chr),
+            offset_of!(GrepEnv, out_str),
+            offset_of!(GrepEnv, out_utf8strn),
+            offset_of!(GrepEnv, out_num),
+            offset_of!(GrepEnv, out_header),
+            offset_of!(GrepEnv, out_format_count),
+            offset_of!(GrepEnv, out_format),
+            offset_of!(GrepEnv, out_dump_hex),
+            offset_of!(GrepEnv, out_dump_next),
+            offset_of!(GrepEnv, stats_found),
+            offset_of!(GrepEnv, stats_found_parts),
+            offset_of!(GrepEnv, stats_score_matches),
+        ];
+        for (i, o) in offsets.iter().enumerate() {
+            assert_eq!(*o, i * w, "field {i}");
+        }
+        assert_eq!(size_of::<GrepEnv>(), offsets.len() * w);
+    }
 }

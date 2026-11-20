@@ -304,6 +304,13 @@ mod ffi {
         num: usize,
     }
 
+    /// `reflex::AbstractMatcher::Context` as offsets into the matcher buffer (`signatures::search::BufContext`).
+    struct MatcherContext {
+        offset: usize,
+        len: usize,
+        num: usize,
+    }
+
     extern "Rust" {
         /// The handle of a matcher that C++ owns, of any kind (`signatures::search::MatcherHandle`): `MatcherKind::REFLEX`,
         /// `PCRE2`, `LINE`, `FUZZY` or `BOOST`.
@@ -330,10 +337,15 @@ mod ffi {
         fn matcher_text_bounds(handle: &MatcherHandle) -> MatcherBounds;
         /// Seam function `src_core.matcher_lineno_skip`.
         fn matcher_lineno_skip(handle: &MatcherHandle, on: bool);
-        /// Seam function `src_core.matcher_set_shift_listener`: C++ keeps the handler object.
-        fn matcher_set_shift_listener(handle: &MatcherHandle, enabled: bool);
+        /// Seam function `src_core.matcher_set_shift_handler`: `kind` is a `HandlerKind` value; C++ constructs the handler
+        /// object of that class, or registers the trampoline into `matcher_shift_event` for `HandlerKind::RUST`.
+        fn matcher_set_shift_handler(handle: &MatcherHandle, kind: u8);
         /// Seam function `src_core.matcher_shift_event`: the C++ handler forwards the buffer shift (C++ calls Rust).
         fn matcher_shift_event(handle: &MatcherHandle, event: &MatcherShiftEvent, buf: &[u8]);
+        /// Seam function `src_core.matcher_invoke_handler`: the explicit `handler(*matcher, buf, len, num)` call.
+        fn matcher_invoke_handler(handle: &MatcherHandle, context: &MatcherContext);
+        /// Seam function `src_core.matcher_bytes`: `buf_[offset..offset + len]`, valid until the next handle call.
+        fn matcher_bytes(handle: &MatcherHandle, offset: usize, len: usize) -> &[u8];
         /// Seam function `src_core.matcher_reset`.
         fn matcher_reset(handle: &MatcherHandle);
         /// Seam functions `src_core.matcher_*`: the remaining `reflex::AbstractMatcher` accessors the branches use.
@@ -347,10 +359,10 @@ mod ffi {
         fn matcher_hit_end(handle: &MatcherHandle) -> bool;
         fn matcher_skip(handle: &MatcherHandle, c: u8) -> bool;
         fn matcher_border(handle: &MatcherHandle) -> usize;
-        fn matcher_before(handle: &MatcherHandle) -> usize;
-        fn matcher_after(handle: &MatcherHandle) -> usize;
-        fn matcher_bef(handle: &MatcherHandle) -> usize;
-        fn matcher_aft(handle: &MatcherHandle) -> usize;
+        fn matcher_before(handle: &MatcherHandle) -> MatcherContext;
+        fn matcher_after(handle: &MatcherHandle) -> MatcherContext;
+        fn matcher_bef(handle: &MatcherHandle, len: usize) -> usize;
+        fn matcher_aft(handle: &MatcherHandle, len: usize) -> usize;
         fn matcher_set_reserve(handle: &MatcherHandle, size: usize);
         /// Seam functions `src_core.matcher_fuzzy_*`: the `-Zbest` calls of a `FuzzyMatcher`.
         fn matcher_fuzzy_distance(handle: &MatcherHandle, max: u16);
@@ -768,12 +780,20 @@ fn matcher_lineno_skip(handle: &MatcherHandle, on: bool) {
     handle.lineno_skip(on)
 }
 
-fn matcher_set_shift_listener(handle: &MatcherHandle, enabled: bool) {
-    handle.set_shift_listener(enabled)
+fn matcher_set_shift_handler(handle: &MatcherHandle, kind: u8) {
+    handle.set_shift_handler(grep_search::HandlerKind(kind))
 }
 
 fn matcher_shift_event(handle: &MatcherHandle, event: &ffi::MatcherShiftEvent, buf: &[u8]) {
     handle.shift_event(grep_search::ShiftEvent { len: event.len, num: event.num }, buf)
+}
+
+fn matcher_invoke_handler(handle: &MatcherHandle, context: &ffi::MatcherContext) {
+    handle.invoke_handler(grep_search::BufContext { offset: context.offset, len: context.len, num: context.num })
+}
+
+fn matcher_bytes(handle: &MatcherHandle, offset: usize, len: usize) -> &[u8] {
+    handle.bytes(offset, len)
 }
 
 fn matcher_reset(handle: &MatcherHandle) {
@@ -820,20 +840,22 @@ fn matcher_border(handle: &MatcherHandle) -> usize {
     handle.border()
 }
 
-fn matcher_before(handle: &MatcherHandle) -> usize {
-    handle.before()
+fn matcher_before(handle: &MatcherHandle) -> ffi::MatcherContext {
+    let c = handle.before();
+    ffi::MatcherContext { offset: c.offset, len: c.len, num: c.num }
 }
 
-fn matcher_after(handle: &MatcherHandle) -> usize {
-    handle.after()
+fn matcher_after(handle: &MatcherHandle) -> ffi::MatcherContext {
+    let c = handle.after();
+    ffi::MatcherContext { offset: c.offset, len: c.len, num: c.num }
 }
 
-fn matcher_bef(handle: &MatcherHandle) -> usize {
-    handle.bef()
+fn matcher_bef(handle: &MatcherHandle, len: usize) -> usize {
+    handle.bef(len)
 }
 
-fn matcher_aft(handle: &MatcherHandle) -> usize {
-    handle.aft()
+fn matcher_aft(handle: &MatcherHandle, len: usize) -> usize {
+    handle.aft(len)
 }
 
 fn matcher_set_reserve(handle: &MatcherHandle, size: usize) {
