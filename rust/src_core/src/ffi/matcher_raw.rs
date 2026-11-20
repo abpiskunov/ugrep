@@ -9,7 +9,7 @@ use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::ptr::NonNull;
 
-use super::{dispatch_shift, HandlerSlot, MatcherHandle, MatcherTable, ShiftEvent};
+use super::{dispatch_shift, FileSource, GrepHost, HandlerSlot, MatcherHandle, MatcherTable, ShiftEvent};
 
 /// The Rust shift handler the C++ trampoline handler calls for every buffer-shift event (`ugrep_core_shift_fn`).
 pub type ShiftFn = unsafe extern "C" fn(user: *mut c_void, len: usize, num: usize, buf: *const u8);
@@ -144,6 +144,34 @@ impl OwnedFile {
         FileRef { ptr: self.0, _host: PhantomData }
     }
 }
+
+/// Run the `--filter` command on `Grep::file_in` (`Grep::filter_spawn(file_in, pathname, command)`): the stream goes to
+/// `filter_spawn`, which closes it unless it is stdin, and `Grep::file_in` becomes the reading end of the pipe, or NULL
+/// when the pipe could not be created (false). The host's `file_in` is replaced before the call returns, and nothing else
+/// can run in between (`&mut` host), so the stream the host forgets here is never used again.
+pub fn filter_file_in(host: &mut dyn GrepHost, pathname: &[u8], command: &[u8]) -> bool {
+    let source = {
+        let Some(file) = host.file_in() else { return true };
+        if file == host.stdin_file() {
+            FileSource::Stdin
+        } else if host.source().as_ref() == Some(&file) {
+            FileSource::Source
+        } else {
+            // the host keeps the pointer until `set_file_in` below overwrites it without closing
+            FileSource::Owned(OwnedFile(file.ptr))
+        }
+    };
+    match host.filter_spawn(source, pathname, command) {
+        Some(pipe) => {
+            host.set_file_in(Some(FileSource::Owned(pipe)));
+            true
+        }
+        None => {
+            host.set_file_in(None);
+            false
+        }
+    }
+}
 /// `reflex::Input*` of C++ (`&Grep::input`), opaque to Rust and made only here ([`input_handle`]).
 #[derive(Debug, PartialEq, Eq)]
 pub struct InputHandle(*const c_void);
@@ -174,12 +202,163 @@ impl GrepState {
     }
 }
 
+impl Drop for GrepState {
+    /// `MMap::~MMap`: unmap the region reserved for the files that were mapped.
+    fn drop(&mut self) {
+        if let Some((base, size)) = self.mapping.get_mut().take() {
+            sys::unmap(base, size);
+        }
+    }
+}
+
 /// Record the mapping that the state unmaps (or reuses with `MAP_FIXED`) when the `Grep` goes.
 ///
 /// # Safety
 /// `mapping` must be `None` or `(base, size)` of a live mapping that the caller made and that nothing else unmaps.
 pub unsafe fn set_mapping(state: &GrepState, mapping: Option<(usize, usize)>) {
     *state.mapping.borrow_mut() = mapping;
+}
+
+/// `MMap::file`: map the regular file `file` (plain encoding already checked by the caller) read-only over the region the
+/// state reserved, as `src/mmap.hpp` does. `None` when mmap is not available (Windows, as `HAVE_MMAP` is not defined by the
+/// MSVC build), when `file` is not a regular file of at least `MIN_MMAP_SIZE` (16384) bytes, is larger than `max_mmap`
+/// (`--max-mmap`, 0 disables) or a system call fails. On success the buffer is the file followed by the terminating NUL
+/// (`size + 1`), valid until the next call on this state or until the state is dropped.
+pub fn map_input(state: &GrepState, file: &FileRef<'_>, max_mmap: usize) -> Option<BufferPtr> {
+    let mut lost = false;
+    let mapped = sys::map_file(state.mapping(), file.ptr.as_ptr(), max_mmap, &mut lost);
+    if lost {
+        // MAP_FIXED failed over the reserved region: the kernel may have unmapped it already, so the state forgets it (a
+        // leak if it is still mapped) and never maps over or unmaps it again, as `MMap::file` does
+        // SAFETY: `None` is always a valid mapping record.
+        unsafe { set_mapping(state, None) };
+    }
+    let (base, size) = mapped?;
+    // SAFETY: `map_file` returns the live mapping it made at `base.0` of `base.1` bytes, which only this state unmaps
+    // (on the next mapping, which replaces it with MAP_FIXED, or when it is dropped).
+    unsafe { set_mapping(state, Some(base)) };
+    Some(BufferPtr { ptr: base.0 as *const u8, size: size + 1 })
+}
+
+/// The mmap system calls, `src/mmap.hpp` under `HAVE_MMAP`: 64-bit Unix systems whose constants are listed here.
+#[cfg(all(
+    unix,
+    target_pointer_width = "64",
+    any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "freebsd", target_os = "netbsd", target_os = "openbsd", target_os = "dragonfly")
+))]
+mod sys {
+    use std::ffi::{c_int, c_void};
+    use std::mem::ManuallyDrop;
+    use std::os::unix::io::FromRawFd;
+
+    const PROT_READ: c_int = 1;
+    const MAP_PRIVATE: c_int = 2;
+    const MAP_FIXED: c_int = 0x10;
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    const MAP_ANONYMOUS: c_int = 0x20;
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    const MAP_ANONYMOUS: c_int = 0x1000;
+    const MADV_SEQUENTIAL: c_int = 2;
+    /// `MIN_MMAP_SIZE`: smaller files are efficiently read in one go.
+    const MIN_MMAP_SIZE: u64 = 16384;
+
+    extern "C" {
+        fn mmap(addr: *mut c_void, len: usize, prot: c_int, flags: c_int, fd: c_int, offset: i64) -> *mut c_void;
+        fn munmap(addr: *mut c_void, len: usize) -> c_int;
+        fn madvise(addr: *mut c_void, len: usize, advice: c_int) -> c_int;
+        fn fileno(stream: *mut c_void) -> c_int;
+    }
+
+    fn failed(p: *mut c_void) -> bool {
+        p as usize == usize::MAX
+    }
+
+    pub(super) fn unmap(base: usize, size: usize) {
+        // SAFETY: `base`/`size` come from a mapping that `map_file` made and that nobody else unmaps.
+        unsafe { munmap(base as *mut c_void, size) };
+    }
+
+    /// Returns the mapping `((base, mapped size), file size)`; sets `lost` when the MAP_FIXED over an existing region
+    /// failed, so the caller forgets that region.
+    pub(super) fn map_file(
+        current: Option<(usize, usize)>,
+        file: *mut c_void,
+        max_mmap: usize,
+        lost: &mut bool,
+    ) -> Option<((usize, usize), usize)> {
+        // SAFETY: `file` is a live `FILE*` (a `FileRef`).
+        let fd = unsafe { fileno(file) };
+        if fd < 0 {
+            return None;
+        }
+        // SAFETY: `fd` is open for the duration of this call; `ManuallyDrop` keeps the `File` from closing it.
+        let meta = ManuallyDrop::new(unsafe { std::fs::File::from_raw_fd(fd) }).metadata().ok()?;
+        if !meta.is_file() || meta.len() < MIN_MMAP_SIZE {
+            return None;
+        }
+        let size = usize::try_from(meta.len()).ok()?;
+        // is this file not larger than --max-mmap?
+        if size > max_mmap {
+            return None;
+        }
+        // allocate the fixed mmap region to reuse, rounded up to 4K
+        let (base, mapped) = match current {
+            Some(region) => region,
+            None => {
+                let mapped = max_mmap.checked_add(0xfff)? & !0xfffusize;
+                // SAFETY: an anonymous private mapping of `mapped` bytes at an address chosen by the system.
+                let p = unsafe { mmap(std::ptr::null_mut(), mapped, PROT_READ, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0) };
+                if failed(p) {
+                    return None;
+                }
+                // files are sequentially read
+                // SAFETY: `p` addresses the live mapping of `mapped` bytes just made.
+                unsafe { madvise(p, mapped, MADV_SEQUENTIAL) };
+                (p as usize, mapped)
+            }
+        };
+        // the buffer is the file plus its terminating NUL, which must lie inside the region (a later max_mmap does not
+        // grow a region made for a smaller one)
+        if size >= mapped {
+            if current.is_none() {
+                unmap(base, mapped);
+            }
+            return None;
+        }
+        // mmap the (next) file over the fixed region
+        // SAFETY: MAP_FIXED over the region this state reserved (or just made) and owns.
+        let p = unsafe { mmap(base as *mut c_void, mapped, PROT_READ, MAP_FIXED | MAP_PRIVATE, fd, 0) };
+        if failed(p) {
+            if current.is_none() {
+                unmap(base, mapped);
+            } else {
+                *lost = true;
+            }
+            return None;
+        }
+        Some(((p as usize, mapped), size))
+    }
+}
+
+/// No `HAVE_MMAP` (Windows, other platforms): mmap is never used, as in the C++ build.
+#[cfg(not(all(
+    unix,
+    target_pointer_width = "64",
+    any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "freebsd", target_os = "netbsd", target_os = "openbsd", target_os = "dragonfly")
+)))]
+mod sys {
+    use std::ffi::c_void;
+
+    pub(super) fn unmap(_base: usize, _size: usize) {}
+
+    pub(super) fn map_file(
+        _current: Option<(usize, usize)>,
+        _file: *mut c_void,
+        _max_mmap: usize,
+        _lost: &mut bool,
+    ) -> Option<((usize, usize), usize)> {
+        None
+    }
 }
 
 /// A borrowed handle of a `FILE*` that C++ keeps owning; `None` for NULL.
@@ -276,6 +455,23 @@ pub(crate) mod fake {
     pub(crate) fn handle(table: MatcherTable) -> MatcherHandle {
         // SAFETY: the fake tables of the tests honour the header for as long as their fake matcher lives.
         unsafe { new_handle(table) }
+    }
+
+    /// A borrowed file at a made-up address that is never dereferenced.
+    pub(crate) fn file_ref<'a>(addr: usize) -> FileRef<'a> {
+        // SAFETY: the tests never dereference the pointer; the fake host only compares it.
+        unsafe { super::file_ref(addr as *mut c_void) }.expect("non-NULL fake file")
+    }
+
+    /// An owned file at a made-up address that is never dereferenced or closed.
+    pub(crate) fn owned_file(addr: usize) -> OwnedFile {
+        // SAFETY: as above; dropping an `OwnedFile` closes nothing.
+        unsafe { super::owned_file(addr as *mut c_void) }.expect("non-NULL fake file")
+    }
+
+    pub(crate) fn input_handle() -> InputHandle {
+        // SAFETY: the fake host only passes the handle to the fake matcher, which ignores it.
+        unsafe { super::input_handle(std::ptr::null()) }
     }
 
     pub(crate) fn call_shift(shift: ShiftFn, user: *mut c_void, len: usize, num: usize, buf: *const u8) {
