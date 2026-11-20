@@ -242,8 +242,9 @@ typedef struct ugrep_core_search_env {
   void *(*input)(void *ctx);
   // Grep::input.file()
   void *(*input_file)(void *ctx);
-  // Grep::input = reflex::Input(file, encoding), encoding is flag_encoding_type
-  void (*input_set_file)(void *ctx, void *file, int encoding);
+  // Grep::input = reflex::Input(file, encoding), encoding is flag_encoding_type; owned != 0 when Rust gave the stream up
+  // (FileSource::Owned): only such a stream is fclosed by close_input_file, never stdin, Static::source or file_in
+  void (*input_set_file)(void *ctx, void *file, int encoding, int owned);
   // Grep::input.clear()
   void (*input_clear)(void *ctx);
   // Grep::input.get(buf, len): the number of bytes read (the drain of stdin)
@@ -303,7 +304,8 @@ typedef struct ugrep_core_search_env {
   int (*is_binary)(void *ctx, const unsigned char *bytes, size_t len);
   // close_file of Grep: both cancel a zthread that reads the stream, fclose it (never stdin or Static::source), clear
   // Grep::input and detach the matchers of the facade that read the stream (their input is cleared). close_input_file acts
-  // on Grep::input.file() (the decompression pipe); close_file_in on Grep::file_in, which is NULL afterwards. Rust never
+  // on Grep::input.file() (the decompression pipe); close_file_in on Grep::file_in, which is NULL afterwards, and first
+  // cancels an active zthread (started, open_next has not returned NULL since) and drains open_next to NULL. Rust never
   // gets the stream, so it cannot close it twice or use it after the close
   void (*close_input_file)(void *ctx);
   void (*close_file_in)(void *ctx);

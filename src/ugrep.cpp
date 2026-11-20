@@ -3049,6 +3049,30 @@ struct Grep {
 #endif
     }
 
+    // an active decompression thread still holds file_in: cancel it and take every pending pipe until open_next returns
+    // NULL, so that the stream is not closed under the thread
+    void drain_zthread()
+    {
+#if defined(HAVE_LIBZ) && defined(WITH_DECOMPRESSION_THREAD)
+      if (zthread_active)
+      {
+        grep.zthread.cancel();
+        const char *path = path_slot != NULL ? path_slot : "";
+        for (FILE *pipe = grep.zthread.open_next(path); pipe != NULL; pipe = grep.zthread.open_next(path))
+        {
+          detach_matchers(pipe);
+          if (grep.input.file() == pipe)
+          {
+            grep.input.clear();
+            input_owned = false;
+          }
+          fclose(pipe);
+        }
+        zthread_active = false;
+      }
+#endif
+    }
+
     // no matcher of the facade keeps reading a stream that is about to be closed: its input is cleared
     void detach_matchers(FILE *file)
     {
@@ -3790,14 +3814,16 @@ struct Grep {
       env->set_file_in = [](void *c, void *file) { G(c, [&]() { F(c).grep.file_in = static_cast<FILE*>(file); }); };
       env->input = [](void *c) -> void* { return G(c, [&]() -> void* { return &F(c).grep.input; }); };
       env->input_file = [](void *c) -> void* { return G(c, [&]() -> void* { return F(c).grep.input.file(); }); };
-      env->input_set_file = [](void *c, void *file, int encoding)
+      env->input_set_file = [](void *c, void *file, int encoding, int owned)
       {
         G(c, [&]()
         {
-          F(c).grep.input = reflex::Input(stream(file, "input_set_file: NULL file"), static_cast<reflex::Input::file_encoding_type>(encoding));
+          SeamFacade& f = F(c);
+          f.grep.input = reflex::Input(stream(file, "input_set_file: NULL file"), static_cast<reflex::Input::file_encoding_type>(encoding));
+          f.input_owned = owned != 0;
         });
       };
-      env->input_clear = [](void *c) { G(c, [&]() { F(c).grep.input.clear(); }); };
+      env->input_clear = [](void *c) { G(c, [&]() { SeamFacade& f = F(c); f.grep.input.clear(); f.input_owned = false; }); };
       env->input_get = [](void *c, unsigned char *buf, size_t len) -> size_t
       {
         return G(c, [&]() -> size_t { return F(c).grep.input.get(reinterpret_cast<char*>(buf), len); });
@@ -3821,11 +3847,23 @@ struct Grep {
 #if defined(HAVE_LIBZ) && defined(WITH_DECOMPRESSION_THREAD)
       env->zthread_start = [](void *c, size_t ztstage, const char *path, const char *find) -> void*
       {
-        return G(c, [&]() -> void* { return F(c).grep.zthread.start(ztstage, path, stream(F(c).grep.file_in, "zthread_start: NULL file_in"), find); });
+        return G(c, [&]() -> void*
+        {
+          SeamFacade& f = F(c);
+          void *pipe = f.grep.zthread.start(ztstage, path, stream(f.grep.file_in, "zthread_start: NULL file_in"), find);
+          f.zthread_active = pipe != NULL;
+          return pipe;
+        });
       };
       env->zthread_open_next = [](void *c, const char *path) -> void*
       {
-        return G(c, [&]() -> void* { return F(c).grep.zthread.open_next(path); });
+        return G(c, [&]() -> void*
+        {
+          SeamFacade& f = F(c);
+          void *pipe = f.grep.zthread.open_next(path);
+          f.zthread_active = pipe != NULL;
+          return pipe;
+        });
       };
       env->zthread_cancel = [](void *c) { G(c, [&]() { F(c).grep.zthread.cancel(); }); };
 #else
@@ -4013,9 +4051,12 @@ struct Grep {
           if (file != NULL)
           {
             f.detach_matchers(file);
-            fclose(file);
+            // only a stream given by input_set_file(Owned) is closed, never stdin, Static::source or file_in
+            if (f.input_owned && file != stdin && file != Static::source && file != f.grep.file_in)
+              fclose(file);
           }
           f.grep.input.clear();
+          f.input_owned = false;
           f.cancel_zthread_if_blocked();
         });
       };
@@ -4028,12 +4069,14 @@ struct Grep {
           if (file != NULL)
           {
             f.cancel_zthread_if_blocked();
+            f.drain_zthread();
             f.detach_matchers(file);
             if (file != stdin && file != Static::source)
               fclose(file);
             f.grep.file_in = NULL;
           }
           f.grep.input.clear();
+          f.input_owned = false;
         });
       };
     }
@@ -4045,6 +4088,8 @@ struct Grep {
 
     Grep&                  grep;                   // the Grep object
     const char            *path_slot;              // the pathname of the search in progress, see bind(); handlers refer to it
+    bool                   input_owned = false;    // Grep::input holds a stream given by input_set_file(Owned): only that one is closed
+    bool                   zthread_active = false; // start/open_next returned a pipe and open_next has not returned NULL since
     std::exception_ptr     error;                  // the pending exception of the exception channel, see guard()
     ContextGrepHandler    *context_handler;        // the registered handler when of this class, owned by its MatcherCtx
     InvertContextGrepHandler *invert_context_handler; // the registered handler when of this class

@@ -184,7 +184,7 @@ pub struct GrepEnv {
     pub set_file_in: extern "C" fn(*mut c_void, *mut c_void),
     pub input: extern "C" fn(*mut c_void) -> *mut c_void,
     pub input_file: extern "C" fn(*mut c_void) -> *mut c_void,
-    pub input_set_file: extern "C" fn(*mut c_void, *mut c_void, c_int),
+    pub input_set_file: extern "C" fn(*mut c_void, *mut c_void, c_int, c_int),
     pub input_clear: extern "C" fn(*mut c_void),
     pub input_get: extern "C" fn(*mut c_void, *mut u8, usize) -> usize,
     pub source: extern "C" fn(*mut c_void) -> *mut c_void,
@@ -458,12 +458,13 @@ impl GrepHost for CHost {
         (self.0.input_encoding)(self.0.ctx)
     }
     fn input_set_file(&mut self, file: FileSource, encoding: i32) {
+        let owned = matches!(file, FileSource::Owned(_));
         let ptr = self.source_ptr(Some(file));
-        (self.0.input_set_file)(self.0.ctx, ptr, encoding)
+        (self.0.input_set_file)(self.0.ctx, ptr, encoding, c_int::from(owned))
     }
     fn input_set_file_in(&mut self, encoding: i32) {
         let ptr = (self.0.file_in)(self.0.ctx);
-        (self.0.input_set_file)(self.0.ctx, ptr, encoding)
+        (self.0.input_set_file)(self.0.ctx, ptr, encoding, 0)
     }
     fn input_clear(&self) {
         (self.0.input_clear)(self.0.ctx)

@@ -643,5 +643,5 @@ the Grep and drops it with the Grep (Drop unmaps in the mmap port).
      input.clear();`). When the output is blocked (`out.eof`) and `flag_decompress`, the primitive first cancels the zthread that reads `file_in`;
      an unconditional cancel is not done, because Zthread keeps `stop` on reuse and would stop the next archive. Return false.
   Both primitives also detach every matcher of the facade whose `in.file()` is the closed stream (`in.clear()`), so no matcher keeps a dangling `FILE*`.
-  `Grep::file_in` is NULL afterwards, also for stdin/`Static::source` (not closed). Env slots `close_input_file`=66, `close_file_in`=67 (68 words).
+  `Grep::file_in` is NULL afterwards, also for stdin/`Static::source` (not closed). Env slots `close_input_file`=66, `close_file_in`=67 (68 words). The facade tracks `input_owned` (set by `input_set_file(.., owned)`, true only for `FileSource::Owned`; `close_input_file` fcloses only such a stream, never stdin, `Static::source` or `file_in`) and `zthread_active` (set when `zthread_start`/`open_next` return a pipe, cleared when `open_next` returns NULL); `close_file_in` on an active zthread cancels it and drains `open_next` to NULL (closing each pipe) before the fclose.
 - **Open for S4c-2b:** the switch and deletion of the C++ bodies; the facade's matcher tracking covers matchers handed out through the tables.
