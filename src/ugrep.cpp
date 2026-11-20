@@ -3050,15 +3050,16 @@ struct Grep {
     }
 
     // an active decompression thread still holds file_in: close the pipe held by Grep::input first (a thread blocked
-    // writing to an unread pipe is not woken by cancel), then cancel and take every pending pipe until open_next returns
-    // NULL, so that the stream is not closed under the thread
+    // writing to an unread pipe is not woken by cancel), then take every pending pipe until open_next returns NULL, so
+    // that the stream is not closed under the thread
     void drain_zthread()
     {
 #if defined(HAVE_LIBZ) && defined(WITH_DECOMPRESSION_THREAD)
       if (zthread_active)
       {
+        // no cancel: closing the held pipe releases a writer blocked on it, the loop below takes the remaining parts,
+        // and a cancelled thread stays stopped for every later file of this Grep (D-zthread-races)
         close_held_input();
-        grep.zthread.cancel();
         const char *path = path_slot != NULL ? path_slot : "";
         for (FILE *pipe = grep.zthread.open_next(path); pipe != NULL; pipe = grep.zthread.open_next(path))
         {
