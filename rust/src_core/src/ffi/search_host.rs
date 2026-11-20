@@ -88,6 +88,9 @@ pub fn flags_from_settings() -> GrepFlags {
         color_sl: cstr(s.color_sl.as_ptr()).unwrap_or_default(),
         color_cx: cstr(s.color_cx.as_ptr()).unwrap_or_default(),
         color_off: cstr(s.color_off).unwrap_or_default(),
+        color_cn: cstr(s.color_cn.as_ptr()).unwrap_or_default(),
+        match_ms: cstr(s.match_ms.as_ptr()).unwrap_or_default(),
+        match_off: cstr(s.match_off.as_ptr()).unwrap_or_default(),
     }
 }
 
@@ -615,6 +618,10 @@ impl GrepHost for CHost {
     }
     fn out_header(&self, lineno: usize, byte_offset: usize, sep: &[u8], newline: bool) {
         (self.0.out_header)(self.0.ctx, lineno, byte_offset, sep.as_ptr(), sep.len(), newline as c_int)
+    }
+    fn out_header_no_matcher(&self, lineno: usize, byte_offset: usize, sep: &[u8]) {
+        // bit 1 of `newline` is the NULL matcher, the C ABI is unchanged
+        (self.0.out_header)(self.0.ctx, lineno, byte_offset, sep.as_ptr(), sep.len(), 2)
     }
     fn out_header_file(&self) {
         self.op(OutOp::HeaderFile)
